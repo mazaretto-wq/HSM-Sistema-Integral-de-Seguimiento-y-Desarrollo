@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Base de datos Haras Santa María</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#FFFFFF;
+  --wash:#F7F6F4;
+  --ink:#111111;
+  --ink-2:#6C6862;
+  --naranja:#EA5B0C;
+  --naranja-soft:#FDEDE3;
+  --linea:#E3E0DB;
+  --linea-fuerte:#111111;
+  --verde:#2E7D46;
+  --ambar:#C98A00;
+  --rojo:#C0392B;
+  --amarilla:#F2C230;
+  --r:8px;
+  --display:'Barlow Condensed',system-ui,sans-serif;
+  --body:'Work Sans',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);color:var(--ink);
+  font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-bottom:calc(74px + env(safe-area-inset-bottom));
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+.wrap{max-width:660px;margin:0 auto;padding:0 16px}
+
+/* ---- encabezado tipo planilla ---- */
+.topbar{position:sticky;top:0;z-index:20;background:var(--paper);border-bottom:2px solid var(--ink);padding-top:env(safe-area-inset-top)}
+.topbar .wrap{display:flex;align-items:center;gap:10px;height:54px}
+.crest{width:26px;height:26px;flex:0 0 26px;border:2px solid var(--ink);border-radius:50%;position:relative}
+.crest::after{content:"";position:absolute;inset:4px;background:var(--naranja);border-radius:50%}
+.mark{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.1em;text-transform:uppercase;line-height:1}
+.mark small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--ink-2);font-weight:400;margin-top:3px}
+.rolebox{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-2);text-align:right;max-width:130px;line-height:1.3}
+
+h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter-spacing:.04em;text-transform:uppercase;margin:20px 0 3px}
+.screen-note{color:var(--ink-2);font-size:13px;margin:0 0 16px}
+
+/* ---- tabs ---- */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--paper);border-top:1px solid var(--linea);padding-bottom:env(safe-area-inset-bottom);display:flex;box-shadow:0 -2px 12px rgba(0,0,0,.05)}
+.tabs button{flex:1;padding:13px 4px 15px;color:var(--ink-2);font-family:var(--display);font-size:14px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;border-top:3px solid transparent;margin-top:-1px}
+.tabs button[aria-current="true"]{color:var(--ink);border-top-color:var(--naranja)}
+
+/* ---- chips ---- */
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;padding:7px 13px;border-radius:99px;border:1px solid var(--linea);color:var(--ink-2);font-family:var(--display);font-size:14px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;white-space:nowrap;background:var(--paper)}
+.chip[aria-pressed="true"]{background:var(--naranja);color:#fff;border-color:var(--naranja)}
+
+/* ---- lista ---- */
+.roster{border:1px solid var(--linea);border-radius:var(--r);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--paper);padding:12px 13px;border-bottom:1px solid var(--linea)}
+.roster .row:last-child{border-bottom:none}
+.row:active{background:var(--wash)}
+.dorsal{font-family:var(--mono);font-weight:600;font-size:12px;width:34px;height:34px;flex:0 0 34px;border-radius:6px;background:var(--wash);display:grid;place-items:center;color:var(--ink-2)}
+.row-main{flex:1;min-width:0}
+.row-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-meta{font-family:var(--mono);font-size:11px;color:var(--ink-2);display:flex;gap:8px;align-items:center;margin-top:2px;flex-wrap:wrap}
+.score{font-family:var(--mono);font-weight:600;font-size:17px;padding:5px 9px;border-radius:6px;min-width:48px;text-align:center}
+.s-alto{background:rgba(46,125,70,.12);color:var(--verde)}
+.s-medio{background:rgba(201,138,0,.14);color:var(--ambar)}
+.s-bajo{background:rgba(192,57,43,.11);color:var(--rojo)}
+.s-vacio{background:var(--wash);color:var(--ink-2)}
+.card-mark{display:inline-block;width:7px;height:10px;border-radius:1.5px;vertical-align:-1px;border:.5px solid rgba(0,0,0,.25)}
+.card-y{background:var(--amarilla)}
+.card-r{background:var(--rojo)}
+.pill{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--linea);border-radius:4px;padding:1px 5px;color:var(--ink-2)}
+
+/* ---- ficha ---- */
+.back{font-family:var(--display);text-transform:uppercase;letter-spacing:.09em;font-size:14px;color:var(--ink-2);font-weight:600;padding:14px 0 0}
+.ficha-head{border-bottom:2px solid var(--ink);padding-bottom:14px}
+.ficha-name{font-family:var(--display);font-size:31px;font-weight:700;line-height:1.05;margin:10px 0 4px;text-transform:uppercase}
+.ficha-carnet{font-family:var(--mono);font-size:11px;color:var(--naranja);letter-spacing:.06em;margin-bottom:9px}
+.ficha-tags{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);border:1px solid var(--linea);border-radius:4px;padding:3px 7px}
+.tag.cat{border-color:var(--ink);color:var(--ink)}
+.block{margin:26px 0}
+.block-title{font-family:var(--display);font-size:15px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.block-title::after{content:"";flex:1;height:1px;background:var(--ink)}
+.block-title span{font-family:var(--mono);font-size:10px;font-weight:400;color:var(--ink-2);letter-spacing:0;text-transform:none}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));border:1px solid var(--linea);border-radius:var(--r);overflow:hidden}
+.stat{padding:11px 12px;border-right:1px solid var(--linea);border-bottom:1px solid var(--linea)}
+.stat-label{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-2);text-transform:uppercase}
+.stat-value{font-family:var(--mono);font-size:21px;font-weight:600;margin-top:3px}
+.stat-value small{font-size:11px;color:var(--ink-2);font-weight:400}
+
+/* tabla comparativa toma a toma */
+.cmp{width:100%;border-collapse:collapse;font-size:13px}
+.cmp th,.cmp td{padding:8px 6px;border-bottom:1px solid var(--linea);text-align:right}
+.cmp th:first-child,.cmp td:first-child{text-align:left;font-weight:500}
+.cmp thead th{font-family:var(--display);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);border-bottom:2px solid var(--ink);white-space:nowrap}
+.cmp td.val{font-family:var(--mono);font-weight:600}
+.cmp .dlt{font-family:var(--mono);font-size:11px;display:block;font-weight:500}
+.up{color:var(--verde)}.down{color:var(--rojo)}.flat{color:var(--ink-2)}
+.scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ---- cancha ---- */
+.pitch{position:relative;width:100%;aspect-ratio:68/100;background:var(--wash);border:2px solid var(--ink);border-radius:var(--r);overflow:hidden}
+.pitch svg.lines{position:absolute;inset:0;width:100%;height:100%}
+.slot{position:absolute;transform:translate(-50%,-50%);width:62px;text-align:center}
+.slot .bubble{width:42px;height:42px;margin:0 auto;border-radius:50%;border:2px solid var(--ink);background:var(--paper);display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:600}
+.slot.lleno .bubble{background:var(--naranja);color:#fff;border-color:var(--naranja)}
+.slot .cap{font-family:var(--display);font-size:11px;letter-spacing:.04em;text-transform:uppercase;margin-top:3px;line-height:1.15;color:var(--ink)}
+.slot .pos{font-family:var(--mono);font-size:8.5px;color:var(--ink-2)}
+
+/* ---- formularios ---- */
+.field{margin-bottom:15px}
+.label{display:block;font-family:var(--display);font-size:14px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;margin-bottom:6px}
+.label em{font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:0;text-transform:none;color:var(--ink-2);margin-left:6px}
+input[type=text],input[type=number],input[type=date],select,textarea{width:100%;background:var(--paper);border:1px solid var(--linea);border-radius:var(--r);padding:12px;font-size:16px}
+textarea{min-height:96px;resize:vertical;line-height:1.45}
+input[type=number]{font-family:var(--mono)}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--naranja);outline-offset:1px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.scale{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.scale button{aspect-ratio:1;border-radius:6px;background:var(--paper);border:1px solid var(--linea);font-family:var(--mono);font-size:14px;color:var(--ink-2)}
+.scale button[aria-pressed="true"]{background:var(--naranja);color:#fff;border-color:var(--naranja);font-weight:600}
+.stepper{display:flex;align-items:center;gap:12px}
+.stepper button{width:44px;height:44px;border-radius:var(--r);background:var(--paper);border:1px solid var(--linea);font-size:21px;font-family:var(--mono);line-height:1}
+.stepper output{font-family:var(--mono);font-size:21px;font-weight:600;min-width:32px;text-align:center}
+.multi{display:flex;flex-wrap:wrap;gap:6px}
+
+.btn{display:block;width:100%;padding:15px;border-radius:var(--r);background:var(--ink);color:#fff;font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.btn-naranja{background:var(--naranja)}
+.btn-ghost{background:var(--paper);color:var(--ink);border:1px solid var(--ink)}
+.btn-danger{background:var(--paper);color:var(--rojo);border:1px solid var(--rojo)}
+.btn:disabled{opacity:.45}
+.gap{height:10px}
+
+.empty{border:1px dashed var(--linea);border-radius:var(--r);padding:26px 20px;text-align:center;color:var(--ink-2)}
+.empty p{margin:0 0 15px}
+.aviso{background:var(--naranja-soft);border-left:3px solid var(--naranja);padding:11px 13px;border-radius:0 var(--r) var(--r) 0;font-size:13px;margin-bottom:16px}
+
+.toast{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;background:var(--ink);color:#fff;padding:13px 16px;border-radius:var(--r);font-weight:600;max-width:628px;margin:0 auto;transform:translateY(160%);transition:transform .2s ease}
+.toast.show{transform:translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="crest"></div>
+    <div class="mark">Haras Santa María<small>BASE DE DATOS DEPORTIVA</small></div>
+    <div class="rolebox" id="rolebox">—</div>
+  </div>
+</header>
+
+<main class="wrap" id="app"></main>
+
+<nav class="tabs">
+  <button data-tab="plantel" aria-current="true">Plantel</button>
+  <button data-tab="cancha">Cancha</button>
+  <button data-tab="entrenos">Entrenos</button>
+  <button data-tab="cargar">Cargar</button>
+  <button data-tab="datos">Datos</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   1. ALMACENAMIENTO — única capa a reemplazar por Firebase
+   ========================================================= */
+const KEY = 'hsm:v2';
+let memoria = null;
+const Store = {
+  async load(){
+    if (window.storage){ try{ const r = await window.storage.get(KEY,false); return r?JSON.parse(r.value):null; }catch(e){ return null; } }
+    try{ const v = localStorage.getItem(KEY); return v?JSON.parse(v):null; }catch(e){ return memoria; }
+  },
+  async save(d){
+    if (window.storage){ try{ await window.storage.set(KEY, JSON.stringify(d), false); return true; }catch(e){ return false; } }
+    try{ localStorage.setItem(KEY, JSON.stringify(d)); return true; }catch(e){ memoria = d; return true; }
+  }
+};
+
+/* =========================================================
+   2. MODELO
+   ========================================================= */
+const CATEGORIAS = ['Promocional','Cadetes','Juveniles','Selección','Selección Libre','Primera'];
+const POSICIONES = ['Arquero','Lateral Derecho','Central Derecho','Central Izquierdo','Lateral Izquierdo',
+  'Mediocampista Defensivo','Mediocampista Interior','Volante Derecho','Volante Izquierdo','Enganche',
+  'Extremo Derecho','Extremo Izquierdo','Delantero Centro'];
+
+const FISICO = [
+  {id:'cooper', nombre:'Cooper 6 min',   unidad:'m', mejor:'alto'},
+  {id:'yoyo',   nombre:'Yo-Yo IR1',      unidad:'m', mejor:'alto'},
+  {id:'v30',    nombre:'Velocidad 30 m', unidad:'s', mejor:'bajo', dec:2}
+];
+const TECNICO = [
+  {id:'control',   nombre:'Control y pase'},
+  {id:'remate',    nombre:'Remate'},
+  {id:'unoOf',     nombre:'1v1 ofensivo'},
+  {id:'unoDef',    nombre:'1v1 defensivo'},
+  {id:'decision',  nombre:'Toma de decisión'},
+  {id:'ubicacion', nombre:'Ubicación'}
+];
+const CONDUCTA = [
+  {id:'puntualidad', nombre:'Puntualidad'},
+  {id:'entrenos',    nombre:'Entrenamientos'},
+  {id:'actitud',     nombre:'Actitud y compromiso'}
+];
+
+const FORMACIONES = {
+  '4-3-3':[['Arquero',50,92],['Lateral Izquierdo',15,74],['Central Izquierdo',38,79],['Central Derecho',62,79],['Lateral Derecho',85,74],
+           ['Mediocampista Interior',28,54],['Mediocampista Defensivo',50,62],['Mediocampista Interior',72,54],
+           ['Extremo Izquierdo',16,24],['Delantero Centro',50,14],['Extremo Derecho',84,24]],
+  '4-4-2':[['Arquero',50,92],['Lateral Izquierdo',15,74],['Central Izquierdo',38,79],['Central Derecho',62,79],['Lateral Derecho',85,74],
+           ['Volante Izquierdo',15,50],['Mediocampista Defensivo',38,55],['Mediocampista Interior',62,55],['Volante Derecho',85,50],
+           ['Delantero Centro',37,17],['Delantero Centro',63,17]],
+  '3-5-2':[['Arquero',50,92],['Central Izquierdo',30,79],['Central',50,82],['Central Derecho',70,79],
+           ['Volante Izquierdo',11,52],['Mediocampista Defensivo',33,58],['Enganche',50,42],['Mediocampista Interior',67,58],['Volante Derecho',89,52],
+           ['Delantero Centro',37,16],['Delantero Centro',63,16]],
+  '4-3-1-2':[['Arquero',50,92],['Lateral Izquierdo',15,74],['Central Izquierdo',38,79],['Central Derecho',62,79],['Lateral Derecho',85,74],
+           ['Mediocampista Interior',24,58],['Mediocampista Defensivo',50,64],['Mediocampista Interior',76,58],
+           ['Enganche',50,38],
+           ['Delantero Centro',37,15],['Delantero Centro',63,15]]
+};
+
+const FASES = [
+  {id:'activacion', nombre:'Entrada en calor',  color:'#8AA1B1'},
+  {id:'tecnica',    nombre:'Técnica',           color:'#2E7D46'},
+  {id:'tactica',    nombre:'Táctica',           color:'#1F5FA9'},
+  {id:'fisico',     nombre:'Físico',            color:'#EA5B0C'},
+  {id:'reducido',   nombre:'Juego reducido',    color:'#7A4FBF'},
+  {id:'abp',        nombre:'Pelota parada',     color:'#C98A00'},
+  {id:'juego',      nombre:'Fútbol formal',     color:'#111111'},
+  {id:'vuelta',     nombre:'Vuelta a la calma', color:'#6C6862'}
+];
+const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
+
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], config:{rol:'Coordinador', categoriaDT:''} };
+let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
+             tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
+             sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null };
+
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const hoy = () => new Date().toISOString().slice(0,10);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function edad(f){ if(!f) return null; const n=new Date(f),h=new Date(); let a=h.getFullYear()-n.getFullYear();
+  const m=h.getMonth()-n.getMonth(); if(m<0||(m===0&&h.getDate()<n.getDate()))a--; return a>=0&&a<100?a:null; }
+function nomb(j){ return (j.apellido||'').toUpperCase()+(j.nombre?', '+j.nombre:''); }
+function corto(j){ return (j.apellido||'').toUpperCase(); }
+function inic(j){ return ((j.apellido||'?')[0]+((j.nombre||'')[0]||'')).toUpperCase(); }
+function posiciones(j){ return j.posiciones && j.posiciones.length ? j.posiciones : []; }
+function posPrincipal(j){ return posiciones(j)[0] || ''; }
+const ABREV = {'Arquero':'ARQ','Lateral Derecho':'LD','Lateral Izquierdo':'LI','Central Derecho':'CD',
+  'Central Izquierdo':'CI','Central':'CEN','Mediocampista Defensivo':'MCD','Mediocampista Interior':'MI',
+  'Volante Derecho':'VD','Volante Izquierdo':'VI','Enganche':'ENG','Extremo Derecho':'ED',
+  'Extremo Izquierdo':'EI','Delantero Centro':'DC'};
+const abrev = p => ABREV[p] || (p||'').slice(0,3).toUpperCase();
+/* 0 = su puesto, 1 = lo declaró como alternativo, 1.5 = misma familia, 2 = no es lo suyo */
+const familia = p => (p||'').split(' ')[0];
+function afinidad(j,pos){
+  const p = posiciones(j); const i = p.indexOf(pos);
+  if (i === 0) return 0;
+  if (i > 0) return 1;
+  return p.some(x=>familia(x)===familia(pos)) ? 1.5 : 2;
+}
+
+/* categorías visibles según el rol */
+function catsPermitidas(){
+  return db.config.rol === 'DT' && db.config.categoriaDT ? [db.config.categoriaDT] : CATEGORIAS;
+}
+function puedeVer(j){
+  const p = catsPermitidas();
+  const cats = j.categorias || [];
+  /* sin categoría: los ve la coordinación, para poder completarlos */
+  if (!cats.length) return db.config.rol !== 'DT';
+  return cats.some(c => p.includes(c));
+}
+function jugadoresVisibles(){ return db.jugadores.filter(puedeVer); }
+
+function tomasOrden(){ return [...db.tomas].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')); }
+function evalsDe(id){
+  const orden = tomasOrden().map(t=>t.id);
+  return db.evaluaciones.filter(e=>e.jugadorId===id).sort((a,b)=>orden.indexOf(a.tomaId)-orden.indexOf(b.tomaId));
+}
+function promedioTecnico(id){
+  const evs = evalsDe(id); if(!evs.length) return null;
+  for (let i=evs.length-1;i>=0;i--){
+    const v = TECNICO.map(t=>evs[i][t.id]).filter(x=>typeof x==='number');
+    if (v.length) return v.reduce((a,b)=>a+b,0)/v.length;
+  }
+  return null;
+}
+function partidosDe(id, cat){
+  return db.partidos.filter(p=>p.jugadorId===id && (!cat||cat==='Todas'||p.categoria===cat));
+}
+function totales(id, cat){
+  return partidosDe(id,cat).reduce((a,p)=>({
+    pj:a.pj+(p.jugo?1:0), goles:a.goles+(p.goles||0), asistencias:a.asistencias+(p.asistencias||0),
+    minutos:a.minutos+(p.minutos||0), amarillas:a.amarillas+(p.amarillas||0), rojas:a.rojas+(p.rojas||0)
+  }),{pj:0,goles:0,asistencias:0,minutos:0,amarillas:0,rojas:0});
+}
+/* asistencia acumulada: solo cuenta sesiones donde se pasó lista */
+function asistenciaDe(id){
+  const j = db.jugadores.find(x=>x.id===id); if(!j) return null;
+  const relevantes = db.sesiones.filter(s=>(s.asistentes||[]).length && (j.categorias||[]).includes(s.categoria));
+  if (!relevantes.length) return null;
+  const fue = relevantes.filter(s=>s.asistentes.includes(id)).length;
+  return { fue, total: relevantes.length, pct: Math.round(fue/relevantes.length*100) };
+}
+function pjPorPosicion(id){
+  const m = {};
+  db.partidos.filter(p=>p.jugadorId===id && p.jugo).forEach(p=>{
+    const k = p.posicion || 'Sin registrar';
+    m[k] = (m[k]||0)+1;
+  });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+const claseSem = v => v==null?'s-vacio':(v>=7?'s-alto':v>=5?'s-medio':'s-bajo');
+const colorSem = v => v>=7?'var(--verde)':v>=5?'var(--ambar)':'var(--rojo)';
+
+/* =========================================================
+   3. PANTALLAS
+   ========================================================= */
+const app = document.getElementById('app');
+
+function render(){
+  const c = db.config;
+  document.getElementById('rolebox').textContent =
+    c.rol==='DT' ? 'DT · '+(c.categoriaDT||'sin categoría') : 'Coordinación · todas';
+  if (view.jugadorId) return fichaJugador();
+  if (view.tab==='plantel') return pantallaPlantel();
+  if (view.tab==='cancha')  return pantallaCancha();
+  if (view.tab==='entrenos')return pantallaEntrenos();
+  if (view.tab==='cargar')  return pantallaCargar();
+  if (view.tab==='datos')   return pantallaDatos();
+}
+
+/* ---------- PLANTEL ---------- */
+function pantallaPlantel(){
+  const cats = catsPermitidas();
+  if (!cats.includes(view.categoria) && view.categoria!=='Todas') view.categoria='Todas';
+  const lista = jugadoresVisibles()
+    .filter(j => view.categoria==='Todas' || (j.categorias||[]).includes(view.categoria))
+    .sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+
+  let h = `<h2 class="screen-title">Plantel</h2>
+    <p class="screen-note">${jugadoresVisibles().length} jugadores. La nota es el promedio técnico-táctico de la última toma.</p>
+    <div class="chips">${['Todas',...cats].map(c=>`<button class="chip" data-cat="${esc(c)}" aria-pressed="${view.categoria===c}">${esc(c)}</button>`).join('')}</div>`;
+
+  if (!db.jugadores.length){
+    h += `<div class="empty"><p>Todavía no hay jugadores. Podés cargar el plantel real desde la planilla del club, o probar con datos de ejemplo.</p>
+      <button class="btn btn-naranja" id="cargarHSM">Cargar plantel del club</button><div class="gap"></div>
+      <button class="btn btn-ghost" data-go="nuevoJugador">Agregar uno a mano</button><div class="gap"></div>
+      <button class="btn btn-ghost" id="seed">Datos de ejemplo</button></div>`;
+  } else if (!lista.length){
+    h += `<div class="empty"><p>No hay jugadores en ${esc(view.categoria)}.</p></div>`;
+  } else {
+    h += `<div class="roster">`+lista.map(j=>{
+      const p = promedioTecnico(j.id), t = totales(j.id, view.categoria), e = edad(j.fechaNac);
+      return `<button class="row" data-jugador="${j.id}">
+        <span class="dorsal">${esc(inic(j))}</span>
+        <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
+        <span class="row-meta">
+          ${e!==null?`<span>${e} a.</span>`:''}
+          ${!(j.categorias||[]).length?`<span class="pill" style="border-color:var(--rojo);color:var(--rojo)">sin categoría</span>`:''}
+          ${(j.categorias||[]).length>1?`<span class="pill">${(j.categorias||[]).length} categorías</span>`:''}
+          <span>${t.pj} PJ · ${t.goles} G</span>
+          ${t.amarillas?`<span><i class="card-mark card-y"></i>${t.amarillas}</span>`:''}
+          ${t.rojas?`<span><i class="card-mark card-r"></i>${t.rojas}</span>`:''}
+        </span></span>
+        <span class="score ${claseSem(p)}">${p!==null?p.toFixed(1):'—'}</span></button>`;
+    }).join('')+`</div><div class="gap"></div>
+    <button class="btn btn-ghost" data-go="nuevoJugador">Agregar jugador</button>`;
+  }
+  app.innerHTML = h;
+}
+
+/* ---------- FICHA ---------- */
+function fichaJugador(){
+  const j = db.jugadores.find(x=>x.id===view.jugadorId);
+  if (!j){ view.jugadorId=null; return render(); }
+  const e = edad(j.fechaNac), evs = evalsDe(j.id);
+  const cats = (j.categorias||[]);
+
+  let h = `<button class="back" data-back="1">← Plantel</button>
+   <div class="ficha-head">
+     <div class="ficha-name">${esc(nomb(j))}</div>
+     ${j.carnet?`<div class="ficha-carnet">CARNET ${esc(j.carnet)}</div>`:''}
+     <div class="ficha-tags">
+       ${cats.map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
+       ${e!==null?`<span class="tag">${e} años</span>`:''}
+       ${posiciones(j).map((p,i)=>`<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}
+       ${j.pierna?`<span class="tag">${esc(j.pierna)}</span>`:''}
+       ${j.piernaMala?`<span class="tag">pierna inhábil ${j.piernaMala}/5</span>`:''}
+       ${j.altura?`<span class="tag">${esc(j.altura)} cm</span>`:''}
+     </div></div>`;
+
+  /* partidos, desglosado por categoría si juega en más de una */
+  h += `<div class="block"><div class="block-title">Partidos</div>`;
+  if (cats.length>1){
+    h += `<div class="scroll-x"><table class="cmp"><thead><tr>
+      <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
+    cats.forEach(c=>{ const t=totales(j.id,c);
+      h += `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
+        <td class="val">${t.minutos}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
+    const T = totales(j.id);
+    h += `<tr><td><strong>Total</strong></td><td class="val">${T.pj}</td><td class="val">${T.goles}</td>
+      <td class="val">${T.minutos}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
+  } else {
+    const t = totales(j.id);
+    h += `<div class="stat-grid">
+      <div class="stat"><div class="stat-label">PJ</div><div class="stat-value">${t.pj}</div></div>
+      <div class="stat"><div class="stat-label">Goles</div><div class="stat-value">${t.goles}</div></div>
+      <div class="stat"><div class="stat-label">Asist.</div><div class="stat-value">${t.asistencias}</div></div>
+      <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${t.minutos}<small>'</small></div></div>
+      <div class="stat"><div class="stat-label">Amarillas</div><div class="stat-value">${t.amarillas}</div></div>
+      <div class="stat"><div class="stat-label">Rojas</div><div class="stat-value">${t.rojas}</div></div></div>`;
+  }
+  h += `</div>`;
+
+  /* asistencia a entrenamientos */
+  const asis = asistenciaDe(j.id);
+  if (asis){
+    const col = asis.pct>=85?'var(--verde)':(asis.pct>=65?'var(--ambar)':'var(--rojo)');
+    h += `<div class="block"><div class="block-title">Entrenamientos</div>
+      <div class="bar-row" style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:13px;width:130px;flex:0 0 130px">Asistencia</span>
+        <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+          <span style="display:block;height:100%;width:${asis.pct}%;background:${col};border-radius:99px"></span></span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${col};width:44px;text-align:right">${asis.pct}%</span></div>
+      <p class="screen-note" style="margin-top:8px">Vino a ${asis.fue} de ${asis.total} entrenamientos con lista tomada.</p></div>`;
+  }
+
+  /* dónde jugó realmente */
+  const porPos = pjPorPosicion(j.id);
+  if (porPos.length){
+    h += `<div class="block"><div class="block-title">Dónde jugó <span>${porPos.length} puesto${porPos.length>1?'s':''}</span></div>`;
+    porPos.forEach(([pos,n])=>{
+      const total = porPos.reduce((a,b)=>a+b[1],0);
+      const af = afinidad(j,pos);
+      const col = af===0?'var(--verde)':(af===1?'var(--naranja)':'var(--ink-2)');
+      h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(pos)}</span>
+        <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+          <span style="display:block;height:100%;width:${Math.round(n/total*100)}%;background:${col};border-radius:99px"></span></span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;width:34px;text-align:right">${n} PJ</span></div>`;
+    });
+    h += `<p class="screen-note" style="margin-top:10px">Verde: es su puesto. Naranja: puesto alternativo. Gris: jugó ahí sin tenerlo declarado.</p></div>`;
+  }
+
+  /* comparativa toma a toma */
+  if (!evs.length){
+    h += `<div class="block"><div class="block-title">Evaluaciones</div>
+      <div class="empty"><p>Sin evaluaciones. Cargá la primera toma y a partir de la segunda vas a ver la comparativa.</p></div></div>`;
+  } else {
+    const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
+    const tablas = [
+      ['Físico', FISICO.map(f=>({id:f.id,nombre:f.nombre,unidad:f.unidad,mejor:f.mejor,dec:f.dec||0}))],
+      ['Técnico-táctico', TECNICO.map(t=>({...t,mejor:'alto',dec:0,escala:true}))],
+      ['Comportamiento', CONDUCTA.map(t=>({...t,mejor:'alto',dec:0,escala:true}))]
+    ];
+    tablas.forEach(([titulo,items])=>{
+      const usados = items.filter(i=>evs.some(e=>typeof e[i.id]==='number'));
+      if (!usados.length) return;
+      h += `<div class="block"><div class="block-title">${titulo} <span>${evs.length} toma${evs.length>1?'s':''}</span></div>
+        <div class="scroll-x"><table class="cmp"><thead><tr><th>Ítem</th>
+        ${evs.map(e=>`<th>${esc(nombreToma(e.tomaId))}</th>`).join('')}</tr></thead><tbody>`;
+      usados.forEach(i=>{
+        h += `<tr><td>${esc(i.nombre)}${i.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(i.unidad)}</span>`:''}</td>`;
+        evs.forEach((e,k)=>{
+          const v = e[i.id];
+          if (typeof v!=='number'){ h += `<td class="val flat">—</td>`; return; }
+          const col = i.escala ? colorSem(v) : 'var(--ink)';
+          let d = '';
+          const prev = k>0 ? [...evs.slice(0,k)].reverse().find(x=>typeof x[i.id]==='number') : null;
+          if (prev){
+            const dif = v - prev[i.id];
+            const mejora = i.mejor==='alto' ? dif>0 : dif<0;
+            d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(i.dec)}</span>`;
+          }
+          h += `<td class="val" style="color:${col}">${v.toFixed(i.dec)}${d}</td>`;
+        });
+        h += `</tr>`;
+      });
+      h += `</tbody></table></div></div>`;
+    });
+  }
+
+  h += `<div class="block">
+    <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
+    <div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button></div>`;
+  app.innerHTML = h;
+}
+
+/* ---------- CANCHA ---------- */
+function pantallaCancha(){
+  const cats = catsPermitidas();
+  if (view.categoria==='Todas' || !cats.includes(view.categoria)) view.categoria = cats[0];
+  const slots = FORMACIONES[view.formacion];
+  const asignados = view.alineacion[view.categoria] || {};
+
+  let h = `<h2 class="screen-title">Cancha</h2>
+    <p class="screen-note">Armá el once de la categoría. Tocá un puesto para elegir jugador; el color de la nota te dice cómo viene.</p>
+    <div class="chips">${cats.map(c=>`<button class="chip" data-cat="${esc(c)}" aria-pressed="${view.categoria===c}">${esc(c)}</button>`).join('')}</div>
+    <div class="chips">${Object.keys(FORMACIONES).map(f=>`<button class="chip" data-form="${f}" aria-pressed="${view.formacion===f}">${f}</button>`).join('')}</div>
+    <div class="pitch">
+      <svg class="lines" viewBox="0 0 68 100" preserveAspectRatio="none" aria-hidden="true">
+        <g fill="none" stroke="#CFCBC4" stroke-width=".5">
+          <rect x="1.5" y="1.5" width="65" height="97"/>
+          <line x1="1.5" y1="50" x2="66.5" y2="50"/>
+          <circle cx="34" cy="50" r="9"/>
+          <rect x="16" y="1.5" width="36" height="15"/><rect x="16" y="83.5" width="36" height="15"/>
+          <rect x="26" y="1.5" width="16" height="6"/><rect x="26" y="92.5" width="16" height="6"/>
+        </g>
+      </svg>`;
+
+  slots.forEach((s,i)=>{
+    const [pos,x,y] = s;
+    const jid = asignados[i];
+    const j = jid ? db.jugadores.find(p=>p.id===jid) : null;
+    const nota = j ? promedioTecnico(j.id) : null;
+    h += `<button class="slot ${j?'lleno':''}" style="left:${x}%;top:${y}%" data-slot="${i}">
+      <span class="bubble">${j ? (nota!==null?nota.toFixed(1):'·') : '+'}</span>
+      <span class="cap">${j?esc(corto(j)):''}</span>
+      <span class="pos">${esc(abrev(pos))}</span></button>`;
+  });
+  h += `</div>`;
+
+  const puestos = Object.keys(asignados).length;
+  h += `<div class="gap"></div>
+    <p class="screen-note">${puestos} de 11 puestos cubiertos${puestos?` · <button class="chip" id="limpiarOnce">Vaciar</button>`:''}</p>`;
+
+  if (view.slotAbierto !== null){
+    const [pos] = slots[view.slotAbierto];
+    const yaPuestos = Object.entries(asignados).filter(([k])=>Number(k)!==view.slotAbierto).map(([,v])=>v);
+    const cand = jugadoresVisibles()
+      .filter(j=>(j.categorias||[]).includes(view.categoria))
+      .filter(j=>!yaPuestos.includes(j.id))
+      .sort((a,b)=>{
+        const d = afinidad(a,pos)-afinidad(b,pos);
+        if (d) return d;
+        return (promedioTecnico(b.id)??0)-(promedioTecnico(a.id)??0);
+      });
+    h += `<div class="block"><div class="block-title">Elegir ${esc(pos)}</div>`;
+    h += cand.length ? `<div class="roster">`+cand.map(j=>{
+        const n = promedioTecnico(j.id);
+        const af = afinidad(j,pos);
+        const etiqueta = af===0 ? `<span class="pill" style="border-color:var(--verde);color:var(--verde)">su puesto</span>`
+                       : af===1 ? `<span class="pill" style="border-color:var(--naranja);color:var(--naranja)">también juega acá</span>`
+                       : af===1.5 ? `<span class="pill">${esc(posPrincipal(j))} · mismo sector</span>`
+                       : `<span>${esc(posPrincipal(j)||'sin posición')}</span>`;
+        return `<button class="row" data-asignar="${j.id}">
+          <span class="dorsal">${esc(inic(j))}</span>
+          <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
+          <span class="row-meta">${etiqueta}</span></span>
+          <span class="score ${claseSem(n)}">${n!==null?n.toFixed(1):'—'}</span></button>`;
+      }).join('')+`</div><div class="gap"></div><button class="btn btn-ghost" data-asignar="">Dejar vacío</button>`
+      : `<div class="empty"><p>No hay jugadores en ${esc(view.categoria)}.</p></div>`;
+    h += `</div>`;
+  }
+  app.innerHTML = h;
+}
+
+/* ---------- CARGAR ---------- */
+function pantallaCargar(){
+  if (!view.form){
+    app.innerHTML = `<h2 class="screen-title">Cargar</h2><p class="screen-note">¿Qué vas a registrar?</p>
+      <div class="roster">${[
+        ['evaluacion','Evaluación de la toma','Físico, técnico-táctico y comportamiento'],
+        ['partido','Partido a mano','PJ, goles, tarjetas'],
+        ['nuevoJugador','Nuevo jugador','Alta con carnet y categorías'],
+        ['nuevaToma','Nueva toma','Abrir el ciclo de marzo, julio, etc.']
+      ].map(([k,t,s])=>`<button class="row" data-go="${k}">
+        <span class="row-main"><span class="row-name">${t}</span><span class="row-meta"><span>${s}</span></span></span>
+        <span style="color:var(--ink-2)">›</span></button>`).join('')}</div>`;
+    return;
+  }
+  if (view.form==='nuevoJugador') return formJugador();
+  if (view.form==='nuevaToma')    return formToma();
+  if (view.form==='evaluacion')   return formEvaluacion();
+  if (view.form==='partido')      return formPartido();
+}
+
+function selJugador(){
+  const l = jugadoresVisibles().sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+  if (!l.length) return `<div class="empty"><p>Primero cargá jugadores.</p></div>`;
+  return `<div class="field"><label class="label" for="f-jugador">Jugador</label><select id="f-jugador">
+    ${l.map(j=>`<option value="${j.id}" ${view.jugadorSel===j.id?'selected':''}>${esc(nomb(j))}</option>`).join('')}
+    </select></div>`;
+}
+function escala(id,nombre){
+  return `<div class="field"><span class="label">${esc(nombre)}<em>1 a 10</em></span>
+    <div class="scale" data-scale="${id}">${Array.from({length:10},(_,i)=>
+      `<button type="button" data-v="${i+1}" aria-pressed="false">${i+1}</button>`).join('')}</div></div>`;
+}
+function stepper(id,nombre,max){
+  return `<div class="field"><span class="label">${esc(nombre)}</span>
+    <div class="stepper" data-step="${id}" data-max="${max}">
+      <button type="button" data-d="-1" aria-label="Restar">−</button><output>0</output>
+      <button type="button" data-d="1" aria-label="Sumar">+</button></div></div>`;
+}
+
+function formEvaluacion(){
+  if (!db.tomas.length){
+    app.innerHTML = `<button class="back" data-back="1">← Cargar</button><h2 class="screen-title">Evaluación</h2>
+      <div class="empty"><p>Antes necesitás abrir una toma: el ciclo de evaluación (por ejemplo "Toma 1 · Marzo 2026").</p>
+      <button class="btn" data-go="nuevaToma">Crear la primera toma</button></div>`;
+    return;
+  }
+  const tomas = tomasOrden();
+  const actual = view.tomaSel || tomas[tomas.length-1].id;
+  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
+    <h2 class="screen-title">Evaluación</h2>
+    <p class="screen-note">Podés completar de a partes: si hoy solo tomás el Cooper, guardá eso y el resto lo sumás después a la misma toma.</p>
+    ${selJugador()}
+    <div class="field"><label class="label" for="f-toma">Toma</label><select id="f-toma">
+      ${tomas.map(t=>`<option value="${t.id}" ${t.id===actual?'selected':''}>${esc(t.nombre)}</option>`).join('')}</select></div>
+    <div class="block-title">Físico</div>
+    ${FISICO.map(t=>`<div class="field"><label class="label" for="f-${t.id}">${esc(t.nombre)}<em>${esc(t.unidad)}</em></label>
+      <input type="number" inputmode="decimal" step="${t.dec?'0.01':'1'}" id="f-${t.id}" placeholder="vacío si no se tomó"></div>`).join('')}
+    <div class="block-title">Técnico-táctico</div>
+    ${TECNICO.map(t=>escala(t.id,t.nombre)).join('')}
+    <div class="block-title">Comportamiento</div>
+    ${CONDUCTA.map(t=>escala(t.id,t.nombre)).join('')}
+    <button class="btn btn-naranja" data-guardar="evaluacion">Guardar evaluación</button><div style="height:26px"></div>`;
+}
+
+function formPartido(){
+  const cats = catsPermitidas();
+  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
+    <h2 class="screen-title">Partido</h2>
+    <p class="screen-note">Anotá en qué posición jugó: con el tiempo vas a ver dónde rinde de verdad, no solo dónde figura.</p>
+    ${selJugador()}
+    <div class="field"><label class="label" for="f-cat">Categoría del partido</label>
+      <select id="f-cat">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+    <div class="field"><label class="label" for="f-pos">Posición en la que jugó<em>opcional</em></label>
+      <select id="f-pos"><option value="">—</option>${POSICIONES.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
+    <div class="field"><label class="label" for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${hoy()}"></div>
+    <div class="field"><label class="label" for="f-rival">Rival<em>opcional</em></label><input type="text" id="f-rival"></div>
+    <div class="field"><span class="label">¿Jugó?</span><div class="chips" data-toggle="jugo">
+      <button class="chip" data-v="1" aria-pressed="true">Sí, jugó</button>
+      <button class="chip" data-v="0" aria-pressed="false">No jugó</button></div></div>
+    ${stepper('goles','Goles',9)}${stepper('asistencias','Asistencias (opcional)',9)}
+    <div class="field"><label class="label" for="f-minutos">Minutos<em>opcional</em></label>
+      <input type="number" inputmode="numeric" id="f-minutos"></div>
+    ${stepper('amarillas','Amarillas',2)}${stepper('rojas','Roja',1)}
+    <button class="btn btn-naranja" data-guardar="partido">Guardar partido</button><div style="height:26px"></div>`;
+}
+
+function formJugador(){
+  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
+    <h2 class="screen-title">Nuevo jugador</h2>
+    <p class="screen-note">El carnet es el que figura en la planilla del árbitro. Es lo que permite leer las fotos automáticamente.</p>
+    <div class="two">
+      <div class="field"><label class="label" for="j-apellido">Apellido</label><input type="text" id="j-apellido"></div>
+      <div class="field"><label class="label" for="j-nombre">Nombre</label><input type="text" id="j-nombre"></div>
+    </div>
+    <div class="field"><label class="label" for="j-carnet">Carnet<em>número de la planilla</em></label>
+      <input type="number" inputmode="numeric" id="j-carnet"></div>
+    <div class="field"><label class="label" for="j-nac">Fecha de nacimiento</label><input type="date" id="j-nac"></div>
+    <div class="field"><span class="label">Categorías<em>puede ser más de una</em></span>
+      <div class="multi" data-multi="cats">${CATEGORIAS.map(c=>
+        `<button type="button" class="chip" data-v="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join('')}</div></div>
+    <div class="field"><label class="label" for="j-pos">Posición principal</label>
+      <select id="j-pos"><option value="">—</option>${POSICIONES.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
+    <div class="field"><span class="label">También puede jugar de<em>las que hagan falta</em></span>
+      <div class="multi" data-multi="pos">${POSICIONES.map(p=>
+        `<button type="button" class="chip" data-v="${esc(p)}" aria-pressed="false">${esc(p)}</button>`).join('')}</div></div>
+    <div class="two">
+      <div class="field"><label class="label" for="j-pierna">Pierna hábil</label>
+        <select id="j-pierna"><option>Derecha</option><option>Izquierda</option><option>Ambidiestro</option></select></div>
+      <div class="field"><label class="label" for="j-altura">Altura<em>cm</em></label>
+        <input type="number" inputmode="numeric" id="j-altura"></div>
+    </div>
+    <button class="btn btn-naranja" id="guardarJugador">Guardar jugador</button><div style="height:26px"></div>`;
+}
+
+function formToma(){
+  const n = db.tomas.length + 1;
+  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
+    <h2 class="screen-title">Nueva toma</h2>
+    <p class="screen-note">Una toma es un ciclo de evaluación. Si medís cada 3 o 4 meses, vas a tener tres o cuatro por año.</p>
+    <div class="field"><label class="label" for="t-nombre">Nombre</label>
+      <input type="text" id="t-nombre" value="Toma ${n}"></div>
+    <div class="field"><label class="label" for="t-fecha">Fecha de referencia</label>
+      <input type="date" id="t-fecha" value="${hoy()}"></div>
+    <button class="btn btn-naranja" id="guardarToma">Crear toma</button>`;
+}
+
+/* ---------- ENTRENOS: sesiones + biblioteca ---------- */
+const FORMATOS = ['4 vs 4','5 vs 5','6 vs 6','7 vs 7','8 vs 8','9 vs 9','10 vs 10','11 vs 11'];
+function minutosSesion(s){ return (s.items||[]).reduce((a,i)=>a+(i.minutos||0),0) + (s.futbolMin||0); }
+function repartoFases(sesiones){
+  const m = {};
+  sesiones.forEach(s=>{
+    (s.items||[]).forEach(i=>{
+      const ej = db.ejercicios.find(e=>e.id===i.ejercicioId); if(!ej) return;
+      m[ej.fase] = (m[ej.fase]||0) + (i.minutos||0);
+    });
+    if (s.futbolMin) m.juego = (m.juego||0) + s.futbolMin;
+  });
+  return m;
+}
+function barraFases(m){
+  const total = Object.values(m).reduce((a,b)=>a+b,0);
+  if (!total) return '';
+  const segs = FASES.filter(f=>m[f.id]).map(f=>
+    `<span style="display:block;height:100%;width:${m[f.id]/total*100}%;background:${f.color}"></span>`).join('');
+  const leyenda = FASES.filter(f=>m[f.id]).map(f=>
+    `<span class="row-meta" style="margin:0"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${f.color};margin-right:5px"></i>${esc(f.nombre)} ${Math.round(m[f.id]/total*100)}%</span>`).join('');
+  return `<div style="display:flex;height:12px;border-radius:99px;overflow:hidden;border:1px solid var(--linea);margin-bottom:9px">${segs}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">${leyenda}</div>`;
+}
+
+function pantallaEntrenos(){
+  if (view.sesionId) return detalleSesion();
+  if (view.ejercicioId) return detalleEjercicio();
+  if (view.draft) return formSesion();
+  if (view.form==='nuevoEjercicio') return formEjercicio();
+
+  const cats = catsPermitidas();
+  let h = `<h2 class="screen-title">Entrenos</h2>
+    <div class="chips" data-toggle="sub">
+      <button class="chip" data-v="sesiones" aria-pressed="${view.sub==='sesiones'}">Día a día</button>
+      <button class="chip" data-v="biblioteca" aria-pressed="${view.sub==='biblioteca'}">Ejercicios</button>
+    </div>`;
+
+  if (view.sub==='sesiones'){
+    const ses = db.sesiones.filter(s=>cats.includes(s.categoria))
+      .filter(s=>view.categoria==='Todas'||s.categoria===view.categoria)
+      .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    h += `<p class="screen-note">Lo que cada categoría entrenó, con el reparto real del tiempo.</p>
+      <div class="chips">${['Todas',...cats].map(c=>`<button class="chip" data-cat="${esc(c)}" aria-pressed="${view.categoria===c}">${esc(c)}</button>`).join('')}</div>`;
+
+    if (ses.length){
+      const rep = repartoFases(ses);
+      h += `<div class="block"><div class="block-title">Reparto del tiempo <span>${ses.length} sesiones</span></div>${barraFases(rep)}</div>`;
+      h += `<div class="roster">`+ses.map(s=>{
+        const min = minutosSesion(s);
+        const r = repartoFases([s]);
+        const dom = Object.entries(r).sort((a,b)=>b[1]-a[1])[0];
+        return `<button class="row" data-sesion="${s.id}">
+          <span class="row-main"><span class="row-name">${esc(s.categoria)} · ${esc(s.fecha)}</span>
+          <span class="row-meta">
+          ${s.jugadores?`<span>${s.jugadores} jug.</span>`:''}
+          <span>${min}'</span>
+          ${s.futbol?`<span class="pill">${esc(s.futbol)}</span>`:''}
+          ${dom?`<span class="pill" style="border-color:${fase(dom[0]).color};color:${fase(dom[0]).color}">${esc(fase(dom[0]).nombre)}</span>`:''}
+          ${s.otros?`<span class="pill" style="border-color:var(--naranja);color:var(--naranja)">+ a mano</span>`:''}
+          ${s.dt?`<span>${esc(s.dt)}</span>`:''}</span></span>
+          <span style="color:var(--ink-2)">›</span></button>`;
+      }).join('')+`</div>`;
+    } else {
+      h += `<div class="empty"><p>Todavía no hay sesiones cargadas. Cada técnico arma la suya eligiendo ejercicios de la biblioteca.</p></div>`;
+    }
+    h += `<div class="gap"></div><button class="btn btn-naranja" id="nuevaSesion">Armar sesión</button>`;
+
+  } else {
+    const fs = ['Todas',...FASES.map(f=>f.id)];
+    const lista = db.ejercicios
+      .filter(e=>view.faseFiltro==='Todas'||e.fase===view.faseFiltro)
+      .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+    h += `<p class="screen-note">Base común del club: cualquier técnico puede usarlos y sumar los suyos.</p>
+      <div class="chips">${fs.map(f=>{
+        const n = f==='Todas'?'Todas':fase(f).nombre;
+        return `<button class="chip" data-fase="${esc(f)}" aria-pressed="${view.faseFiltro===f}">${esc(n)}</button>`;
+      }).join('')}</div>`;
+
+    if (!db.ejercicios.length){
+      h += `<div class="empty"><p>La biblioteca está vacía. Podés arrancar con una base de ejercicios estándar y después editarla, o cargar directamente los tuyos.</p>
+        <button class="btn" id="seedEjercicios">Cargar base inicial</button><div class="gap"></div>
+        <button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button></div>`;
+    } else if (!lista.length){
+      h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
+    } else {
+      h += `<div class="roster">`+lista.map(e=>`<button class="row" data-ejercicio="${e.id}">
+        <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
+        <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
+        <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>
+        ${e.duracion?`<span>${e.duracion}'</span>`:''}${e.jugadores?`<span>${esc(e.jugadores)} jug.</span>`:''}
+        ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
+        <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
+        <div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`;
+    }
+  }
+  app.innerHTML = h + `<div style="height:26px"></div>`;
+}
+
+function detalleSesion(){
+  const s = db.sesiones.find(x=>x.id===view.sesionId);
+  if (!s){ view.sesionId=null; return render(); }
+  let h = `<button class="back" data-back="1">← Entrenos</button>
+    <div class="ficha-head"><div class="ficha-name">${esc(s.categoria)}</div>
+    <div class="ficha-carnet">${esc(s.fecha)} · ${minutosSesion(s)} minutos</div>
+    <div class="ficha-tags">
+      ${s.dt?`<span class="tag">A cargo: ${esc(s.dt)}</span>`:''}
+      ${s.jugadores?`<span class="tag cat">${s.jugadores} jugadores</span>`:''}
+      ${s.futbol?`<span class="tag">Fútbol ${esc(s.futbol)}${s.futbolMin?` · ${s.futbolMin}'`:''}</span>`:''}
+    </div></div>
+    <div class="block"><div class="block-title">Reparto</div>${barraFases(repartoFases([s]))||'<p class="screen-note">Sin ejercicios.</p>'}</div>`;
+  if ((s.items||[]).length){
+    h += `<div class="block"><div class="block-title">Ejercicios</div><div class="roster">`;
+    (s.items||[]).forEach(i=>{
+      const e = db.ejercicios.find(x=>x.id===i.ejercicioId);
+      h += `<button class="row" data-ejercicio="${i.ejercicioId}">
+        <span class="dorsal" style="background:${e?fase(e.fase).color:'#999'};color:#fff;font-size:11px">${i.minutos}'</span>
+        <span class="row-main"><span class="row-name">${esc(e?e.nombre:'Ejercicio borrado')}</span>
+        <span class="row-meta"><span>${esc(e?fase(e.fase).nombre:'')}</span></span></span>
+        <span style="color:var(--ink-2)">›</span></button>`;
+    });
+    h += `</div></div>`;
+  }
+  if ((s.asistentes||[]).length){
+    const plantel = planteldeCategoria(s.categoria);
+    const ausentes = plantel.filter(j=>!s.asistentes.includes(j.id));
+    h += `<div class="block"><div class="block-title">Asistencia <span>${s.asistentes.length} de ${plantel.length}</span></div>
+      <div class="multi" style="margin-bottom:12px">${s.asistentes.map(id=>{
+        const j = db.jugadores.find(x=>x.id===id); if(!j) return '';
+        return `<span class="tag cat">${esc(corto(j))}</span>`;
+      }).join('')}</div>`;
+    if (ausentes.length){
+      h += `<p class="screen-note" style="margin-bottom:6px">Faltaron:</p>
+        <div class="multi">${ausentes.map(j=>`<span class="tag" style="border-color:var(--rojo);color:var(--rojo)">${esc(corto(j))}</span>`).join('')}</div>`;
+    }
+    h += `</div>`;
+  }
+  if (s.otros){
+    h += `<div class="block"><div class="block-title">Escrito a mano</div>
+      <p style="white-space:pre-wrap">${esc(s.otros)}</p>
+      <div class="aviso" style="margin-top:12px">Esto no entra en el reparto de tiempo. Si es un ejercicio que se repite, conviene sumarlo a la biblioteca.</div>
+      <button class="btn btn-ghost" data-go="nuevoEjercicio">Sumarlo a la biblioteca</button></div>`;
+  }
+  if (s.notas) h += `<div class="block"><div class="block-title">Notas</div><p>${esc(s.notas)}</p></div>`;
+  h += `<div class="block"><button class="btn btn-danger" data-borrarSesion="${s.id}">Eliminar sesión</button></div>`;
+  app.innerHTML = h + `<div style="height:26px"></div>`;
+}
+
+function detalleEjercicio(){
+  const e = db.ejercicios.find(x=>x.id===view.ejercicioId);
+  if (!e){ view.ejercicioId=null; return render(); }
+  const usos = db.sesiones.filter(s=>(s.items||[]).some(i=>i.ejercicioId===e.id)).length;
+  app.innerHTML = `<button class="back" data-back="1">← Entrenos</button>
+    <div class="ficha-head"><div class="ficha-name">${esc(e.nombre)}</div>
+    <div class="ficha-carnet" style="color:${fase(e.fase).color}">${esc(fase(e.fase).nombre.toUpperCase())}</div>
+    <div class="ficha-tags">
+      ${e.duracion?`<span class="tag">${e.duracion} min</span>`:''}
+      ${e.jugadores?`<span class="tag">${esc(e.jugadores)} jugadores</span>`:''}
+      ${e.espacio?`<span class="tag">${esc(e.espacio)}</span>`:''}
+      ${(e.categorias||[]).map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
+    </div></div>
+    ${e.objetivo?`<div class="block"><div class="block-title">Objetivo</div><p>${esc(e.objetivo)}</p></div>`:''}
+    ${e.descripcion?`<div class="block"><div class="block-title">Desarrollo</div><p style="white-space:pre-wrap">${esc(e.descripcion)}</p></div>`:''}
+    ${e.material?`<div class="block"><div class="block-title">Material</div><p>${esc(e.material)}</p></div>`:''}
+    <div class="block"><div class="block-title">Uso</div>
+      <p class="screen-note">Usado en ${usos} sesión${usos===1?'':'es'}${e.autor?` · creado por ${esc(e.autor)}`:''}.</p></div>
+    <div class="block"><button class="btn btn-danger" data-borrarEj="${e.id}">Eliminar ejercicio</button></div>
+    <div style="height:26px"></div>`;
+}
+
+/* asistencia: opcional. O marcás nombres, o ponés solo el número. */
+function planteldeCategoria(cat){
+  return db.jugadores.filter(j=>(j.categorias||[]).includes(cat))
+    .sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+}
+function bloqueAsistencia(d){
+  const plantel = planteldeCategoria(d.categoria);
+  const marcados = d.asistentes || [];
+  let h = `<div class="block"><div class="block-title">Quiénes vinieron <span>opcional</span></div>`;
+
+  if (!plantel.length){
+    h += `<p class="screen-note">No hay jugadores cargados en ${esc(d.categoria)}.</p>`;
+  } else {
+    h += `<p class="screen-note">Tocá los que estuvieron. Si no querés ir uno por uno, salteá esto y poné solo el número abajo.</p>
+      <div class="multi" style="margin-bottom:10px">${plantel.map(j=>{
+        const on = marcados.includes(j.id);
+        return `<button type="button" class="chip" data-asis="${j.id}" aria-pressed="${on}">${esc(corto(j))}${j.nombre?' '+esc(j.nombre[0])+'.':''}</button>`;
+      }).join('')}</div>
+      <div class="row-meta" style="margin-bottom:10px">
+        <button class="chip" data-asisTodos="1" style="padding:4px 11px">Todos</button>
+        <button class="chip" data-asisNinguno="1" style="padding:4px 11px">Ninguno</button>
+        <span style="font-family:var(--mono);font-weight:600;color:var(--ink)">${marcados.length} de ${plantel.length}</span>
+      </div>`;
+  }
+
+  if (marcados.length){
+    h += `<p class="screen-note">Se van a guardar ${marcados.length} presentes${plantel.length>marcados.length?` y ${plantel.length-marcados.length} ausentes`:''}.</p>`;
+  } else {
+    h += `<div class="field"><label class="label" for="s-jug">O solo cuántos vinieron</label>
+      <input type="number" inputmode="numeric" id="s-jug" value="${d.jugadores??''}" placeholder="Ej: 18"></div>`;
+  }
+  return h + `</div>`;
+}
+
+function formSesion(){
+  const d = view.draft, cats = catsPermitidas();
+  const total = d.items.reduce((a,i)=>a+i.minutos,0);
+  let h = `<button class="back" data-back="1">← Entrenos</button>
+    <h2 class="screen-title">Armar sesión</h2>
+    <div class="two">
+      <div class="field"><label class="label" for="s-fecha">Fecha</label><input type="date" id="s-fecha" value="${esc(d.fecha)}"></div>
+      <div class="field"><label class="label" for="s-cat">Categoría</label>
+        <select id="s-cat">${cats.map(c=>`<option ${c===d.categoria?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label class="label" for="s-dt">A cargo de<em>opcional</em></label>
+      <input type="text" id="s-dt" value="${esc(d.dt||'')}" placeholder="Nombre del técnico"></div>
+    ${bloqueAsistencia(d)}
+    <div class="block"><div class="block-title">Ejercicios <span>${total} min</span></div>`;
+
+  if (d.items.length){
+    h += `<div class="roster">`+d.items.map((i,k)=>{
+      const e = db.ejercicios.find(x=>x.id===i.ejercicioId);
+      return `<div class="row">
+        <span class="dorsal" style="background:${e?fase(e.fase).color:'#999'};color:#fff;font-size:10px">${esc(e?fase(e.fase).nombre.slice(0,3).toUpperCase():'?')}</span>
+        <span class="row-main"><span class="row-name">${esc(e?e.nombre:'—')}</span>
+          <span class="row-meta" style="margin-top:5px;gap:6px">
+            <button class="chip" data-min="${k}|-5" style="padding:3px 10px">−5</button>
+            <span style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink)">${i.minutos}'</span>
+            <button class="chip" data-min="${k}|5" style="padding:3px 10px">+5</button>
+          </span></span>
+        <button class="chip" data-quitarItem="${k}">Quitar</button></div>`;
+    }).join('')+`</div>`;
+    h += `<div class="gap"></div>${barraFases(repartoFases([d]))}`;
+  } else {
+    h += `<div class="empty"><p>Sin ejercicios todavía. Elegilos de la biblioteca.</p></div>`;
+  }
+  h += `</div>`;
+
+  const disponibles = db.ejercicios
+    .filter(e=>!(e.categorias||[]).length || (e.categorias||[]).includes(d.categoria))
+    .sort((a,b)=>FASES.findIndex(f=>f.id===a.fase)-FASES.findIndex(f=>f.id===b.fase));
+  h += `<div class="block"><div class="block-title">Agregar de la biblioteca</div>`;
+  h += disponibles.length ? `<div class="roster">`+disponibles.map(e=>`<button class="row" data-addEj="${e.id}">
+      <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
+      <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
+      <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>${e.duracion?`<span>${e.duracion}'</span>`:''}</span></span>
+      <span style="color:var(--naranja);font-size:20px">+</span></button>`).join('')+`</div>`
+    : `<div class="empty"><p>No hay ejercicios para esta categoría.</p></div>`;
+  h += `</div>
+    <div class="block"><div class="block-title">Fútbol</div>
+      <div class="two">
+        <div class="field"><label class="label" for="s-formato">Formato</label>
+          <select id="s-formato"><option value="">No se hizo</option>
+            ${FORMATOS.map(f=>`<option ${f===d.futbol?'selected':''}>${esc(f)}</option>`).join('')}</select></div>
+        <div class="field"><label class="label" for="s-futmin">Minutos</label>
+          <input type="number" inputmode="numeric" id="s-futmin" value="${d.futbolMin||''}" placeholder="Ej: 25"></div>
+      </div>
+    </div>
+    <div class="field"><label class="label" for="s-otros">Otros ejercicios<em>los que no están en la base</em></label>
+      <textarea id="s-otros" placeholder="Escribilos como los llamás vos. Uno por renglón.">${esc(d.otros||'')}</textarea></div>
+    <button class="btn btn-naranja" id="guardarSesion">Guardar sesión</button><div style="height:26px"></div>`;
+  app.innerHTML = h;
+}
+
+function formEjercicio(){
+  app.innerHTML = `<button class="back" data-back="1">← Entrenos</button>
+    <h2 class="screen-title">Nuevo ejercicio</h2>
+    <p class="screen-note">Queda en la biblioteca del club: lo va a poder usar cualquier técnico.</p>
+    <div class="field"><label class="label" for="e-nombre">Nombre</label>
+      <input type="text" id="e-nombre" placeholder="Ej: Rondo 5v2 a un toque"></div>
+    <div class="field"><label class="label" for="e-fase">Fase</label>
+      <select id="e-fase">${FASES.map(f=>`<option value="${f.id}">${esc(f.nombre)}</option>`).join('')}</select></div>
+    <div class="field"><label class="label" for="e-objetivo">Objetivo</label>
+      <input type="text" id="e-objetivo" placeholder="Qué se busca mejorar"></div>
+    <div class="two">
+      <div class="field"><label class="label" for="e-duracion">Duración<em>min</em></label>
+        <input type="number" inputmode="numeric" id="e-duracion" value="15"></div>
+      <div class="field"><label class="label" for="e-jugadores">Jugadores</label>
+        <input type="text" id="e-jugadores" placeholder="Ej: 8 a 12"></div>
+    </div>
+    <div class="two">
+      <div class="field"><label class="label" for="e-espacio">Espacio</label>
+        <input type="text" id="e-espacio" placeholder="Ej: 30x25 m"></div>
+      <div class="field"><label class="label" for="e-material">Material</label>
+        <input type="text" id="e-material" placeholder="Conos, pecheras"></div>
+    </div>
+    <div class="field"><span class="label">Categorías sugeridas<em>vacío = todas</em></span>
+      <div class="multi" data-multi="ejcats">${CATEGORIAS.map(c=>
+        `<button type="button" class="chip" data-v="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join('')}</div></div>
+    <div class="field"><label class="label" for="e-desc">Desarrollo</label>
+      <input type="text" id="e-desc" placeholder="Cómo se juega, reglas, progresiones"></div>
+    <div class="field"><label class="label" for="e-autor">Creado por<em>opcional</em></label>
+      <input type="text" id="e-autor"></div>
+    <button class="btn btn-naranja" id="guardarEjercicio">Guardar ejercicio</button><div style="height:26px"></div>`;
+}
+
+async function guardarSesion(){
+  guardarBorrador();
+  const d = view.draft;
+  if (!d.items.length && !d.futbolMin && !(d.otros||'').trim())
+    return toast('Cargá algún ejercicio, el fútbol o escribilo a mano');
+  db.sesiones.push({ id:uid(), fecha:d.fecha||hoy(), categoria:d.categoria, dt:d.dt||'',
+    asistentes: d.asistentes||[],
+    jugadores: (d.asistentes||[]).length ? (d.asistentes||[]).length : (d.jugadores ?? null),
+    futbol: d.futbol||'', futbolMin: d.futbolMin||0,
+    otros: (d.otros||'').trim(), items: d.items });
+  await Store.save(db);
+  toast('Sesión guardada'); view.draft=null; render();
+}
+
+async function guardarEjercicio(){
+  const nombre = document.getElementById('e-nombre').value.trim();
+  if (!nombre) return toast('Falta el nombre');
+  db.ejercicios.push({ id:uid(), nombre,
+    fase: document.getElementById('e-fase').value,
+    objetivo: document.getElementById('e-objetivo').value.trim(),
+    duracion: Number(document.getElementById('e-duracion').value)||15,
+    jugadores: document.getElementById('e-jugadores').value.trim(),
+    espacio: document.getElementById('e-espacio').value.trim(),
+    material: document.getElementById('e-material').value.trim(),
+    descripcion: document.getElementById('e-desc').value.trim(),
+    autor: document.getElementById('e-autor').value.trim(),
+    categorias: [...document.querySelectorAll('[data-multi="ejcats"] .chip[aria-pressed="true"]')].map(b=>b.dataset.v) });
+  await Store.save(db);
+  toast('Ejercicio guardado'); view.form=null; view.sub='biblioteca'; render();
+}
+
+async function sembrarEjercicios(){
+  const base = [
+    ['Movilidad articular y activación','activacion','Preparar el cuerpo antes de la carga',12,'todos','Media cancha','Ninguno','Circuito de movilidad de cadera, tobillo y hombro, más activación de glúteo y core.'],
+    ['Rondo 5v2 a dos toques','tecnica','Circulación rápida y perfil de recepción',12,'7','12x12 m','Pelotas, conos','Cinco por fuera, dos adentro. El que pierde la pelota entra al medio. Progresión: a un toque.'],
+    ['Circuito de pase y control orientado','tecnica','Calidad de pase y primer control',15,'8 a 12','25x20 m','Conos, pelotas','Series de pase y movimiento en rombo. Se cambia de sentido cada 3 minutos.'],
+    ['Salida desde el fondo 7v5','tactica','Construcción desde el arquero',20,'12 a 14','Medio campo','Arcos, pecheras','Arquero más línea de fondo y volantes buscan superar la primera presión. Punto al pasar la línea de mitad con control.'],
+    ['Basculación defensiva por zonas','tactica','Movimiento coordinado de la línea',15,'10','Ancho completo','Conos','La línea se desplaza según dónde está la pelota. Sin oposición primero, con oposición después.'],
+    ['Repeticiones de sprint (RSA)','fisico','Capacidad de repetir esfuerzos máximos',12,'todos','40 m','Conos, cronómetro','6 series de 30 m a máxima intensidad con 25 segundos de pausa.'],
+    ['Fuerza excéntrica de isquiotibiales','fisico','Prevención de lesiones musculares',10,'de a dos','Cualquiera','Colchoneta','Nordic hamstring en parejas. 3 series de 5 repeticiones, bajada lenta.'],
+    ['4v4 con arqueros en espacio reducido','reducido','Intensidad, transiciones y toma de decisión',18,'10','30x25 m','Arcos chicos, pecheras','Cuatro contra cuatro, cambios cada 3 minutos. Sin límite de toques.'],
+    ['Posesión 6v6+3 comodines','reducido','Mantener la pelota con superioridad',18,'15','35x30 m','Pecheras','Tres comodines juegan siempre con quien tiene la pelota. Diez pases seguidos suman punto.'],
+    ['Córners ofensivos: dos variantes','abp','Automatizar movimientos de pelota parada',12,'11','Área','Pelotas','Se repiten dos variantes acordadas, primero sin defensa y después con defensa completa.'],
+    ['Fútbol formal 9v9','juego','Trasladar lo trabajado al juego real',25,'18 a 20','Cancha completa','Arcos, pecheras','Partido con las consignas de la semana. El técnico corta solo para corregir lo trabajado.'],
+    ['Elongación y descarga','vuelta','Bajar pulsaciones y recuperar',8,'todos','Cualquiera','Colchonetas','Elongación de cadena posterior y cuádriceps, más respiración.']
+  ].map(([nombre,f,objetivo,duracion,jugadores,espacio,material,descripcion])=>
+    ({id:uid(), nombre, fase:f, objetivo, duracion, jugadores, espacio, material, descripcion, categorias:[], autor:'Base del club'}));
+  db.ejercicios.push(...base);
+  await Store.save(db);
+  toast(`${base.length} ejercicios cargados`); render();
+}
+
+/* ---------- DATOS ---------- */
+function pantallaDatos(){
+  const c = db.config;
+  app.innerHTML = `<h2 class="screen-title">Datos</h2>
+    <p class="screen-note">${db.jugadores.length} jugadores · ${db.evaluaciones.length} evaluaciones · ${db.partidos.length} partidos</p>
+    <div class="block"><div class="block-title">Panel</div>
+      <div class="field"><span class="label">Ver como</span>
+        <div class="chips" data-toggle="rol">
+          <button class="chip" data-v="Coordinador" aria-pressed="${c.rol==='Coordinador'}">Coordinación</button>
+          <button class="chip" data-v="DT" aria-pressed="${c.rol==='DT'}">DT de una categoría</button>
+        </div></div>
+      ${c.rol==='DT'?`<div class="field"><label class="label" for="cfg-cat">Categoría a cargo</label>
+        <select id="cfg-cat">${CATEGORIAS.map(x=>`<option ${x===c.categoriaDT?'selected':''}>${esc(x)}</option>`).join('')}</select></div>`:''}
+      <p class="screen-note">Por ahora esto filtra la vista. Cuando conectemos Firebase, cada DT entra con su usuario y solo ve su categoría de verdad.</p>
+    </div>
+    <div class="block"><div class="block-title">Tomas</div>
+      ${db.tomas.length?`<div class="roster">${tomasOrden().map(t=>`<div class="row">
+        <span class="row-main"><span class="row-name">${esc(t.nombre)}</span>
+        <span class="row-meta"><span>${esc(t.fecha)}</span><span>${db.evaluaciones.filter(e=>e.tomaId===t.id).length} evaluaciones</span></span></span>
+        </div>`).join('')}</div>`:`<div class="empty"><p>Sin tomas creadas.</p></div>`}
+      <div class="gap"></div><button class="btn btn-ghost" data-go="nuevaToma">Nueva toma</button>
+    </div>
+    <div class="block"><div class="block-title">Exportar</div>
+      <button class="btn btn-ghost" data-csv="jugadores">CSV de jugadores</button><div class="gap"></div>
+      <button class="btn btn-ghost" data-csv="evaluaciones">CSV de evaluaciones</button><div class="gap"></div>
+      <button class="btn btn-ghost" data-csv="partidos">CSV de partidos</button>
+    </div>
+    <div class="block"><div class="block-title">Borrar</div>
+      <button class="btn btn-danger" id="borrarTodo">Borrar todos los datos</button></div>
+    <div style="height:26px"></div>`;
+}
+
+/* =========================================================
+   4. EVENTOS
+   ========================================================= */
+function marcarTab(t){ document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-current', String(x.dataset.tab===t))); }
+
+/* la sesión se redibuja al tocar +/-, así que no se pierde lo tipeado */
+function guardarBorrador(){
+  if (!view.draft) return;
+  const v = id => { const el=document.getElementById(id); return el?el.value:null; };
+  const d = view.draft;
+  if (v('s-fecha')!==null)   d.fecha = v('s-fecha');
+  if (v('s-cat')!==null)     d.categoria = v('s-cat');
+  if (v('s-dt')!==null)      d.dt = v('s-dt');
+  if (v('s-jug')!==null)     d.jugadores = v('s-jug')===''?null:Number(v('s-jug'));
+  if (v('s-formato')!==null) d.futbol = v('s-formato');
+  if (v('s-futmin')!==null)  d.futbolMin = v('s-futmin')===''?0:Number(v('s-futmin'));
+  if (v('s-otros')!==null)   d.otros = v('s-otros');
+}
+
+document.querySelector('.tabs').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-tab]'); if(!b) return;
+  view.tab=b.dataset.tab; view.jugadorId=null; view.form=null; view.slotAbierto=null;
+  view.sesionId=null; view.ejercicioId=null; view.draft=null;
+  marcarTab(view.tab); window.scrollTo(0,0); render();
+});
+
+app.addEventListener('change', async e=>{
+  if (e.target.id==='cfg-cat'){ db.config.categoriaDT = e.target.value; await Store.save(db); render(); }
+  if (e.target.id==='s-cat' && view.draft){
+    guardarBorrador();
+    const validos = planteldeCategoria(view.draft.categoria).map(j=>j.id);
+    view.draft.asistentes = (view.draft.asistentes||[]).filter(id=>validos.includes(id));
+    render();
+  }
+});
+
+app.addEventListener('click', async e=>{
+  const t = e.target;
+
+  const chipCat = t.closest('.chip[data-cat]');
+  if (chipCat){ view.categoria=chipCat.dataset.cat; view.slotAbierto=null; return render(); }
+
+  const chipForm = t.closest('.chip[data-form]');
+  if (chipForm){ view.formacion=chipForm.dataset.form; view.slotAbierto=null; return render(); }
+
+  const rolBtn = t.closest('[data-toggle="rol"] .chip');
+  if (rolBtn){
+    db.config.rol = rolBtn.dataset.v;
+    if (db.config.rol==='DT' && !db.config.categoriaDT) db.config.categoriaDT = CATEGORIAS[2];
+    view.categoria='Todas'; await Store.save(db); return render();
+  }
+
+  const slot = t.closest('[data-slot]');
+  if (slot){ const i=Number(slot.dataset.slot); view.slotAbierto = view.slotAbierto===i?null:i; return render(); }
+
+  const asig = t.closest('[data-asignar]');
+  if (asig){
+    const cat = view.categoria;
+    view.alineacion[cat] = view.alineacion[cat] || {};
+    const id = asig.dataset.asignar;
+    if (id){
+      /* un jugador no puede estar en dos puestos a la vez */
+      Object.keys(view.alineacion[cat]).forEach(k=>{ if (view.alineacion[cat][k]===id) delete view.alineacion[cat][k]; });
+      view.alineacion[cat][view.slotAbierto] = id;
+    } else {
+      delete view.alineacion[cat][view.slotAbierto];
+    }
+    view.slotAbierto=null; window.scrollTo(0,0); return render();
+  }
+  if (t.id==='limpiarOnce'){ view.alineacion[view.categoria]={}; return render(); }
+
+  const asis = t.closest('[data-asis]');
+  if (asis){
+    guardarBorrador();
+    const id = asis.dataset.asis, a = view.draft.asistentes || [];
+    view.draft.asistentes = a.includes(id) ? a.filter(x=>x!==id) : [...a, id];
+    return render();
+  }
+  if (t.closest('[data-asisTodos]')){
+    guardarBorrador();
+    view.draft.asistentes = planteldeCategoria(view.draft.categoria).map(j=>j.id);
+    return render();
+  }
+  if (t.closest('[data-asisNinguno]')){
+    guardarBorrador(); view.draft.asistentes = []; return render();
+  }
+
+  const subBtn = t.closest('[data-toggle="sub"] .chip');
+  if (subBtn){ view.sub=subBtn.dataset.v; return render(); }
+
+  const faseBtn = t.closest('.chip[data-fase]');
+  if (faseBtn){ view.faseFiltro=faseBtn.dataset.fase; return render(); }
+
+  const ses = t.closest('[data-sesion]');
+  if (ses){ view.sesionId=ses.dataset.sesion; window.scrollTo(0,0); return render(); }
+
+  const ej = t.closest('[data-ejercicio]');
+  if (ej){ view.ejercicioId=ej.dataset.ejercicio; window.scrollTo(0,0); return render(); }
+
+  if (t.id==='nuevaSesion'){
+    const cats = catsPermitidas();
+    view.draft = { fecha:hoy(), categoria: view.categoria!=='Todas'&&cats.includes(view.categoria)?view.categoria:cats[0],
+                   dt:'', jugadores:null, asistentes:[], futbol:'', futbolMin:0, otros:'', items:[] };
+    window.scrollTo(0,0); return render();
+  }
+  if (t.id==='seedEjercicios'){ return sembrarEjercicios(); }
+  if (t.id==='guardarSesion'){ return guardarSesion(); }
+  if (t.id==='guardarEjercicio'){ return guardarEjercicio(); }
+
+  const addEj = t.closest('[data-addEj]');
+  if (addEj){
+    const e = db.ejercicios.find(x=>x.id===addEj.dataset.addej);
+    guardarBorrador();
+    view.draft.items.push({ ejercicioId:e.id, minutos:e.duracion||15 });
+    return render();
+  }
+  const minBtn = t.closest('[data-min]');
+  if (minBtn){
+    const [k,d] = minBtn.dataset.min.split('|').map(Number);
+    guardarBorrador();
+    view.draft.items[k].minutos = Math.max(5, view.draft.items[k].minutos + d);
+    return render();
+  }
+  const quitarItem = t.closest('[data-quitarItem]');
+  if (quitarItem){ guardarBorrador(); view.draft.items.splice(Number(quitarItem.dataset.quitaritem),1); return render(); }
+
+  const delSes = t.closest('[data-borrarSesion]');
+  if (delSes){
+    if (!confirm('¿Eliminar esta sesión?')) return;
+    db.sesiones = db.sesiones.filter(s=>s.id!==delSes.dataset.borrarsesion);
+    await Store.save(db); view.sesionId=null; toast('Sesión eliminada'); return render();
+  }
+  const delEj = t.closest('[data-borrarEj]');
+  if (delEj){
+    if (!confirm('¿Eliminar el ejercicio de la biblioteca? Las sesiones que lo usaron lo van a mostrar como borrado.')) return;
+    db.ejercicios = db.ejercicios.filter(e=>e.id!==delEj.dataset.borrarej);
+    await Store.save(db); view.ejercicioId=null; toast('Ejercicio eliminado'); return render();
+  }
+
+  const row = t.closest('[data-jugador]');
+  if (row){ view.jugadorId=row.dataset.jugador; window.scrollTo(0,0); return render(); }
+
+  if (t.closest('[data-back]')){
+    if (view.jugadorId) view.jugadorId=null;
+    else if (view.sesionId) view.sesionId=null;
+    else if (view.ejercicioId) view.ejercicioId=null;
+    else if (view.draft) view.draft=null;
+    else view.form=null;
+    window.scrollTo(0,0); return render();
+  }
+
+  const go = t.closest('[data-go]');
+  if (go){
+    const d = go.dataset.go;
+    if (d==='nuevoEjercicio'){
+      view.tab='entrenos'; view.form=d; view.jugadorId=null;
+      marcarTab('entrenos'); window.scrollTo(0,0); return render();
+    }
+    if (d==='cargarPara'){ view.jugadorSel=view.jugadorId; view.jugadorId=null; view.tab='cargar'; view.form='evaluacion'; }
+    else { view.tab='cargar'; view.form=d; view.jugadorId=null; }
+    marcarTab('cargar'); window.scrollTo(0,0); return render();
+  }
+
+  const sc = t.closest('.scale button');
+  if (sc){ sc.parentElement.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===sc))); return; }
+
+  const st = t.closest('.stepper button');
+  if (st){ const box=st.closest('.stepper'), o=box.querySelector('output');
+    o.textContent = Math.max(0, Math.min(Number(box.dataset.max), Number(o.textContent)+Number(st.dataset.d))); return; }
+
+  const tg = t.closest('[data-toggle="jugo"] .chip');
+  if (tg){ tg.parentElement.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed',String(b===tg))); return; }
+
+  const mc = t.closest('[data-multi] .chip');
+  if (mc){ mc.setAttribute('aria-pressed', mc.getAttribute('aria-pressed')==='true'?'false':'true'); return; }
+
+  const quitar = t.closest('[data-quitar]');
+
+  if (t.id==='cargarHSM'){ return cargarBaseHSM(); }
+  if (t.id==='seed'){ return sembrar(); }
+  if (t.id==='guardarJugador'){ return guardarJugador(); }
+  if (t.id==='guardarToma'){ return guardarToma(); }
+
+  const g = t.closest('[data-guardar]');
+  if (g){ return guardarRegistro(g.dataset.guardar); }
+
+  const del = t.closest('[data-borrar]');
+  if (del){
+    const j = db.jugadores.find(x=>x.id===del.dataset.borrar);
+    if (!confirm(`¿Eliminar a ${nomb(j)} y todos sus registros?`)) return;
+    const id = del.dataset.borrar;
+    db.jugadores = db.jugadores.filter(x=>x.id!==id);
+    db.evaluaciones = db.evaluaciones.filter(r=>r.jugadorId!==id);
+    db.partidos = db.partidos.filter(r=>r.jugadorId!==id);
+    await Store.save(db); view.jugadorId=null; toast('Jugador eliminado'); return render();
+  }
+  if (t.id==='borrarTodo'){
+    if (!confirm('Se borra todo. ¿Seguro?')) return;
+    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], config:db.config };
+    await Store.save(db); toast('Datos borrados'); return render();
+  }
+  const csv = t.closest('[data-csv]');
+  if (csv) return exportarCSV(csv.dataset.csv);
+});
+
+/* ---------- guardar ---------- */
+const leerNum = id => { const el=document.getElementById(id); if(!el||el.value==='') return null; const n=Number(el.value); return isNaN(n)?null:n; };
+const leerEsc = id => { const b=document.querySelector(`[data-scale="${id}"] button[aria-pressed="true"]`); return b?Number(b.dataset.v):null; };
+const leerStep = id => { const o=document.querySelector(`[data-step="${id}"] output`); return o?Number(o.textContent):0; };
+
+async function guardarJugador(){
+  const apellido = document.getElementById('j-apellido').value.trim();
+  if (!apellido) return toast('Falta el apellido');
+  const cats = [...document.querySelectorAll('[data-multi="cats"] .chip[aria-pressed="true"]')].map(b=>b.dataset.v);
+  if (!cats.length) return toast('Elegí al menos una categoría');
+  db.jugadores.push({ id:uid(), apellido,
+    nombre: document.getElementById('j-nombre').value.trim(),
+    carnet: document.getElementById('j-carnet').value.trim(),
+    fechaNac: document.getElementById('j-nac').value || null,
+    categorias: cats,
+    posiciones: (()=>{
+      const pr = document.getElementById('j-pos').value;
+      const otras = [...document.querySelectorAll('[data-multi="pos"] .chip[aria-pressed="true"]')].map(b=>b.dataset.v);
+      return [...new Set([pr,...otras])].filter(Boolean);
+    })(),
+    pierna: document.getElementById('j-pierna').value,
+    altura: leerNum('j-altura') });
+  await Store.save(db);
+  toast('Jugador guardado'); view.form=null; view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
+}
+
+async function guardarToma(){
+  const nombre = document.getElementById('t-nombre').value.trim() || ('Toma '+(db.tomas.length+1));
+  db.tomas.push({ id:uid(), nombre, fecha: document.getElementById('t-fecha').value || hoy() });
+  await Store.save(db); toast('Toma creada'); view.form='evaluacion'; render();
+}
+
+async function guardarRegistro(tipo){
+  const jugadorId = document.getElementById('f-jugador').value;
+  if (!jugadorId) return toast('Elegí un jugador');
+
+  if (tipo==='evaluacion'){
+    const tomaId = document.getElementById('f-toma').value;
+    let reg = db.evaluaciones.find(e=>e.jugadorId===jugadorId && e.tomaId===tomaId);
+    const nuevo = !reg;
+    if (nuevo) reg = { id:uid(), jugadorId, tomaId, fecha:hoy() };
+    let alguno = false;
+    FISICO.forEach(t=>{ const v=leerNum('f-'+t.id); if(v!==null){ reg[t.id]=v; alguno=true; } });
+    [...TECNICO,...CONDUCTA].forEach(t=>{ const v=leerEsc(t.id); if(v!==null){ reg[t.id]=v; alguno=true; } });
+    if (!alguno) return toast('Cargá al menos un dato');
+    if (nuevo) db.evaluaciones.push(reg);
+    await Store.save(db);
+    const j = db.jugadores.find(x=>x.id===jugadorId);
+    toast((nuevo?'Evaluación guardada · ':'Evaluación actualizada · ')+nomb(j));
+    view.jugadorSel=jugadorId; view.tomaSel=tomaId; formEvaluacion(); window.scrollTo(0,0); return;
+  }
+
+  const jugo = document.querySelector('[data-toggle="jugo"] .chip[aria-pressed="true"]');
+  db.partidos.push({ id:uid(), jugadorId,
+    fecha: document.getElementById('f-fecha').value || hoy(),
+    categoria: document.getElementById('f-cat').value,
+    posicion: document.getElementById('f-pos').value,
+    rival: document.getElementById('f-rival').value.trim(),
+    jugo: jugo ? jugo.dataset.v==='1' : true,
+    goles: leerStep('goles'), asistencias: leerStep('asistencias'),
+    minutos: leerNum('f-minutos') ?? 0,
+    amarillas: leerStep('amarillas'), rojas: leerStep('rojas') });
+  await Store.save(db);
+  toast('Partido guardado'); view.jugadorSel=jugadorId; formPartido(); window.scrollTo(0,0);
+}
+
+/* ---------- CSV ---------- */
+function exportarCSV(tabla){
+  const rows = db[tabla];
+  if (!rows.length) return toast('No hay datos en esa tabla');
+  const nombreDe = id => { const j=db.jugadores.find(x=>x.id===id); return j?nomb(j):id; };
+  const tomaDe = id => { const t=db.tomas.find(x=>x.id===id); return t?t.nombre:id; };
+  const cols = [...new Set(rows.flatMap(r=>Object.keys(r)))];
+  const extra = tabla==='jugadores' ? [] : ['jugador'];
+  const linea = a => a.map(v=>{ const s=(v==null)?'':(Array.isArray(v)?v.join(' / '):String(v));
+    return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(';');
+  const cuerpo = rows.map(r=>linea(cols.map(c=>c==='tomaId'?tomaDe(r[c]):r[c]).concat(extra.length?[nombreDe(r.jugadorId)]:[])));
+  const csv = '\uFEFF'+[linea(cols.concat(extra)), ...cuerpo].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download = `hsm-${tabla}-${hoy()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV descargado');
+}
+
+const SEED_HSM = {"jugadores":[{"apellido":"SAR","nombre":"Benjamin","carnet":"","fechaNac":"2009-01-01","categorias":["Juveniles","Selección"],"posiciones":["Volante Derecho","Lateral Izquierdo","Central Derecho"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"SARBENJAMIN"},{"apellido":"MUSSO","nombre":"Francisco","carnet":"","fechaNac":"2000-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MUSSOFRANCISCO"},{"apellido":"CODNER","nombre":"Felipe","carnet":"","fechaNac":"2004-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CODNERFELIPE"},{"apellido":"QUIROGA","nombre":"Nazareno Rafael","carnet":"","fechaNac":"2004-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"QUIROGANAZARENORAFAEL"},{"apellido":"RETAMAR","nombre":"Bautista","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes","Juveniles"],"posiciones":["Extremo Izquierdo","Extremo Derecho","Delantero Centro"],"pierna":"Derecha","piernaMala":4,"altura":172,"key":"RETAMARBAUTISTA"},{"apellido":"MIRAVÉ","nombre":"Facundo","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles","Selección"],"posiciones":["Mediocampista Interior","Lateral Derecho","Central Derecho","Lateral Izquierdo","Mediocampista Defensivo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"MIRAVEFACUNDO"},{"apellido":"FIORE","nombre":"Francisco Jose","carnet":"","fechaNac":"2003-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FIOREFRANCISCOJOSE"},{"apellido":"PEREYRA","nombre":"Ramiro","carnet":"","fechaNac":"2009-01-01","categorias":["Juveniles"],"posiciones":["Mediocampista Defensivo","Mediocampista Interior"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"PEREYRARAMIRO"},{"apellido":"BEZSE","nombre":"Santiago","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BEZSESANTIAGO"},{"apellido":"BARRABIN","nombre":"Facundo","carnet":"","fechaNac":"2003-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BARRABINFACUNDO"},{"apellido":"BULACIO","nombre":"Santino","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Mediocampista Defensivo","Central Derecho","Mediocampista Interior"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"BULACIOSANTINO"},{"apellido":"MARTIN","nombre":"Nahuel Nicolas","carnet":"","fechaNac":"2006-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MARTINNAHUELNICOLAS"},{"apellido":"BIBBO","nombre":"Mateo","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Central Derecho","Central Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"BIBBOMATEO"},{"apellido":"SAR","nombre":"Santiago","carnet":"","fechaNac":"2006-01-01","categorias":["Selección Libre"],"posiciones":["Lateral Izquierdo","Central Izquierdo"],"pierna":"Izquierda","piernaMala":3,"altura":186,"key":"SARSANTIAGO"},{"apellido":"FERNANDEZ VITTAR","nombre":"Joaquin","carnet":"","fechaNac":"2005-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FERNANDEZVITTARJOAQUIN"},{"apellido":"AVENA","nombre":"Ignacio","carnet":"","fechaNac":"1997-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"AVENAIGNACIO"},{"apellido":"QUIROGA","nombre":"Diego Facundo","carnet":"","fechaNac":"2000-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"QUIROGADIEGOFACUNDO"},{"apellido":"MOCETTI","nombre":"Pedro","carnet":"","fechaNac":"2002-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MOCETTIPEDRO"},{"apellido":"ARANGUREN","nombre":"Javier","carnet":"","fechaNac":"2000-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ARANGURENJAVIER"},{"apellido":"ZMBIMBAKIS","nombre":"Facundo","carnet":"","fechaNac":"2000-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ZMBIMBAKISFACUNDO"},{"apellido":"CANNONE","nombre":"Matias","carnet":"","fechaNac":"1999-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CANNONEMATIAS"},{"apellido":"GALINDEZ","nombre":"Santiago","carnet":"","fechaNac":"2004-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GALINDEZSANTIAGO"},{"apellido":"COLOMBO","nombre":"Santiago","carnet":"","fechaNac":"2001-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"COLOMBOSANTIAGO"},{"apellido":"CODNER","nombre":"Tomas","carnet":"","fechaNac":"2000-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CODNERTOMAS"},{"apellido":"ANGANUZZI","nombre":"Lucas Ezequiel","carnet":"","fechaNac":"2004-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ANGANUZZILUCASEZEQUIEL"},{"apellido":"PATON URICH","nombre":"Andreas Martin","carnet":"","fechaNac":"1975-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PATONURICHANDREASMARTIN"},{"apellido":"CLARK","nombre":"Ignacio Martin","carnet":"","fechaNac":"2002-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CLARKIGNACIOMARTIN"},{"apellido":"VINZON","nombre":"Pablo Horacio","carnet":"","fechaNac":"1982-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VINZONPABLOHORACIO"},{"apellido":"TOLEDO","nombre":"Gonzalo","carnet":"","fechaNac":"2004-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"TOLEDOGONZALO"},{"apellido":"MAZZONI","nombre":"Santino","carnet":"","fechaNac":"2005-01-01","categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MAZZONISANTINO"},{"apellido":"VINZON","nombre":"Mateo","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VINZONMATEO"},{"apellido":"FERNANDEZ VITTAR","nombre":"Juan","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Lateral Derecho","Central Derecho"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"FERNANDEZVITTARJUAN"},{"apellido":"SANES","nombre":"Felipe","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Delantero Centro","Extremo Derecho","Extremo Izquierdo"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"SANESFELIPE"},{"apellido":"FIORI","nombre":"Juan Ignacio","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FIORIJUANIGNACIO"},{"apellido":"RECALDE","nombre":"Facundo","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Central Izquierdo","Lateral Derecho","Central Derecho","Lateral Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"RECALDEFACUNDO"},{"apellido":"BESZE","nombre":"Facundo","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Extremo Izquierdo","Enganche","Extremo Derecho","Delantero Centro"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"BESZEFACUNDO"},{"apellido":"TONSO","nombre":"Ignacio","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Extremo Izquierdo","Enganche","Extremo Derecho"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"TONSOIGNACIO"},{"apellido":"BERARDOCCO","nombre":"Valentino","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BERARDOCCOVALENTINO"},{"apellido":"SCHIAGNO","nombre":"Lorenzo","carnet":"","fechaNac":"2009-01-01","categorias":["Juveniles"],"posiciones":["Central Derecho","Lateral Derecho","Central Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"SCHIAGNOLORENZO"},{"apellido":"VERDES","nombre":"Santiago Pablo","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Lateral Derecho","Lateral Izquierdo"],"pierna":"Derecha","piernaMala":2,"altura":null,"key":"VERDESSANTIAGOPABLO"},{"apellido":"MONCALVO","nombre":"Pedro","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes"],"posiciones":["Delantero Centro","Enganche","Extremo Derecho","Extremo Izquierdo"],"pierna":"Derecha","piernaMala":5,"altura":null,"key":"MONCALVOPEDRO"},{"apellido":"DE CICCO","nombre":"Tomas","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Mediocampista Interior","Lateral Derecho","Volante Derecho","Volante Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"DECICCOTOMAS"},{"apellido":"CACERES","nombre":"Bautista Ezequiel","carnet":"","fechaNac":"2006-01-01","categorias":["Selección Libre"],"posiciones":["Lateral Izquierdo, Volante Izquierdo"],"pierna":"2","piernaMala":null,"altura":null,"key":"CACERESBAUTISTAEZEQUIEL"},{"apellido":"AWADA","nombre":"Felipe","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes"],"posiciones":["Delantero Centro","Extremo Derecho","Extremo Izquierdo"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"AWADAFELIPE"},{"apellido":"MITAGSTEIN","nombre":"Santiago","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MITAGSTEINSANTIAGO"},{"apellido":"MENENDEZ","nombre":"Felix","carnet":"","fechaNac":null,"categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MENENDEZFELIX"},{"apellido":"CAVALLERO","nombre":"Fabricio","carnet":"","fechaNac":null,"categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CAVALLEROFABRICIO"},{"apellido":"ARES","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ARESBAUTISTA"},{"apellido":"FERNANDEZ","nombre":"Rafael","carnet":"","fechaNac":null,"categorias":["Selección Libre"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FERNANDEZRAFAEL"},{"apellido":"PEREYRA","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PEREYRABAUTISTA"},{"apellido":"TANFERNA","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"TANFERNABAUTISTA"},{"apellido":"FRANZOLINI","nombre":"Lorenzo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FRANZOLINILORENZO"},{"apellido":"GARCIA MOSQ","nombre":"Ignacio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GARCIAMOSQIGNACIO"},{"apellido":"MIRAVE","nombre":"Lucas","carnet":"","fechaNac":"2011-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MIRAVELUCAS"},{"apellido":"RIZZO","nombre":"Lucas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"RIZZOLUCAS"},{"apellido":"FREAN","nombre":"Facundo","carnet":"","fechaNac":"2011-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FREANFACUNDO"},{"apellido":"GALLAGHER","nombre":"Mateo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GALLAGHERMATEO"},{"apellido":"ALBO ROBLES","nombre":"Santiago","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ALBOROBLESSANTIAGO"},{"apellido":"BRITOS","nombre":"Juan Ignacio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BRITOSJUANIGNACIO"},{"apellido":"LOPEZ TODARO","nombre":"Julian","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"LOPEZTODAROJULIAN"},{"apellido":"VINCENT","nombre":"Santiago","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VINCENTSANTIAGO"},{"apellido":"SOMMA","nombre":"Valentino","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"SOMMAVALENTINO"},{"apellido":"JACOME","nombre":"Pedro","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"JACOMEPEDRO"},{"apellido":"CAVALLERO","nombre":"Tiziano","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CAVALLEROTIZIANO"},{"apellido":"MENENDEZ","nombre":"Manuel","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MENENDEZMANUEL"},{"apellido":"GARZON","nombre":"Franco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GARZONFRANCO"},{"apellido":"DE CICCO","nombre":"Benjamin","carnet":"","fechaNac":"2011-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"DECICCOBENJAMIN"},{"apellido":"SABA","nombre":"Nicolas","carnet":"","fechaNac":"2010-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"SABANICOLAS"},{"apellido":"POZZONI","nombre":"Lucas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"POZZONILUCAS"},{"apellido":"PIRES MADEIRA","nombre":"Lucas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PIRESMADEIRALUCAS"},{"apellido":"FIRPO","nombre":"Maximo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FIRPOMAXIMO"},{"apellido":"STRACK","nombre":"Gonzalo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"STRACKGONZALO"},{"apellido":"ALMENARA","nombre":"Manuel","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ALMENARAMANUEL"},{"apellido":"LEVY YEVATI","nombre":"Nicolas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"LEVYYEVATINICOLAS"},{"apellido":"FREAN","nombre":"Nicolas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FREANNICOLAS"},{"apellido":"RUIZ DIAZ","nombre":"Mateo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"RUIZDIAZMATEO"},{"apellido":"CARREGA","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CARREGABAUTISTA"},{"apellido":"VELASCO","nombre":"Facundo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VELASCOFACUNDO"},{"apellido":"AMATO","nombre":"Jano","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"AMATOJANO"},{"apellido":"BRITOS","nombre":"Santiago","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BRITOSSANTIAGO"},{"apellido":"MAURER","nombre":"Nicolas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MAURERNICOLAS"},{"apellido":"GARBOVESKY","nombre":"Boris","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GARBOVESKYBORIS"},{"apellido":"PEÑALBA","nombre":"Theo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PENALBATHEO"},{"apellido":"VANZINI","nombre":"Francisco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VANZINIFRANCISCO"},{"apellido":"GAVIRIA","nombre":"Iker","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GAVIRIAIKER"},{"apellido":"VITULLO","nombre":"Ignacio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VITULLOIGNACIO"},{"apellido":"MARTIN","nombre":"Salvador","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MARTINSALVADOR"},{"apellido":"BAUTISTA CAMPAÑO","nombre":"Francisco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BAUTISTACAMPANOFRANCISCO"},{"apellido":"GONZALEZ","nombre":"Fabricio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GONZALEZFABRICIO"},{"apellido":"PIRES MADEIRA","nombre":"Mateo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PIRESMADEIRAMATEO"},{"apellido":"LONGUET","nombre":"Francisco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"LONGUETFRANCISCO"},{"apellido":"MATA","nombre":"Milo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MATAMILO"}],"evaluaciones":[{"jugadorKey":"SARBENJAMIN","fecha":"2026-04-14","control":6,"remate":5,"unoOf":7,"unoDef":7,"decision":5,"ubicacion":5,"cooper":1360.0,"yoyo":2440.0,"puntualidad":4,"entrenos":8},{"jugadorKey":"BIBBOMATEO","fecha":"2026-04-14","control":6,"remate":4,"unoOf":4,"unoDef":8,"decision":6,"ubicacion":8,"cooper":1168.0,"yoyo":1840.0,"puntualidad":9,"entrenos":9},{"jugadorKey":"RETAMARBAUTISTA","fecha":"2026-04-15","control":8,"remate":8,"unoOf":8,"unoDef":4,"decision":7,"ubicacion":7,"cooper":1076.0,"yoyo":1160.0,"puntualidad":8,"entrenos":6},{"jugadorKey":"FERNANDEZVITTARJUAN","fecha":"2026-04-28","control":8,"remate":6,"unoOf":5,"unoDef":8,"decision":8,"ubicacion":8,"cooper":1203.0,"yoyo":1360.0,"puntualidad":8,"entrenos":8},{"jugadorKey":"SANESFELIPE","fecha":"2026-04-28","control":6,"remate":7,"unoOf":7,"unoDef":6,"decision":6,"ubicacion":7,"cooper":1360.0,"yoyo":2400.0,"puntualidad":7,"entrenos":8},{"jugadorKey":"RECALDEFACUNDO","fecha":"2026-04-28","control":7,"remate":5,"unoOf":5,"unoDef":8,"decision":6,"ubicacion":7,"puntualidad":8,"entrenos":8},{"jugadorKey":"BESZEFACUNDO","fecha":"2026-04-28","control":8,"remate":8,"unoOf":7,"unoDef":5,"decision":5,"ubicacion":5,"puntualidad":4,"entrenos":4},{"jugadorKey":"SARSANTIAGO","fecha":"2026-04-28","control":6,"remate":6,"unoOf":6,"unoDef":7,"decision":6,"ubicacion":6,"puntualidad":6,"entrenos":7},{"jugadorKey":"PEREYRARAMIRO","fecha":"2026-04-28","control":8,"remate":6,"unoOf":6,"unoDef":6,"decision":7,"ubicacion":8,"puntualidad":8,"entrenos":8},{"jugadorKey":"TONSOIGNACIO","fecha":"2026-04-28","control":7,"remate":7,"unoOf":7,"unoDef":5,"decision":6,"ubicacion":6,"puntualidad":7,"entrenos":7},{"jugadorKey":"SCHIAGNOLORENZO","fecha":"2026-04-28","control":7,"remate":5,"unoOf":5,"unoDef":8,"decision":7,"ubicacion":7,"cooper":1335.0,"puntualidad":4,"entrenos":7},{"jugadorKey":"MIRAVEFACUNDO","fecha":"2026-04-28","control":7,"remate":5,"unoOf":6,"unoDef":8,"decision":7,"ubicacion":8,"yoyo":1160.0,"puntualidad":8,"entrenos":8},{"jugadorKey":"VERDESSANTIAGOPABLO","fecha":"2026-04-28","control":6,"remate":5,"unoOf":5,"unoDef":6,"decision":6,"ubicacion":6,"cooper":1041.0,"yoyo":1440.0,"puntualidad":8,"entrenos":6},{"jugadorKey":"MONCALVOPEDRO","fecha":"2026-04-28","control":8,"remate":7,"unoOf":8,"unoDef":4,"decision":6,"ubicacion":7,"puntualidad":6,"entrenos":6},{"jugadorKey":"DECICCOTOMAS","fecha":"2026-04-28","control":7,"remate":6,"unoOf":6,"unoDef":6,"decision":6,"ubicacion":6,"cooper":1258.0,"yoyo":1160.0,"puntualidad":7,"entrenos":7},{"jugadorKey":"CACERESBAUTISTAEZEQUIEL","fecha":"2026-04-28","control":5,"remate":5,"unoOf":5,"unoDef":5,"decision":4,"ubicacion":5,"cooper":1193.0,"yoyo":1360.0,"puntualidad":8,"entrenos":8},{"jugadorKey":"AWADAFELIPE","fecha":"2026-04-28","control":8,"remate":8,"unoOf":6,"unoDef":5,"decision":6,"ubicacion":7,"yoyo":2440.0,"puntualidad":7,"entrenos":4},{"jugadorKey":"BULACIOSANTINO","fecha":"2026-04-28","control":8,"remate":7,"unoOf":5,"unoDef":7,"decision":8,"ubicacion":9,"puntualidad":8,"entrenos":8}]};
+
+async function cargarBaseHSM(){
+  if (db.jugadores.length && !confirm('Ya hay jugadores cargados. ¿Sumar igual la base del club?')) return;
+  const toma = { id:uid(), nombre:'Toma 1 · Abril 2026', fecha:'2026-04-28' };
+  db.tomas.push(toma);
+  const porKey = {};
+  SEED_HSM.jugadores.forEach(j=>{
+    const nuevo = { id:uid(), apellido:j.apellido, nombre:j.nombre, carnet:'',
+      fechaNac:j.fechaNac, categorias:j.categorias, posiciones:j.posiciones,
+      pierna:j.pierna, piernaMala:j.piernaMala, altura:j.altura };
+    db.jugadores.push(nuevo); porKey[j.key] = nuevo.id;
+  });
+  SEED_HSM.evaluaciones.forEach(e=>{
+    const id = porKey[e.jugadorKey]; if(!id) return;
+    const reg = { id:uid(), jugadorId:id, tomaId:toma.id, fecha:e.fecha };
+    ['control','remate','unoOf','unoDef','decision','ubicacion','cooper','yoyo','puntualidad','entrenos']
+      .forEach(k=>{ if (e[k]!==undefined) reg[k]=e[k]; });
+    db.evaluaciones.push(reg);
+  });
+  await Store.save(db);
+  toast(SEED_HSM.jugadores.length+' jugadores y '+SEED_HSM.evaluaciones.length+' evaluaciones');
+  render();
+}
+
+/* ---------- ejemplo ---------- */
+async function sembrar(){
+  const t1={id:uid(),nombre:'Toma 1 · Marzo',fecha:'2026-03-10'};
+  const t2={id:uid(),nombre:'Toma 2 · Julio',fecha:'2026-07-08'};
+  db.tomas.push(t1,t2);
+  const base=[
+    {apellido:'Ejemplo',nombre:'Jugador A',categorias:['Juveniles','Primera'],posiciones:['Volante central','Enganche'],pierna:'Derecha',fechaNac:'2008-03-14',altura:174,carnet:'30000001'},
+    {apellido:'Muestra',nombre:'Jugador B',categorias:['Juveniles'],posiciones:['Delantero','Volante externo'],pierna:'Izquierda',fechaNac:'2008-08-02',altura:178,carnet:'30000002'},
+    {apellido:'Prueba', nombre:'Jugador C',categorias:['Cadetes'],posiciones:['Defensor central'],pierna:'Derecha',fechaNac:'2010-01-20',altura:169,carnet:'30000003'},
+    {apellido:'Testeo', nombre:'Jugador D',categorias:['Juveniles'],posiciones:['Arquero'],pierna:'Derecha',fechaNac:'2008-11-05',altura:186,carnet:'30000004'},
+    {apellido:'Modelo', nombre:'Jugador E',categorias:['Juveniles'],posiciones:['Lateral','Volante externo','Defensor central'],pierna:'Derecha',fechaNac:'2009-02-17',altura:171,carnet:'30000005'}
+  ].map(j=>({...j,id:uid()}));
+  db.jugadores.push(...base);
+  base.forEach((j,k)=>{
+    db.evaluaciones.push({id:uid(),jugadorId:j.id,tomaId:t1.id,fecha:t1.fecha,
+      cooper:2380+k*45, yoyo:1200+k*70, v30:+(4.45-k*0.04).toFixed(2),
+      control:5+k%3, remate:4+k%4, unoOf:6, unoDef:5+k%2, decision:5, ubicacion:6,
+      puntualidad:7, entrenos:6+k%3, actitud:7});
+    db.evaluaciones.push({id:uid(),jugadorId:j.id,tomaId:t2.id,fecha:t2.fecha,
+      cooper:2540+k*45, yoyo:1460+k*70, v30:+(4.30-k*0.04).toFixed(2),
+      control:6+k%3, remate:5+k%4, unoOf:7, unoDef:6+k%2, decision:7, ubicacion:7,
+      puntualidad:8, entrenos:8, actitud:8});
+    for(let p=0;p<6;p++){
+      db.partidos.push({id:uid(),jugadorId:j.id,fecha:`2026-0${5+Math.floor(p/4)}-${(10+p).toString().padStart(2,'0')}`,
+        categoria:j.categorias[p%j.categorias.length],
+        posicion: j.posiciones[p%j.posiciones.length],
+        rival:'Rival '+(p+1), jugo:true,
+        goles:(k===1&&p%2===0)?1:0, asistencias:p===2?1:0, minutos:60+p*4,
+        amarillas:p===3?1:0, rojas:0});
+    }
+  });
+  await Store.save(db); toast('Plantel de ejemplo cargado'); render();
+}
+
+/* ---------- toast ---------- */
+let tt;
+function toast(m){ const el=document.getElementById('toast'); el.textContent=m; el.classList.add('show');
+  clearTimeout(tt); tt=setTimeout(()=>el.classList.remove('show'),2400); }
+
+/* ---------- arranque ---------- */
+(async function(){
+  const g = await Store.load();
+  if (g) db = Object.assign(db, g, {config: Object.assign(db.config, g.config||{})});
+  /* datos viejos: posicion + posicionAlt pasan a ser una lista */
+  let migrado = false;
+  db.jugadores.forEach(j=>{
+    if (!j.posiciones){
+      j.posiciones = [j.posicion, j.posicionAlt].filter(Boolean);
+      delete j.posicion; delete j.posicionAlt; migrado = true;
+    }
+  });
+  if (migrado) await Store.save(db);
+  render();
+})();
+</script>
+</body>
+</html>
