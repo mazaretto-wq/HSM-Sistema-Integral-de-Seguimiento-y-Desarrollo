@@ -248,7 +248,11 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
 let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], config:{rol:'Coordinador', categoriaDT:''} };
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
-             sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null };
+             sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
+             editJugador:null };
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
+  'Septiembre','Octubre','Noviembre','Diciembre'];
+const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
 
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const hoy = () => new Date().toISOString().slice(0,10);
@@ -530,6 +534,7 @@ function fichaJugador(){
 
   h += `<div class="block">
     <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
+    <div class="gap"></div><button class="btn btn-ghost" data-editar="${j.id}">Editar datos del jugador</button>
     <div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button></div>`;
   app.innerHTML = h;
 }
@@ -626,9 +631,21 @@ function pantallaCargar(){
 function selJugador(){
   const l = jugadoresVisibles().sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
   if (!l.length) return `<div class="empty"><p>Primero cargá jugadores.</p></div>`;
+  const sel = l.find(j=>j.id===view.jugadorSel) || l[0];
   return `<div class="field"><label class="label" for="f-jugador">Jugador</label><select id="f-jugador">
-    ${l.map(j=>`<option value="${j.id}" ${view.jugadorSel===j.id?'selected':''}>${esc(nomb(j))}</option>`).join('')}
-    </select></div>`;
+    ${l.map(j=>`<option value="${j.id}" ${sel && sel.id===j.id?'selected':''}>${esc(nomb(j))}</option>`).join('')}
+    </select></div>
+    <div id="f-perfil">${perfilJugador(sel)}</div>`;
+}
+/* lo que hay que tener a mano al cargarle datos: dónde juega y con qué pierna */
+function perfilJugador(j){
+  const pos = j ? posiciones(j) : [];
+  if (!j) return '';
+  if (!pos.length && !j.pierna) return `<p class="screen-note" style="margin:-6px 0 14px">Sin posiciones declaradas todavía.</p>`;
+  return `<div class="ficha-tags" style="margin:-6px 0 14px">
+    ${pos.map((x,i)=>`<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(x)}</span>`).join('')}
+    ${j.pierna?`<span class="tag">${esc(j.pierna)}</span>`:''}
+    ${j.piernaMala?`<span class="tag">pierna inhábil ${j.piernaMala}/5</span>`:''}</div>`;
 }
 function escala(id,nombre){
   return `<div class="field"><span class="label">${esc(nombre)}<em>1 a 10</em></span>
@@ -690,42 +707,57 @@ function formPartido(){
 }
 
 function formJugador(){
-  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
-    <h2 class="screen-title">Nuevo jugador</h2>
-    <p class="screen-note">El carnet es el que figura en la planilla del árbitro. Es lo que permite leer las fotos automáticamente.</p>
+  const j = db.jugadores.find(x=>x.id===view.editJugador) || {};
+  const edit = !!j.id;
+  const pos = j.posiciones || [], principal = pos[0] || '', otras = pos.slice(1);
+  const cats = j.categorias || [];
+  app.innerHTML = `<button class="back" data-back="1">← ${edit?'Ficha':'Cargar'}</button>
+    <h2 class="screen-title">${edit?'Editar jugador':'Nuevo jugador'}</h2>
+    <p class="screen-note">${edit
+      ?'Corregí lo que haga falta. Los partidos y las evaluaciones que ya cargaste no se tocan.'
+      :'El carnet es el que figura en la planilla del árbitro. Es lo que permite leer las fotos automáticamente.'}</p>
     <div class="two">
-      <div class="field"><label class="label" for="j-apellido">Apellido</label><input type="text" id="j-apellido"></div>
-      <div class="field"><label class="label" for="j-nombre">Nombre</label><input type="text" id="j-nombre"></div>
+      <div class="field"><label class="label" for="j-apellido">Apellido</label>
+        <input type="text" id="j-apellido" value="${esc(j.apellido||'')}"></div>
+      <div class="field"><label class="label" for="j-nombre">Nombre</label>
+        <input type="text" id="j-nombre" value="${esc(j.nombre||'')}"></div>
     </div>
     <div class="field"><label class="label" for="j-carnet">Carnet<em>número de la planilla</em></label>
-      <input type="number" inputmode="numeric" id="j-carnet"></div>
-    <div class="field"><label class="label" for="j-nac">Fecha de nacimiento</label><input type="date" id="j-nac"></div>
+      <input type="number" inputmode="numeric" id="j-carnet" value="${esc(j.carnet||'')}"></div>
+    <div class="field"><label class="label" for="j-nac">Fecha de nacimiento</label>
+      <input type="date" id="j-nac" value="${esc(j.fechaNac||'')}"></div>
     <div class="field"><span class="label">Categorías<em>puede ser más de una</em></span>
       <div class="multi" data-multi="cats">${CATEGORIAS.map(c=>
-        `<button type="button" class="chip" data-v="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join('')}</div></div>
+        `<button type="button" class="chip" data-v="${esc(c)}" aria-pressed="${cats.includes(c)}">${esc(c)}</button>`).join('')}</div></div>
     <div class="field"><label class="label" for="j-pos">Posición principal</label>
-      <select id="j-pos"><option value="">—</option>${POSICIONES.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
+      <select id="j-pos"><option value="">—</option>${POSICIONES.map(x=>
+        `<option ${x===principal?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
     <div class="field"><span class="label">También puede jugar de<em>las que hagan falta</em></span>
-      <div class="multi" data-multi="pos">${POSICIONES.map(p=>
-        `<button type="button" class="chip" data-v="${esc(p)}" aria-pressed="false">${esc(p)}</button>`).join('')}</div></div>
+      <div class="multi" data-multi="pos">${POSICIONES.map(x=>
+        `<button type="button" class="chip" data-v="${esc(x)}" aria-pressed="${otras.includes(x)}">${esc(x)}</button>`).join('')}</div></div>
     <div class="two">
       <div class="field"><label class="label" for="j-pierna">Pierna hábil</label>
-        <select id="j-pierna"><option>Derecha</option><option>Izquierda</option><option>Ambidiestro</option></select></div>
+        <select id="j-pierna">${['Derecha','Izquierda','Ambidiestro'].map(x=>
+          `<option ${x===j.pierna?'selected':''}>${x}</option>`).join('')}</select></div>
       <div class="field"><label class="label" for="j-altura">Altura<em>cm</em></label>
-        <input type="number" inputmode="numeric" id="j-altura"></div>
+        <input type="number" inputmode="numeric" id="j-altura" value="${j.altura??''}"></div>
     </div>
-    <button class="btn btn-naranja" id="guardarJugador">Guardar jugador</button><div style="height:26px"></div>`;
+    <div class="field"><label class="label" for="j-piernamala">Pierna inhábil<em>1 no la usa · 5 la usa casi igual que la buena</em></label>
+      <select id="j-piernamala"><option value="">—</option>${[1,2,3,4,5].map(n=>
+        `<option ${n===j.piernaMala?'selected':''}>${n}</option>`).join('')}</select></div>
+    <button class="btn btn-naranja" id="guardarJugador">${edit?'Guardar cambios':'Guardar jugador'}</button>
+    <div style="height:26px"></div>`;
 }
 
 function formToma(){
-  const n = db.tomas.length + 1;
   app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
     <h2 class="screen-title">Nueva toma</h2>
-    <p class="screen-note">Una toma es un ciclo de evaluación. Si medís cada 3 o 4 meses, vas a tener tres o cuatro por año.</p>
-    <div class="field"><label class="label" for="t-nombre">Nombre</label>
-      <input type="text" id="t-nombre" value="Toma ${n}"></div>
-    <div class="field"><label class="label" for="t-fecha">Fecha de referencia</label>
-      <input type="date" id="t-fecha" value="${hoy()}"></div>
+    <p class="screen-note">Elegí el mes en que la tomaste. Podés cargar meses anteriores:
+    las tomas se ordenan solas por fecha y la comparativa de cada jugador sale en ese orden.</p>
+    <div class="field"><label class="label" for="t-mes">Mes de la toma</label>
+      <input type="month" id="t-mes" value="${hoy().slice(0,7)}"></div>
+    ${db.tomas.length?`<div class="field"><span class="label">Ya cargadas</span>
+      <div class="ficha-tags">${tomasOrden().map(t=>`<span class="tag">${esc(t.nombre)}</span>`).join('')}</div></div>`:''}
     <button class="btn btn-naranja" id="guardarToma">Crear toma</button>`;
 }
 
@@ -1134,12 +1166,17 @@ function guardarBorrador(){
 
 document.querySelector('.tabs').addEventListener('click', e=>{
   const b = e.target.closest('button[data-tab]'); if(!b) return;
-  view.tab=b.dataset.tab; view.jugadorId=null; view.form=null; view.slotAbierto=null;
+  view.tab=b.dataset.tab; view.jugadorId=null; view.form=null; view.slotAbierto=null; view.editJugador=null;
   view.sesionId=null; view.ejercicioId=null; view.draft=null;
   marcarTab(view.tab); window.scrollTo(0,0); render();
 });
 
 app.addEventListener('change', async e=>{
+  if (e.target.id==='f-jugador'){
+    view.jugadorSel = e.target.value;
+    const box = document.getElementById('f-perfil');
+    if (box) box.innerHTML = perfilJugador(db.jugadores.find(j=>j.id===e.target.value));
+  }
   if (e.target.id==='cfg-cat'){ db.config.categoriaDT = e.target.value; await Store.save(db); render(); }
   if (e.target.id==='s-cat' && view.draft){
     guardarBorrador();
@@ -1272,7 +1309,7 @@ app.addEventListener('click', async e=>{
       marcarTab('entrenos'); window.scrollTo(0,0); return render();
     }
     if (d==='cargarPara'){ view.jugadorSel=view.jugadorId; view.jugadorId=null; view.tab='cargar'; view.form='evaluacion'; }
-    else { view.tab='cargar'; view.form=d; view.jugadorId=null; }
+    else { view.tab='cargar'; view.form=d; view.jugadorId=null; view.editJugador=null; }
     marcarTab('cargar'); window.scrollTo(0,0); return render();
   }
 
@@ -1299,6 +1336,13 @@ app.addEventListener('click', async e=>{
 
   const g = t.closest('[data-guardar]');
   if (g){ return guardarRegistro(g.dataset.guardar); }
+
+  const ed = t.closest('[data-editar]');
+  if (ed){
+    view.editJugador = ed.dataset.editar; view.jugadorId = null;
+    view.tab='cargar'; view.form='nuevoJugador'; marcarTab('cargar');
+    window.scrollTo(0,0); return render();
+  }
 
   const del = t.closest('[data-borrar]');
   if (del){
@@ -1329,7 +1373,7 @@ async function guardarJugador(){
   if (!apellido) return toast('Falta el apellido');
   const cats = [...document.querySelectorAll('[data-multi="cats"] .chip[aria-pressed="true"]')].map(b=>b.dataset.v);
   if (!cats.length) return toast('Elegí al menos una categoría');
-  db.jugadores.push({ id:uid(), apellido,
+  const datos = { apellido,
     nombre: document.getElementById('j-nombre').value.trim(),
     carnet: document.getElementById('j-carnet').value.trim(),
     fechaNac: document.getElementById('j-nac').value || null,
@@ -1340,15 +1384,30 @@ async function guardarJugador(){
       return [...new Set([pr,...otras])].filter(Boolean);
     })(),
     pierna: document.getElementById('j-pierna').value,
-    altura: leerNum('j-altura') });
-  await Store.save(db);
-  toast('Jugador guardado'); view.form=null; view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
+    piernaMala: leerNum('j-piernamala'),
+    altura: leerNum('j-altura') };
+  const existente = db.jugadores.find(x=>x.id===view.editJugador);
+  if (existente){
+    Object.assign(existente, datos);
+    await Store.save(db);
+    toast('Cambios guardados · '+nomb(existente));
+    view.editJugador=null; view.jugadorId=existente.id;
+  } else {
+    db.jugadores.push({ id:uid(), ...datos });
+    await Store.save(db); toast('Jugador guardado');
+  }
+  view.form=null; view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
 }
 
 async function guardarToma(){
-  const nombre = document.getElementById('t-nombre').value.trim() || ('Toma '+(db.tomas.length+1));
-  db.tomas.push({ id:uid(), nombre, fecha: document.getElementById('t-fecha').value || hoy() });
-  await Store.save(db); toast('Toma creada'); view.form='evaluacion'; render();
+  const ym = document.getElementById('t-mes').value;
+  if (!ym) return toast('Elegí el mes de la toma');
+  const previa = db.tomas.find(t=>(t.fecha||'').slice(0,7)===ym);
+  if (previa) return toast('Ya existe una toma de ese mes: '+previa.nombre);
+  const nueva = { id:uid(), nombre:nombreMes(ym), fecha:ym+'-01' };
+  db.tomas.push(nueva);
+  await Store.save(db);
+  toast('Toma creada · '+nueva.nombre); view.tomaSel=nueva.id; view.form='evaluacion'; render();
 }
 
 async function guardarRegistro(tipo){
