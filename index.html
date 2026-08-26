@@ -301,6 +301,18 @@ function promedioTecnico(id){
   }
   return null;
 }
+/* misma key que usa la base del club: apellido+nombre sin acentos ni espacios */
+const keyJugador = j => ((j.apellido||'')+(j.nombre||''))
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z]/g,'').toUpperCase();
+
+/* temporadas anteriores: totales anuales importados, sin partido a partido */
+function historialDe(j){ return [...(j.historial||[])].sort((a,b)=>(a.anio||'').localeCompare(b.anio||'')); }
+function historialTotal(j){
+  return historialDe(j).reduce((a,x)=>({
+    pj:a.pj+(x.pj||0), goles:a.goles+(x.goles||0), asistencias:a.asistencias+(x.asis||0),
+    minutos:a.minutos+(x.min||0), amarillas:a.amarillas+(x.ta||0), rojas:a.rojas+(x.tr||0)
+  }),{pj:0,goles:0,asistencias:0,minutos:0,amarillas:0,rojas:0});
+}
 function partidosDe(id, cat){
   return db.partidos.filter(p=>p.jugadorId===id && (!cat||cat==='Todas'||p.categoria===cat));
 }
@@ -428,6 +440,25 @@ function fichaJugador(){
       <div class="stat"><div class="stat-label">Rojas</div><div class="stat-value">${t.rojas}</div></div></div>`;
   }
   h += `</div>`;
+
+  /* temporadas anteriores: totales anuales, no hay partido a partido de esos años */
+  const hist = historialDe(j);
+  if (hist.length){
+    const H = historialTotal(j), P = totales(j.id);
+    h += `<div class="block"><div class="block-title">Temporadas anteriores <span>${hist.length} año${hist.length>1?'s':''}</span></div>
+      <div class="scroll-x"><table class="cmp"><thead><tr>
+        <th>Año</th><th>PJ</th><th>Goles</th><th>Asist.</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
+    hist.forEach(x=>{
+      h += `<tr><td>${esc(x.anio)}</td><td class="val">${x.pj||0}</td><td class="val">${x.goles||0}</td>
+        <td class="val">${x.asis||0}</td><td class="val">${x.min||0}</td><td class="val">${x.ta||0}</td>
+        <td class="val">${x.tr||0}</td></tr>`;
+    });
+    h += `<tr><td><strong>Carrera</strong></td><td class="val">${H.pj+P.pj}</td><td class="val">${H.goles+P.goles}</td>
+      <td class="val">${H.asistencias+P.asistencias}</td><td class="val">${H.minutos+P.minutos}</td>
+      <td class="val">${H.amarillas+P.amarillas}</td><td class="val">${H.rojas+P.rojas}</td></tr></tbody></table></div>
+      <p class="screen-note" style="margin-top:8px">Totales anuales importados; de esos años no hay partido a partido.
+      "Carrera" los suma con los partidos cargados arriba.</p></div>`;
+  }
 
   /* asistencia a entrenamientos */
   const asis = asistenciaDe(j.id);
@@ -1068,6 +1099,10 @@ function pantallaDatos(){
         </div>`).join('')}</div>`:`<div class="empty"><p>Sin tomas creadas.</p></div>`}
       <div class="gap"></div><button class="btn btn-ghost" data-go="nuevaToma">Nueva toma</button>
     </div>
+    <div class="block"><div class="block-title">Juveniles 2026</div>
+      <p class="screen-note">Amistosos 2026 partido a partido, tests físicos 2025-2026 y totales por temporada 2023-2026.</p>
+      <div class="gap"></div><button class="btn btn-naranja" id="cargarJuv">Cargar datos de Juveniles</button>
+    </div>
     <div class="block"><div class="block-title">Exportar</div>
       <button class="btn btn-ghost" data-csv="jugadores">CSV de jugadores</button><div class="gap"></div>
       <button class="btn btn-ghost" data-csv="evaluaciones">CSV de evaluaciones</button><div class="gap"></div>
@@ -1257,6 +1292,7 @@ app.addEventListener('click', async e=>{
   const quitar = t.closest('[data-quitar]');
 
   if (t.id==='cargarHSM'){ return cargarBaseHSM(); }
+  if (t.id==='cargarJuv'){ return cargarJuveniles(); }
   if (t.id==='seed'){ return sembrar(); }
   if (t.id==='guardarJugador'){ return guardarJugador(); }
   if (t.id==='guardarToma'){ return guardarToma(); }
@@ -1389,6 +1425,62 @@ async function cargarBaseHSM(){
   });
   await Store.save(db);
   toast(SEED_HSM.jugadores.length+' jugadores y '+SEED_HSM.evaluaciones.length+' evaluaciones');
+  render();
+}
+
+const SEED_JUVENILES = {"_meta":{"origen":"hsm-juveniles-export 2026-08-15","categoria":"Juveniles"},"categorias":[{"key":"AWADAFELIPE"},{"key":"CACERESBAUTISTAEZEQUIEL"},{"key":"DECICCOBENJAMIN"},{"key":"MONCALVOPEDRO"},{"key":"SARSANTIAGO"}],"tomas":[{"ref":"feb25","nombre":"Test físico · Feb 2025","fecha":"2025-02-01"},{"ref":"jun25","nombre":"Test físico · Jun 2025","fecha":"2025-06-01"},{"ref":"feb26","nombre":"Test físico · Feb 2026","fecha":"2026-02-01"}],"evaluaciones":[{"jugadorKey":"AWADAFELIPE","tomaRef":"feb25","cooper":1185,"yoyo":1520},{"jugadorKey":"AWADAFELIPE","tomaRef":"feb26","yoyo":2440.0},{"jugadorKey":"BERARDOCCOVALENTINO","tomaRef":"feb25","cooper":1330,"yoyo":1480},{"jugadorKey":"BERARDOCCOVALENTINO","tomaRef":"jun25","cooper":1260,"yoyo":2320},{"jugadorKey":"BESZEFACUNDO","tomaRef":"jun25","yoyo":680},{"jugadorKey":"BIBBOMATEO","tomaRef":"feb25","cooper":1257,"yoyo":1160},{"jugadorKey":"BIBBOMATEO","tomaRef":"jun25","cooper":1160,"yoyo":1200},{"jugadorKey":"BIBBOMATEO","tomaRef":"feb26","cooper":1168.0,"yoyo":1840.0},{"jugadorKey":"BULACIOSANTINO","tomaRef":"feb25","cooper":1414,"yoyo":1080},{"jugadorKey":"BULACIOSANTINO","tomaRef":"jun25","cooper":1130,"yoyo":1520},{"jugadorKey":"BULACIOSANTINO","tomaRef":"feb26","yoyo":1480},{"jugadorKey":"CACERESBAUTISTAEZEQUIEL","tomaRef":"feb25","cooper":1257},{"jugadorKey":"CACERESBAUTISTAEZEQUIEL","tomaRef":"jun25","cooper":1048,"yoyo":1280},{"jugadorKey":"CACERESBAUTISTAEZEQUIEL","tomaRef":"feb26","cooper":1193.0,"yoyo":1360.0},{"jugadorKey":"DECICCOTOMAS","tomaRef":"feb25","cooper":1217,"yoyo":880},{"jugadorKey":"DECICCOTOMAS","tomaRef":"jun25","yoyo":1160},{"jugadorKey":"DECICCOTOMAS","tomaRef":"feb26","cooper":1258.0,"yoyo":1160.0},{"jugadorKey":"MIRAVEFACUNDO","tomaRef":"feb25","cooper":1434,"yoyo":720},{"jugadorKey":"MIRAVEFACUNDO","tomaRef":"jun25","cooper":1330,"yoyo":1360},{"jugadorKey":"MIRAVEFACUNDO","tomaRef":"feb26","yoyo":1160.0},{"jugadorKey":"MONCALVOPEDRO","tomaRef":"feb25","cooper":1434,"yoyo":1120},{"jugadorKey":"MONCALVOPEDRO","tomaRef":"jun25","cooper":1410,"yoyo":2000},{"jugadorKey":"PEREYRARAMIRO","tomaRef":"feb25","cooper":1192,"yoyo":800},{"jugadorKey":"PEREYRARAMIRO","tomaRef":"jun25","cooper":1080,"yoyo":1560},{"jugadorKey":"RECALDEFACUNDO","tomaRef":"feb25","cooper":1317},{"jugadorKey":"RECALDEFACUNDO","tomaRef":"jun25","cooper":1000,"yoyo":1440},{"jugadorKey":"RECALDEFACUNDO","tomaRef":"feb26","yoyo":1160},{"jugadorKey":"RETAMARBAUTISTA","tomaRef":"feb25","cooper":1033},{"jugadorKey":"RETAMARBAUTISTA","tomaRef":"jun25","cooper":1080},{"jugadorKey":"RETAMARBAUTISTA","tomaRef":"feb26","cooper":1076.0,"yoyo":1160.0},{"jugadorKey":"SANESFELIPE","tomaRef":"feb25","cooper":1509,"yoyo":1760},{"jugadorKey":"SANESFELIPE","tomaRef":"jun25","cooper":1330,"yoyo":1960},{"jugadorKey":"SANESFELIPE","tomaRef":"feb26","cooper":1360.0,"yoyo":2400.0},{"jugadorKey":"SARBENJAMIN","tomaRef":"feb25","cooper":1484,"yoyo":1200},{"jugadorKey":"SARBENJAMIN","tomaRef":"feb26","cooper":1360.0,"yoyo":2440.0},{"jugadorKey":"SARSANTIAGO","tomaRef":"feb25","cooper":1524},{"jugadorKey":"SCHIAGNOLORENZO","tomaRef":"feb26","cooper":1335.0,"yoyo":1680},{"jugadorKey":"VERDESSANTIAGOPABLO","tomaRef":"feb26","cooper":1041.0,"yoyo":1440.0},{"jugadorKey":"VINZONMATEO","tomaRef":"feb25","cooper":1192},{"jugadorKey":"VINZONMATEO","tomaRef":"jun25","cooper":1125},{"jugadorKey":"FERNANDEZVITTARJUAN","tomaRef":"feb25","cooper":1357,"yoyo":1160},{"jugadorKey":"FERNANDEZVITTARJUAN","tomaRef":"jun25","cooper":1110,"yoyo":1160},{"jugadorKey":"FERNANDEZVITTARJUAN","tomaRef":"feb26","cooper":1203.0,"yoyo":1360.0}],"limpiarFisicoAbril":["AWADAFELIPE","BIBBOMATEO","CACERESBAUTISTAEZEQUIEL","DECICCOTOMAS","FERNANDEZVITTARJUAN","MIRAVEFACUNDO","RETAMARBAUTISTA","SANESFELIPE","SARBENJAMIN","SCHIAGNOLORENZO","VERDESSANTIAGOPABLO"],"partidos":[{"fecha":"2026-06-13","rival":"Golfers","resultado":"0-1","jugadores":[{"k":"AWADAFELIPE","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BIBBOMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"CACERESBAUTISTAEZEQUIEL","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MONCALVOPEDRO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"RETAMARBAUTISTA","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SANESFELIPE","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"SARBENJAMIN","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"TONSOIGNACIO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":10,"g":0,"a":0,"y":0,"r":0}]},{"fecha":"2026-06-20","rival":"Ayres","resultado":"6-0","jugadores":[{"k":"AWADAFELIPE","m":40,"g":0,"a":0,"y":0,"r":0},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":40,"g":1,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BIBBOMATEO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":80,"g":3,"a":0,"y":0,"r":0},{"k":"CACERESBAUTISTAEZEQUIEL","m":30,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":25,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":20,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":80,"g":1,"a":1,"y":0,"r":0},{"k":"MONCALVOPEDRO","m":40,"g":0,"a":0,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":60,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":1,"a":1,"y":0,"r":0},{"k":"RETAMARBAUTISTA","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SANESFELIPE","m":55,"g":0,"a":2,"y":0,"r":0},{"k":"SARBENJAMIN","m":50,"g":0,"a":0,"y":0,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"TONSOIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":40,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":80,"g":0,"a":1,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":0,"g":0,"a":0,"y":0,"r":0}]},{"fecha":"2026-06-27","rival":"Campo Chico","resultado":"2-1","jugadores":[{"k":"AWADAFELIPE","m":17,"g":0,"a":0,"y":0,"r":0},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":63,"g":0,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BIBBOMATEO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":80,"g":0,"a":1,"y":2,"r":1},{"k":"CACERESBAUTISTAEZEQUIEL","m":50,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":60,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":68,"g":0,"a":0,"y":0,"r":0},{"k":"MONCALVOPEDRO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":0,"a":0,"y":1,"r":0},{"k":"RETAMARBAUTISTA","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SANESFELIPE","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"SARBENJAMIN","m":80,"g":2,"a":0,"y":0,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"TONSOIGNACIO","m":12,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":30,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":20,"g":0,"a":0,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":0,"g":0,"a":0,"y":0,"r":0}]},{"fecha":"2026-07-11","rival":"Las lajas","resultado":"3-3","jugadores":[{"k":"AWADAFELIPE","m":80,"g":2,"a":0,"y":1,"r":1},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BIBBOMATEO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":80,"g":0,"a":0,"y":1,"r":1},{"k":"CACERESBAUTISTAEZEQUIEL","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":40,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":60,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":40,"g":0,"a":1,"y":1,"r":0},{"k":"MONCALVOPEDRO","m":60,"g":0,"a":1,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":20,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"RETAMARBAUTISTA","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SANESFELIPE","m":80,"g":1,"a":0,"y":0,"r":0},{"k":"SARBENJAMIN","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":60,"g":0,"a":0,"y":0,"r":0},{"k":"TONSOIGNACIO","m":20,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":20,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":0,"g":0,"a":0,"y":0,"r":0}]},{"fecha":"2026-08-08","rival":"Golfers","resultado":"7-0","jugadores":[{"k":"AWADAFELIPE","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BIBBOMATEO","m":80,"g":1,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"CACERESBAUTISTAEZEQUIEL","m":80,"g":1,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"MONCALVOPEDRO","m":80,"g":0,"a":2,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"RETAMARBAUTISTA","m":80,"g":2,"a":1,"y":0,"r":0},{"k":"SANESFELIPE","m":80,"g":0,"a":1,"y":0,"r":0},{"k":"SARBENJAMIN","m":80,"g":2,"a":1,"y":0,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"TONSOIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":80,"g":0,"a":0,"y":0,"r":0}]},{"fecha":"2026-08-15","rival":"Ayres","resultado":"3-2","jugadores":[{"k":"AWADAFELIPE","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"BIBBOMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"CACERESBAUTISTAEZEQUIEL","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":60,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":20,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":80,"g":0,"a":0,"y":1,"r":0},{"k":"MONCALVOPEDRO","m":80,"g":1,"a":0,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"RETAMARBAUTISTA","m":80,"g":0,"a":1,"y":0,"r":0},{"k":"SANESFELIPE","m":80,"g":1,"a":1,"y":1,"r":0},{"k":"SARBENJAMIN","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":60,"g":0,"a":0,"y":1,"r":0},{"k":"TONSOIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":20,"g":0,"a":0,"y":0,"r":0}]},{"fecha":"2026-08-23","rival":"Campo Chico","resultado":"2-2","jugadores":[{"k":"AWADAFELIPE","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BERARDOCCOVALENTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZEFACUNDO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"BESZESANTIAGO","m":80,"g":0,"a":0,"y":1,"r":0},{"k":"BIBBOMATEO","m":80,"g":1,"a":0,"y":0,"r":0},{"k":"BULACIOSANTINO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"CACERESBAUTISTAEZEQUIEL","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOBENJAMIN","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"DECICCOTOMAS","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"FIORIJUANIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"MIRAVEFACUNDO","m":80,"g":0,"a":1,"y":1,"r":0},{"k":"MONCALVOPEDRO","m":80,"g":1,"a":0,"y":0,"r":0},{"k":"PEREYRARAMIRO","m":25,"g":0,"a":0,"y":0,"r":0},{"k":"RECALDEFACUNDO","m":80,"g":0,"a":1,"y":0,"r":0},{"k":"RETAMARBAUTISTA","m":55,"g":0,"a":0,"y":0,"r":0},{"k":"SANESFELIPE","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SARBENJAMIN","m":80,"g":0,"a":0,"y":1,"r":0},{"k":"SARSANTIAGO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"SCHIAGNOLORENZO","m":80,"g":0,"a":0,"y":0,"r":0},{"k":"TONSOIGNACIO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"VERDESSANTIAGOPABLO","m":55,"g":0,"a":0,"y":0,"r":0},{"k":"VINZONMATEO","m":0,"g":0,"a":0,"y":0,"r":0},{"k":"FERNANDEZVITTARJUAN","m":25,"g":0,"a":0,"y":1,"r":0}]}],"historial":{"BESZESANTIAGO":[{"anio":"2023","pj":2,"min":160,"goles":0,"asis":0,"ta":0,"tr":0},{"anio":"2024","pj":24,"min":1873,"goles":0,"asis":0,"ta":4,"tr":0},{"anio":"2025","pj":26,"min":2000,"goles":0,"asis":0,"ta":5,"tr":2}],"BIBBOMATEO":[{"anio":"2023","pj":5,"min":197,"goles":0,"asis":0,"ta":0,"tr":0},{"anio":"2024","pj":23,"min":1258,"goles":0,"asis":0,"ta":7,"tr":0},{"anio":"2025","pj":21,"min":1230,"goles":1,"asis":2,"ta":4,"tr":1},{"anio":"2026 Apertura","pj":9,"min":655,"goles":0,"asis":1,"ta":3,"tr":0}],"BULACIOSANTINO":[{"anio":"2023","pj":1,"min":25,"goles":0,"asis":0,"ta":1,"tr":0},{"anio":"2024","pj":23,"min":1533,"goles":1,"asis":2,"ta":2,"tr":1},{"anio":"2025","pj":26,"min":1975,"goles":2,"asis":4,"ta":8,"tr":0},{"anio":"2026 Apertura","pj":5,"min":225,"goles":1,"asis":0,"ta":1,"tr":1}],"CACERESBAUTISTAEZEQUIEL":[{"anio":"2023","pj":3,"min":47,"goles":0,"asis":0,"ta":0,"tr":0},{"anio":"2024","pj":2,"min":27,"goles":0,"asis":0,"ta":0,"tr":0},{"anio":"2025","pj":8,"min":83,"goles":0,"asis":0,"ta":1,"tr":0},{"anio":"2026 Apertura","pj":8,"min":365,"goles":0,"asis":0,"ta":0,"tr":0}],"MARTINNAHUELNICOLAS":[{"anio":"2023","pj":26,"min":1982,"goles":8,"asis":7,"ta":1,"tr":0},{"anio":"2024","pj":24,"min":1535,"goles":10,"asis":10,"ta":8,"tr":0},{"anio":"2025","pj":26,"min":1721,"goles":15,"asis":6,"ta":4,"tr":0}],"MAZZONISANTINO":[{"anio":"2023","pj":10,"min":575,"goles":0,"asis":2,"ta":2,"tr":0},{"anio":"2024","pj":17,"min":1118,"goles":7,"asis":3,"ta":9,"tr":0},{"anio":"2025","pj":10,"min":685,"goles":1,"asis":1,"ta":5,"tr":1}],"RECALDEFACUNDO":[{"anio":"2023","pj":7,"min":425,"goles":0,"asis":0,"ta":3,"tr":0},{"anio":"2024","pj":21,"min":1312,"goles":0,"asis":1,"ta":8,"tr":2},{"anio":"2025","pj":25,"min":1793,"goles":0,"asis":0,"ta":4,"tr":2},{"anio":"2026 Apertura","pj":4,"min":320,"goles":0,"asis":0,"ta":1,"tr":0}],"SANESFELIPE":[{"anio":"2023","pj":23,"min":698,"goles":8,"asis":2,"ta":3,"tr":0},{"anio":"2024","pj":23,"min":1475,"goles":15,"asis":6,"ta":2,"tr":0},{"anio":"2025","pj":26,"min":1808,"goles":14,"asis":5,"ta":5,"tr":0},{"anio":"2026 Apertura","pj":7,"min":520,"goles":4,"asis":1,"ta":4,"tr":0}],"SARSANTIAGO":[{"anio":"2023","pj":17,"min":1298,"goles":1,"asis":0,"ta":9,"tr":1},{"anio":"2024","pj":18,"min":1115,"goles":0,"asis":0,"ta":5,"tr":1},{"anio":"2025","pj":26,"min":1850,"goles":5,"asis":2,"ta":7,"tr":0},{"anio":"2026 Apertura","pj":2,"min":160,"goles":0,"asis":0,"ta":0,"tr":0}],"VINZONMATEO":[{"anio":"2023","pj":23,"min":1700,"goles":2,"asis":1,"ta":6,"tr":2},{"anio":"2024","pj":20,"min":1305,"goles":1,"asis":0,"ta":14,"tr":1},{"anio":"2025","pj":23,"min":1400,"goles":2,"asis":0,"ta":11,"tr":3},{"anio":"2026 Apertura","pj":8,"min":520,"goles":1,"asis":0,"ta":4,"tr":1}],"AWADAFELIPE":[{"anio":"2024","pj":6,"min":400,"goles":4,"asis":1,"ta":1,"tr":0},{"anio":"2025","pj":19,"min":952,"goles":5,"asis":1,"ta":6,"tr":1},{"anio":"2026 Apertura","pj":2,"min":100,"goles":0,"asis":0,"ta":0,"tr":0}],"BERARDOCCOVALENTINO":[{"anio":"2024","pj":15,"min":779,"goles":6,"asis":1,"ta":0,"tr":0},{"anio":"2025","pj":23,"min":972,"goles":5,"asis":3,"ta":2,"tr":2}],"BESZEFACUNDO":[{"anio":"2024","pj":5,"min":185,"goles":0,"asis":1,"ta":0,"tr":0},{"anio":"2025","pj":12,"min":233,"goles":0,"asis":3,"ta":1,"tr":1},{"anio":"2026 Apertura","pj":6,"min":395,"goles":2,"asis":1,"ta":0,"tr":0}],"DECICCOTOMAS":[{"anio":"2024","pj":10,"min":227,"goles":1,"asis":0,"ta":0,"tr":0},{"anio":"2025","pj":17,"min":416,"goles":2,"asis":0,"ta":1,"tr":0},{"anio":"2026 Apertura","pj":6,"min":450,"goles":0,"asis":0,"ta":0,"tr":0}],"MIRAVEFACUNDO":[{"anio":"2024","pj":13,"min":620,"goles":0,"asis":0,"ta":3,"tr":0},{"anio":"2025","pj":20,"min":982,"goles":1,"asis":2,"ta":5,"tr":0},{"anio":"2026 Apertura","pj":8,"min":520,"goles":0,"asis":3,"ta":5,"tr":1}],"PEREYRARAMIRO":[{"anio":"2024","pj":1,"min":55,"goles":0,"asis":0,"ta":0,"tr":0},{"anio":"2025","pj":26,"min":1588,"goles":2,"asis":0,"ta":3,"tr":0},{"anio":"2026 Apertura","pj":3,"min":140,"goles":0,"asis":0,"ta":2,"tr":0}],"RETAMARBAUTISTA":[{"anio":"2024","pj":10,"min":280,"goles":1,"asis":2,"ta":1,"tr":0},{"anio":"2025","pj":27,"min":1405,"goles":9,"asis":11,"ta":2,"tr":1},{"anio":"2026 Apertura","pj":5,"min":325,"goles":4,"asis":0,"ta":1,"tr":0}],"FERNANDEZVITTARJUAN":[{"anio":"2024","pj":17,"min":1098,"goles":0,"asis":2,"ta":2,"tr":0},{"anio":"2025","pj":26,"min":1960,"goles":0,"asis":6,"ta":6,"tr":0},{"anio":"2026 Apertura","pj":6,"min":405,"goles":1,"asis":1,"ta":0,"tr":0}],"MONCALVOPEDRO":[{"anio":"2025","pj":14,"min":357,"goles":1,"asis":1,"ta":1,"tr":0},{"anio":"2026 Apertura","pj":8,"min":640,"goles":2,"asis":2,"ta":0,"tr":0}],"SARBENJAMIN":[{"anio":"2025","pj":21,"min":695,"goles":0,"asis":1,"ta":2,"tr":0},{"anio":"2026 Apertura","pj":8,"min":620,"goles":0,"asis":1,"ta":3,"tr":0}],"DECICCOBENJAMIN":[{"anio":"2026 Apertura","pj":3,"min":160,"goles":0,"asis":1,"ta":0,"tr":0}],"SCHIAGNOLORENZO":[{"anio":"2026 Apertura","pj":8,"min":640,"goles":0,"asis":0,"ta":0,"tr":0}],"TONSOIGNACIO":[{"anio":"2026 Apertura","pj":2,"min":160,"goles":0,"asis":0,"ta":0,"tr":0}],"VERDESSANTIAGOPABLO":[{"anio":"2026 Apertura","pj":9,"min":520,"goles":0,"asis":0,"ta":1,"tr":0}]}};
+
+/* Datos de la categoría Juveniles (export del club, 15/08/2026).
+   Los valores físicos de la toma de abril pasan a la toma de febrero, que es
+   cuando se tomaron; donde las dos fuentes discrepan manda el de abril. */
+async function cargarJuveniles(){
+  if (!db.jugadores.length) return toast('Primero cargá el plantel del club');
+  if (db.partidos.length && !confirm('Ya hay partidos cargados. ¿Sumar igual los datos de Juveniles?')) return;
+  const S = SEED_JUVENILES, porKey = {};
+  db.jugadores.forEach(j=>{ porKey[keyJugador(j)] = j; });
+  const sinMatch = new Set();
+  const buscar = k => { const j = porKey[k]; if (!j) sinMatch.add(k); return j; };
+
+  /* 1. categoría Juveniles a los que faltaban */
+  S.categorias.forEach(c=>{ const j = buscar(c.key); if (!j) return;
+    j.categorias = j.categorias || [];
+    if (!j.categorias.includes('Juveniles')) j.categorias.push('Juveniles');
+  });
+
+  /* 2. tomas físicas; antes limpiamos el físico de abril para no duplicarlo */
+  const refs = {};
+  S.tomas.forEach(t=>{ const nueva = { id:uid(), nombre:t.nombre, fecha:t.fecha };
+    db.tomas.push(nueva); refs[t.ref] = nueva; });
+  S.limpiarFisicoAbril.forEach(k=>{ const j = porKey[k]; if (!j) return;
+    db.evaluaciones.filter(e=>e.jugadorId===j.id)
+      .forEach(e=>{ delete e.cooper; delete e.yoyo; }); });
+  let evs = 0;
+  S.evaluaciones.forEach(e=>{ const j = buscar(e.jugadorKey); if (!j) return;
+    const t = refs[e.tomaRef];
+    const reg = { id:uid(), jugadorId:j.id, tomaId:t.id, fecha:t.fecha };
+    if (e.cooper!==undefined) reg.cooper = e.cooper;
+    if (e.yoyo!==undefined)   reg.yoyo   = e.yoyo;
+    db.evaluaciones.push(reg); evs++;
+  });
+
+  /* 3. amistosos 2026, partido a partido */
+  let par = 0;
+  S.partidos.forEach(m=>{ m.jugadores.forEach(p=>{ const j = buscar(p.k); if (!j) return;
+    db.partidos.push({ id:uid(), jugadorId:j.id, fecha:m.fecha, categoria:'Juveniles',
+      posicion:'', rival:m.rival, jugo:p.m>0, goles:p.g, asistencias:p.a,
+      minutos:p.m, amarillas:p.y, rojas:p.r });
+    par++;
+  }); });
+
+  /* 4. base de temporadas anteriores (totales anuales) */
+  let his = 0;
+  Object.keys(S.historial).forEach(k=>{ const j = buscar(k); if (!j) return;
+    j.historial = S.historial[k].map(r=>({...r})); his++;
+  });
+
+  await Store.save(db);
+  if (sinMatch.size) console.warn('Juveniles sin match:', [...sinMatch]);
+  toast(`Juveniles: ${par} partidos · ${evs} tests · ${his} historiales`);
   render();
 }
 
