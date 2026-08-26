@@ -146,8 +146,8 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .empty p{margin:0 0 15px}
 .aviso{background:var(--naranja-soft);border-left:3px solid var(--naranja);padding:11px 13px;border-radius:0 var(--r) var(--r) 0;font-size:13px;margin-bottom:16px}
 
-.toast{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;background:var(--ink);color:#fff;padding:13px 16px;border-radius:var(--r);font-weight:600;max-width:628px;margin:0 auto;transform:translateY(160%);transition:transform .2s ease}
-.toast.show{transform:translateY(0)}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;background:var(--ink);color:#fff;padding:13px 16px;border-radius:var(--r);font-weight:600;max-width:628px;margin:0 auto;transform:translateY(160%);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
+.toast.show{transform:translateY(0);opacity:1}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -637,15 +637,20 @@ function selJugador(){
     </select></div>
     <div id="f-perfil">${perfilJugador(sel)}</div>`;
 }
-/* lo que hay que tener a mano al cargarle datos: dónde juega y con qué pierna */
+/* lo que hay que tener a mano al cargarle datos: categorías, dónde juega y con qué pierna */
 function perfilJugador(j){
-  const pos = j ? posiciones(j) : [];
   if (!j) return '';
-  if (!pos.length && !j.pierna) return `<p class="screen-note" style="margin:-6px 0 14px">Sin posiciones declaradas todavía.</p>`;
-  return `<div class="ficha-tags" style="margin:-6px 0 14px">
-    ${pos.map((x,i)=>`<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(x)}</span>`).join('')}
-    ${j.pierna?`<span class="tag">${esc(j.pierna)}</span>`:''}
-    ${j.piernaMala?`<span class="tag">pierna inhábil ${j.piernaMala}/5</span>`:''}</div>`;
+  const pos = posiciones(j), cats = j.categorias || [];
+  const tags = [
+    ...cats.map(c=>`<span class="tag cat">${esc(c)}</span>`),
+    ...pos.map((x,i)=>`<span class="tag">${i===0?'':'también: '}${esc(x)}</span>`),
+    j.pierna ? `<span class="tag">${esc(j.pierna)}</span>` : '',
+    j.piernaMala ? `<span class="tag">pierna inhábil ${j.piernaMala}/5</span>` : ''
+  ].filter(Boolean);
+  if (!tags.length) return `<p class="screen-note" style="margin:-6px 0 14px">
+    Sin categorías ni posiciones cargadas. Completalas en la ficha del jugador.</p>`;
+  return `<div class="ficha-tags" style="margin:-6px 0 14px">${tags.join('')}
+    ${pos.length?'':`<span class="tag" style="border-color:var(--rojo);color:var(--rojo)">sin posiciones</span>`}</div>`;
 }
 function escala(id,nombre){
   return `<div class="field"><span class="label">${esc(nombre)}<em>1 a 10</em></span>
