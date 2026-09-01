@@ -146,6 +146,17 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .empty p{margin:0 0 15px}
 .aviso{background:var(--naranja-soft);border-left:3px solid var(--naranja);padding:11px 13px;border-radius:0 var(--r) var(--r) 0;font-size:13px;margin-bottom:16px}
 
+.pl-tabla{width:100%;border-collapse:collapse}
+.pl-tabla th{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--ink-2);
+  text-transform:uppercase;letter-spacing:.05em;padding:0 4px 8px;text-align:center;white-space:nowrap}
+.pl-tabla th:first-child{text-align:left;padding-left:0}
+.pl-tabla td{padding:3px 4px;border-top:1px solid var(--linea);vertical-align:middle}
+.pl-tabla td:first-child{padding-left:0;padding-right:12px;font-size:14px;font-weight:600;white-space:nowrap}
+.pl-tabla th:first-child,.pl-tabla td:first-child{position:sticky;left:0;z-index:1;
+  background:var(--paper);box-shadow:1px 0 0 var(--linea)}
+.pl-tabla input[type=number]{width:58px;padding:9px 4px;text-align:center;font-size:15px}
+.pl-tabla select{min-width:132px;padding:9px 6px;font-size:12px}
+.pl-tabla tr.jugo td:first-child{color:var(--naranja)}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;background:var(--ink);color:#fff;padding:13px 16px;border-radius:var(--r);font-weight:600;max-width:628px;margin:0 auto;transform:translateY(160%);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
 .toast.show{transform:translateY(0);opacity:1}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -249,7 +260,7 @@ let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], 
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null };
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'' };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -614,7 +625,7 @@ function pantallaCargar(){
     app.innerHTML = `<h2 class="screen-title">Cargar</h2><p class="screen-note">¿Qué vas a registrar?</p>
       <div class="roster">${[
         ['evaluacion','Evaluación de la toma','Físico, técnico-táctico y comportamiento'],
-        ['partido','Partido a mano','PJ, goles, tarjetas'],
+        ['partido','Partido','Todo el plantel en una lista'],
         ['nuevoJugador','Nuevo jugador','Alta con carnet y categorías'],
         ['nuevaToma','Nueva toma','Abrir el ciclo de marzo, julio, etc.']
       ].map(([k,t,s])=>`<button class="row" data-go="${k}">
@@ -691,24 +702,86 @@ function formEvaluacion(){
 
 function formPartido(){
   const cats = catsPermitidas();
+  /* arranca en la última que cargaste; si es la primera vez, en la que venías mirando */
+  if (!view.partidoCat || !cats.includes(view.partidoCat)){
+    const sirve = c => c && cats.includes(c) && planteldeCategoria(c).length;
+    view.partidoCat = [db.config.ultimaCatPartido, view.categoria].find(sirve)
+      || cats.find(c=>planteldeCategoria(c).length) || cats[0];
+  }
+  const cat = view.partidoCat;
+  const plantel = planteldeCategoria(cat);
+  const fecha = view.partidoFecha || hoy();
+  const celda = (j,campo)=>`<td><input type="number" inputmode="numeric" min="0"
+    data-jug="${j.id}" data-campo="${campo}" placeholder="0"></td>`;
+
   app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
     <h2 class="screen-title">Partido</h2>
-    <p class="screen-note">Anotá en qué posición jugó: con el tiempo vas a ver dónde rinde de verdad, no solo dónde figura.</p>
-    ${selJugador()}
-    <div class="field"><label class="label" for="f-cat">Categoría del partido</label>
-      <select id="f-cat">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
-    <div class="field"><label class="label" for="f-pos">Posición en la que jugó<em>opcional</em></label>
-      <select id="f-pos"><option value="">—</option>${POSICIONES.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
-    <div class="field"><label class="label" for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${hoy()}"></div>
-    <div class="field"><label class="label" for="f-rival">Rival<em>opcional</em></label><input type="text" id="f-rival"></div>
-    <div class="field"><span class="label">¿Jugó?</span><div class="chips" data-toggle="jugo">
-      <button class="chip" data-v="1" aria-pressed="true">Sí, jugó</button>
-      <button class="chip" data-v="0" aria-pressed="false">No jugó</button></div></div>
-    ${stepper('goles','Goles',9)}${stepper('asistencias','Asistencias (opcional)',9)}
-    <div class="field"><label class="label" for="f-minutos">Minutos<em>opcional</em></label>
-      <input type="number" inputmode="numeric" id="f-minutos"></div>
-    ${stepper('amarillas','Amarillas',2)}${stepper('rojas','Roja',1)}
-    <button class="btn btn-naranja" data-guardar="partido">Guardar partido</button><div style="height:26px"></div>`;
+    <p class="screen-note">Cargá el partido completo de una vez. Se guarda una fila por jugador;
+    los que queden en 0 minutos figuran como que no jugaron.</p>
+    <div class="field"><label class="label" for="p-cat">Categoría</label>
+      <select id="p-cat">${cats.map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="two">
+      <div class="field"><label class="label" for="p-fecha">Fecha</label>
+        <input type="date" id="p-fecha" value="${esc(fecha)}"></div>
+      <div class="field"><label class="label" for="p-rival">Rival<em>opcional</em></label>
+        <input type="text" id="p-rival" value="${esc(view.partidoRival||'')}"></div>
+    </div>
+    ${!plantel.length ? `<div class="empty"><p>No hay jugadores en ${esc(cat)}.</p></div>` : `
+    <div class="block-title">Plantel <span>${plantel.length} jugadores</span></div>
+    <div class="scroll-x"><table class="pl-tabla"><thead><tr>
+      <th>Jugador</th><th>Min</th><th>Gol</th><th>Ast</th><th>TA</th><th>TR</th><th>Puesto</th>
+    </tr></thead><tbody>
+      ${plantel.map(j=>`<tr data-fila="${j.id}">
+        <td>${esc(corto(j))}${j.nombre?` <span style="color:var(--ink-2);font-weight:400">${esc(j.nombre.split(' ')[0][0])}.</span>`:''}</td>
+        ${celda(j,'minutos')}${celda(j,'goles')}${celda(j,'asistencias')}${celda(j,'amarillas')}${celda(j,'rojas')}
+        <td><select data-jug="${j.id}" data-campo="posicion"><option value="">—</option>${
+          POSICIONES.map(x=>`<option ${x===posPrincipal(j)?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
+      </tr>`).join('')}
+    </tbody></table></div>
+    <p class="screen-note" style="margin-top:10px">El puesto viene con la posición principal de cada uno;
+    cambialo si jugó en otro lado. Eso alimenta "Dónde jugó" en la ficha.</p>
+    <div class="gap"></div>
+    <button class="btn btn-naranja" id="guardarPartidoPlantel">Guardar partido</button>`}
+    <div style="height:26px"></div>`;
+}
+
+async function guardarPartidoPlantel(){
+  const cat = document.getElementById('p-cat').value;
+  const fecha = document.getElementById('p-fecha').value || hoy();
+  const rival = document.getElementById('p-rival').value.trim();
+  const plantel = planteldeCategoria(cat);
+  if (!plantel.length) return toast('No hay jugadores en '+cat);
+
+  const leer = (id,campo)=>{
+    const el = document.querySelector(`[data-jug="${id}"][data-campo="${campo}"]`);
+    if (!el) return 0;
+    const n = Number(el.value);
+    return Number.isFinite(n) && n>0 ? Math.round(n) : 0;
+  };
+  const filas = plantel.map(j=>({ id:j.id,
+    minutos:leer(j.id,'minutos'), goles:leer(j.id,'goles'), asistencias:leer(j.id,'asistencias'),
+    amarillas:leer(j.id,'amarillas'), rojas:leer(j.id,'rojas'),
+    posicion:(document.querySelector(`[data-jug="${j.id}"][data-campo="posicion"]`)||{}).value || '' }));
+
+  const jugaron = filas.filter(f=>f.minutos>0).length;
+  if (!jugaron && !confirm('Ningún jugador tiene minutos cargados. ¿Guardar igual?')) return;
+
+  /* si ese partido ya estaba cargado, se reemplaza en vez de duplicarse */
+  const mismo = p => p.fecha===fecha && p.categoria===cat && (p.rival||'')===rival;
+  const previos = db.partidos.filter(mismo).length;
+  if (previos){
+    if (!confirm(`Ya hay un partido del ${fecha} contra ${rival||'—'} en ${cat}. ¿Reemplazar sus ${previos} registros?`)) return;
+    db.partidos = db.partidos.filter(p=>!mismo(p));
+  }
+  db.config.ultimaCatPartido = cat;
+  filas.forEach(f=>db.partidos.push({ id:uid(), jugadorId:f.id, fecha, categoria:cat,
+    posicion:f.posicion, rival, jugo:f.minutos>0, goles:f.goles, asistencias:f.asistencias,
+    minutos:f.minutos, amarillas:f.amarillas, rojas:f.rojas }));
+
+  await Store.save(db);
+  toast(`Partido guardado · jugaron ${jugaron} de ${filas.length}`);
+  view.partidoFecha=null; view.partidoRival=''; view.form=null;
+  window.scrollTo(0,0); render();
 }
 
 function formJugador(){
@@ -1177,6 +1250,11 @@ document.querySelector('.tabs').addEventListener('click', e=>{
 });
 
 app.addEventListener('change', async e=>{
+  if (e.target.id==='p-cat'){
+    const f=document.getElementById('p-fecha'), r=document.getElementById('p-rival');
+    view.partidoFecha = f?f.value:null; view.partidoRival = r?r.value:'';
+    view.partidoCat = e.target.value; return render();
+  }
   if (e.target.id==='f-jugador'){
     view.jugadorSel = e.target.value;
     const box = document.getElementById('f-perfil');
@@ -1338,6 +1416,7 @@ app.addEventListener('click', async e=>{
   if (t.id==='seed'){ return sembrar(); }
   if (t.id==='guardarJugador'){ return guardarJugador(); }
   if (t.id==='guardarToma'){ return guardarToma(); }
+  if (t.id==='guardarPartidoPlantel'){ return guardarPartidoPlantel(); }
 
   const g = t.closest('[data-guardar]');
   if (g){ return guardarRegistro(g.dataset.guardar); }
@@ -1435,18 +1514,6 @@ async function guardarRegistro(tipo){
     view.jugadorSel=jugadorId; view.tomaSel=tomaId; formEvaluacion(); window.scrollTo(0,0); return;
   }
 
-  const jugo = document.querySelector('[data-toggle="jugo"] .chip[aria-pressed="true"]');
-  db.partidos.push({ id:uid(), jugadorId,
-    fecha: document.getElementById('f-fecha').value || hoy(),
-    categoria: document.getElementById('f-cat').value,
-    posicion: document.getElementById('f-pos').value,
-    rival: document.getElementById('f-rival').value.trim(),
-    jugo: jugo ? jugo.dataset.v==='1' : true,
-    goles: leerStep('goles'), asistencias: leerStep('asistencias'),
-    minutos: leerNum('f-minutos') ?? 0,
-    amarillas: leerStep('amarillas'), rojas: leerStep('rojas') });
-  await Store.save(db);
-  toast('Partido guardado'); view.jugadorSel=jugadorId; formPartido(); window.scrollTo(0,0);
 }
 
 /* ---------- CSV ---------- */
