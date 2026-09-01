@@ -269,7 +269,7 @@ let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], 
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido' };
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general' };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -403,6 +403,42 @@ function pjPorPosicion(id){
   });
   return Object.entries(m).sort((a,b)=>b[1]-a[1]);
 }
+/* última toma que tenga alguno de esos ítems cargados */
+function ultimaCon(id, ids){
+  const evs = evalsDe(id);
+  for (let i=evs.length-1;i>=0;i--){
+    const v = ids.map(k=>evs[i][k]).filter(x=>typeof x==='number');
+    if (v.length) return { ev:evs[i], valores:v };
+  }
+  return null;
+}
+const promedioDe = (id, lista) => {
+  const r = ultimaCon(id, lista.map(x=>x.id));
+  return r ? r.valores.reduce((a,b)=>a+b,0)/r.valores.length : null;
+};
+/* nota general: promedio de lo técnico-táctico y lo de comportamiento */
+const puntuacion = id => promedioDe(id, [...TECNICO, ...CONDUCTA]);
+
+/* los ítems más flojos de la última toma */
+function aMejorar(j){
+  const items = [...TECNICO.map(x=>({...x,grupo:'Técnico-táctico'})),
+                 ...CONDUCTA.map(x=>({...x,grupo:'Comportamiento'}))];
+  const r = ultimaCon(j.id, items.map(x=>x.id));
+  const out = [];
+  if (r) items.forEach(i=>{ const v = r.ev[i.id];
+    if (typeof v==='number' && v<7) out.push({nombre:i.nombre, valor:v, grupo:i.grupo}); });
+  if (j.piernaMala && j.piernaMala<=2)
+    out.push({nombre:'Pierna inhábil', valor:j.piernaMala*2, grupo:'Físico', crudo:`${j.piernaMala}/5`});
+  return out.sort((a,b)=>a.valor-b.valor).slice(0,3);
+}
+/* último valor de cada test físico */
+function fisicoUltimo(id){
+  const evs = evalsDe(id), out = {};
+  FISICO.forEach(f=>{ for (let i=evs.length-1;i>=0;i--){
+    if (typeof evs[i][f.id]==='number'){ out[f.id]=evs[i][f.id]; break; } } });
+  return out;
+}
+
 const claseSem = v => v==null?'s-vacio':(v>=7?'s-alto':v>=5?'s-medio':'s-bajo');
 const colorSem = v => v>=7?'var(--verde)':v>=5?'var(--ambar)':'var(--rojo)';
 
@@ -480,6 +516,8 @@ function fichaJugador(){
   if (!j){ view.jugadorId=null; return render(); }
   const e = edad(j.fechaNac), evs = evalsDe(j.id);
   const cats = (j.categorias||[]);
+  const tab = view.fichaTab || 'general';
+  const SOLAPAS = [['general','General'],['detalle','Detalle'],['posiciones','Posiciones']];
 
   let h = `<button class="back" data-back="1">← Plantel</button>
    <div class="ficha-head">
@@ -488,132 +526,203 @@ function fichaJugador(){
      <div class="ficha-tags">
        ${cats.map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
        ${e!==null?`<span class="tag">${e} años</span>`:''}
-       ${posiciones(j).map((p,i)=>`<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}
-       ${j.pierna?`<span class="tag">${esc(j.pierna)}</span>`:''}
-       ${j.piernaMala?`<span class="tag">pierna inhábil ${j.piernaMala}/5</span>`:''}
-       ${j.altura?`<span class="tag">${esc(j.altura)} cm</span>`:''}
-     </div></div>`;
+     </div></div>
+   <div class="chips">${SOLAPAS.map(([k,n])=>
+     `<button class="chip" data-ficha="${k}" aria-pressed="${tab===k}">${n}</button>`).join('')}</div>`;
 
-  /* partidos, desglosado por categoría si juega en más de una */
-  h += `<div class="block"><div class="block-title">Partidos</div>`;
-  if (cats.length>1){
-    h += `<div class="scroll-x"><table class="cmp"><thead><tr>
-      <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
-    cats.forEach(c=>{ const t=totalesConBase(j.id,c);
-      h += `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
-        <td class="val">${t.minutos}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
-    const T = totalesConBase(j.id);
-    h += `<tr><td><strong>Total</strong></td><td class="val">${T.pj}</td><td class="val">${T.goles}</td>
-      <td class="val">${T.minutos}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
-  } else {
-    const t = totalesConBase(j.id);
-    h += `<div class="stat-grid">
-      <div class="stat"><div class="stat-label">PJ</div><div class="stat-value">${t.pj}</div></div>
-      <div class="stat"><div class="stat-label">Goles</div><div class="stat-value">${t.goles}</div></div>
-      <div class="stat"><div class="stat-label">Asist.</div><div class="stat-value">${t.asistencias}</div></div>
-      <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${t.minutos}<small>'</small></div></div>
-      <div class="stat"><div class="stat-label">Amarillas</div><div class="stat-value">${t.amarillas}</div></div>
-      <div class="stat"><div class="stat-label">Rojas</div><div class="stat-value">${t.rojas}</div></div></div>`;
-  }
-  h += `</div>`;
+  /* ===================== GENERAL ===================== */
+  if (tab==='general'){
+    const g = puntuacion(j.id), tec = promedioTecnico(j.id), con = promedioDe(j.id, CONDUCTA);
+    h += `<div class="block"><div class="block-title">Puntuación</div>`;
+    if (g===null){
+      h += `<div class="empty"><p>Sin calificaciones todavía. Cargá una evaluación y acá vas a ver la nota.</p></div>`;
+    } else {
+      h += `<div class="stat-grid">
+        <div class="stat"><div class="stat-label">General</div>
+          <div class="stat-value" style="color:${colorSem(g)}">${g.toFixed(1)}</div></div>
+        <div class="stat"><div class="stat-label">Técnico-táctico</div>
+          <div class="stat-value" style="color:${tec!==null?colorSem(tec):'var(--ink-2)'}">${tec!==null?tec.toFixed(1):'—'}</div></div>
+        <div class="stat"><div class="stat-label">Comportamiento</div>
+          <div class="stat-value" style="color:${con!==null?colorSem(con):'var(--ink-2)'}">${con!==null?con.toFixed(1):'—'}</div></div>
+      </div>
+      <p class="screen-note" style="margin-top:8px">Promedio de la última toma con datos, sobre 10.</p>`;
+    }
+    h += `</div>`;
 
-  /* temporadas anteriores: totales anuales, no hay partido a partido de esos años */
-  const hist = historialDe(j);
-  if (hist.length){
-    const H = historialTotal(j), P = totalesConBase(j.id);
-    h += `<div class="block"><div class="block-title">Temporadas anteriores <span>${hist.length} año${hist.length>1?'s':''}</span></div>
-      <div class="scroll-x"><table class="cmp"><thead><tr>
-        <th>Año</th><th>PJ</th><th>Goles</th><th>Asist.</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
-    hist.forEach(x=>{
-      h += `<tr><td>${esc(x.anio)}</td><td class="val">${x.pj||0}</td><td class="val">${x.goles||0}</td>
-        <td class="val">${x.asis||0}</td><td class="val">${x.min||0}</td><td class="val">${x.ta||0}</td>
-        <td class="val">${x.tr||0}</td></tr>`;
-    });
-    h += `<tr><td><strong>Carrera</strong></td><td class="val">${H.pj+P.pj}</td><td class="val">${H.goles+P.goles}</td>
-      <td class="val">${H.asistencias+P.asistencias}</td><td class="val">${H.minutos+P.minutos}</td>
-      <td class="val">${H.amarillas+P.amarillas}</td><td class="val">${H.rojas+P.rojas}</td></tr></tbody></table></div>
-      <p class="screen-note" style="margin-top:8px">Totales anuales importados; de esos años no hay partido a partido.
-      "Carrera" los suma con los partidos cargados arriba.</p></div>`;
-  }
-
-  /* de dónde salen los números que no vienen de partidos cargados */
-  if ((j.base||[]).length){
-    h += `<div class="block"><div class="block-title">Según planilla <span>${j.base.length} categoría${j.base.length>1?'s':''}</span></div>
-      <div class="scroll-x"><table class="cmp"><thead><tr>
-        <th>Categoría</th><th>PJ</th><th>Goles</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>
-      ${j.base.map(b=>`<tr><td>${esc(b.categoria)}</td><td class="val">${b.pj||0}</td>
-        <td class="val">${b.goles||0}</td><td class="val">${b.ta||0}</td><td class="val">${b.tr||0}</td></tr>`).join('')}
-      </tbody></table></div>
-      <p class="screen-note" style="margin-top:8px">Totales de la planilla del club, sin partido a partido.
-      Ya están sumados arriba; si cargás esos partidos uno por uno se contarían dos veces.</p></div>`;
-  }
-
-  /* asistencia a entrenamientos */
-  const asis = asistenciaDe(j.id);
-  if (asis){
-    const col = asis.pct>=85?'var(--verde)':(asis.pct>=65?'var(--ambar)':'var(--rojo)');
-    h += `<div class="block"><div class="block-title">Entrenamientos</div>
-      <div class="bar-row" style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:13px;width:130px;flex:0 0 130px">Asistencia</span>
-        <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
-          <span style="display:block;height:100%;width:${asis.pct}%;background:${col};border-radius:99px"></span></span>
-        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${col};width:44px;text-align:right">${asis.pct}%</span></div>
-      <p class="screen-note" style="margin-top:8px">Vino a ${asis.fue} de ${asis.total} entrenamientos con lista tomada.</p></div>`;
-  }
-
-  /* dónde jugó realmente */
-  const porPos = pjPorPosicion(j.id);
-  if (porPos.length){
-    h += `<div class="block"><div class="block-title">Dónde jugó <span>${porPos.length} puesto${porPos.length>1?'s':''}</span></div>`;
-    porPos.forEach(([pos,n])=>{
-      const total = porPos.reduce((a,b)=>a+b[1],0);
-      const af = afinidad(j,pos);
-      const col = af===0?'var(--verde)':(af===1?'var(--naranja)':'var(--ink-2)');
-      h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(pos)}</span>
-        <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
-          <span style="display:block;height:100%;width:${Math.round(n/total*100)}%;background:${col};border-radius:99px"></span></span>
-        <span style="font-family:var(--mono);font-size:13px;font-weight:600;width:34px;text-align:right">${n} PJ</span></div>`;
-    });
-    h += `<p class="screen-note" style="margin-top:10px">Verde: es su puesto. Naranja: puesto alternativo. Gris: jugó ahí sin tenerlo declarado.</p></div>`;
-  }
-
-  /* comparativa toma a toma */
-  if (!evs.length){
-    h += `<div class="block"><div class="block-title">Evaluaciones</div>
-      <div class="empty"><p>Sin evaluaciones. Cargá la primera toma y a partir de la segunda vas a ver la comparativa.</p></div></div>`;
-  } else {
-    const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
-    const tablas = [
-      ['Físico', FISICO.map(f=>({id:f.id,nombre:f.nombre,unidad:f.unidad,mejor:f.mejor,dec:f.dec||0}))],
-      ['Técnico-táctico', TECNICO.map(t=>({...t,mejor:'alto',dec:0,escala:true}))],
-      ['Comportamiento', CONDUCTA.map(t=>({...t,mejor:'alto',dec:0,escala:true}))]
+    /* perfil: puesto, pierna y físico */
+    const fis = fisicoUltimo(j.id);
+    const filas = [
+      ['Puesto principal', posPrincipal(j) || '—'],
+      ['También juega de', posiciones(j).slice(1).join(' · ') || '—'],
+      ['Pierna hábil', j.pierna || '—'],
+      ['Pierna inhábil', j.piernaMala ? `${j.piernaMala}/5` : '—'],
+      ['Altura', j.altura ? `${j.altura} cm` : '—'],
+      ...FISICO.map(f=>[f.nombre, fis[f.id]!==undefined ? `${fis[f.id].toFixed(f.dec||0)} ${f.unidad}` : '—'])
     ];
-    tablas.forEach(([titulo,items])=>{
-      const usados = items.filter(i=>evs.some(e=>typeof e[i.id]==='number'));
-      if (!usados.length) return;
-      h += `<div class="block"><div class="block-title">${titulo} <span>${evs.length} toma${evs.length>1?'s':''}</span></div>
-        <div class="scroll-x"><table class="cmp"><thead><tr><th>Ítem</th>
-        ${evs.map(e=>`<th>${esc(nombreToma(e.tomaId))}</th>`).join('')}</tr></thead><tbody>`;
-      usados.forEach(i=>{
-        h += `<tr><td>${esc(i.nombre)}${i.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(i.unidad)}</span>`:''}</td>`;
-        evs.forEach((e,k)=>{
-          const v = e[i.id];
-          if (typeof v!=='number'){ h += `<td class="val flat">—</td>`; return; }
-          const col = i.escala ? colorSem(v) : 'var(--ink)';
-          let d = '';
-          const prev = k>0 ? [...evs.slice(0,k)].reverse().find(x=>typeof x[i.id]==='number') : null;
-          if (prev){
-            const dif = v - prev[i.id];
-            const mejora = i.mejor==='alto' ? dif>0 : dif<0;
-            d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(i.dec)}</span>`;
-          }
-          h += `<td class="val" style="color:${col}">${v.toFixed(i.dec)}${d}</td>`;
-        });
-        h += `</tr>`;
+    h += `<div class="block"><div class="block-title">Perfil</div>
+      <div class="scroll-x"><table class="cmp"><tbody>
+      ${filas.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="val">${esc(v)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="screen-note" style="margin-top:8px">Los tests físicos son el último valor cargado de cada uno.</p></div>`;
+
+    /* qué tiene que mejorar */
+    const mej = aMejorar(j);
+    h += `<div class="block"><div class="block-title">Lo que más tiene que mejorar</div>`;
+    if (!mej.length){
+      h += evs.length
+        ? `<p class="screen-note" style="margin:0">Sin puntos flojos: todo lo evaluado da 7 o más.</p>`
+        : `<div class="empty"><p>Hace falta al menos una evaluación para saberlo.</p></div>`;
+    } else {
+      mej.forEach(m=>{
+        const pct = Math.round(m.valor/10*100);
+        h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(m.nombre)}
+            <em style="display:block;font-size:10px;color:var(--ink-2);font-style:normal">${esc(m.grupo)}</em></span>
+          <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+            <span style="display:block;height:100%;width:${pct}%;background:${colorSem(m.valor)};border-radius:99px"></span></span>
+          <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${colorSem(m.valor)};width:34px;text-align:right">${esc(m.crudo||m.valor)}</span></div>`;
       });
-      h += `</tbody></table></div></div>`;
-    });
+      h += `<p class="screen-note" style="margin-top:10px">Lo más bajo de la última toma. El detalle completo está en la solapa Detalle.</p>`;
+    }
+    h += `</div>`;
+
+    /* partidos, desglosado por categoría si juega en más de una */
+    h += `<div class="block"><div class="block-title">Partidos</div>`;
+    if (cats.length>1){
+      h += `<div class="scroll-x"><table class="cmp"><thead><tr>
+        <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
+      cats.forEach(c=>{ const t=totalesConBase(j.id,c);
+        h += `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
+          <td class="val">${t.minutos}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
+      const T = totalesConBase(j.id);
+      h += `<tr><td><strong>Total</strong></td><td class="val">${T.pj}</td><td class="val">${T.goles}</td>
+        <td class="val">${T.minutos}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
+    } else {
+      const t = totalesConBase(j.id);
+      h += `<div class="stat-grid">
+        <div class="stat"><div class="stat-label">PJ</div><div class="stat-value">${t.pj}</div></div>
+        <div class="stat"><div class="stat-label">Goles</div><div class="stat-value">${t.goles}</div></div>
+        <div class="stat"><div class="stat-label">Asist.</div><div class="stat-value">${t.asistencias}</div></div>
+        <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${t.minutos}<small>'</small></div></div>
+        <div class="stat"><div class="stat-label">Amarillas</div><div class="stat-value">${t.amarillas}</div></div>
+        <div class="stat"><div class="stat-label">Rojas</div><div class="stat-value">${t.rojas}</div></div></div>`;
+    }
+    h += `</div>`;
+
+    const hist = historialDe(j);
+    if (hist.length){
+      const H = historialTotal(j), P = totalesConBase(j.id);
+      h += `<div class="block"><div class="block-title">Temporadas anteriores <span>${hist.length} año${hist.length>1?'s':''}</span></div>
+        <div class="scroll-x"><table class="cmp"><thead><tr>
+          <th>Año</th><th>PJ</th><th>Goles</th><th>Asist.</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
+      hist.forEach(x=>{
+        h += `<tr><td>${esc(x.anio)}</td><td class="val">${x.pj||0}</td><td class="val">${x.goles||0}</td>
+          <td class="val">${x.asis||0}</td><td class="val">${x.min||0}</td><td class="val">${x.ta||0}</td>
+          <td class="val">${x.tr||0}</td></tr>`;
+      });
+      h += `<tr><td><strong>Carrera</strong></td><td class="val">${H.pj+P.pj}</td><td class="val">${H.goles+P.goles}</td>
+        <td class="val">${H.asistencias+P.asistencias}</td><td class="val">${H.minutos+P.minutos}</td>
+        <td class="val">${H.amarillas+P.amarillas}</td><td class="val">${H.rojas+P.rojas}</td></tr></tbody></table></div>
+        <p class="screen-note" style="margin-top:8px">Totales anuales importados; de esos años no hay partido a partido.
+        "Carrera" los suma con los partidos cargados arriba.</p></div>`;
+    }
+
+    if ((j.base||[]).length){
+      h += `<div class="block"><div class="block-title">Según planilla <span>${j.base.length} categoría${j.base.length>1?'s':''}</span></div>
+        <div class="scroll-x"><table class="cmp"><thead><tr>
+          <th>Categoría</th><th>PJ</th><th>Goles</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>
+        ${j.base.map(b=>`<tr><td>${esc(b.categoria)}</td><td class="val">${b.pj||0}</td>
+          <td class="val">${b.goles||0}</td><td class="val">${b.ta||0}</td><td class="val">${b.tr||0}</td></tr>`).join('')}
+        </tbody></table></div>
+        <p class="screen-note" style="margin-top:8px">Totales de la planilla del club, sin partido a partido.
+        Ya están sumados arriba; si cargás esos partidos uno por uno se contarían dos veces.</p></div>`;
+    }
+
+    const asis = asistenciaDe(j.id);
+    if (asis){
+      const col = asis.pct>=85?'var(--verde)':(asis.pct>=65?'var(--ambar)':'var(--rojo)');
+      h += `<div class="block"><div class="block-title">Entrenamientos</div>
+        <div class="bar-row" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:13px;width:130px;flex:0 0 130px">Asistencia</span>
+          <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+            <span style="display:block;height:100%;width:${asis.pct}%;background:${col};border-radius:99px"></span></span>
+          <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${col};width:44px;text-align:right">${asis.pct}%</span></div>
+        <p class="screen-note" style="margin-top:8px">Vino a ${asis.fue} de ${asis.total} entrenamientos con lista tomada.</p></div>`;
+    }
+  }
+
+  /* ===================== DETALLE ===================== */
+  if (tab==='detalle'){
+    if (!evs.length){
+      h += `<div class="block"><div class="block-title">Evaluaciones</div>
+        <div class="empty"><p>Sin evaluaciones. Cargá la primera toma y a partir de la segunda vas a ver la comparativa.</p></div></div>`;
+    } else {
+      const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
+      const tablas = [
+        ['Físico', FISICO.map(f=>({id:f.id,nombre:f.nombre,unidad:f.unidad,mejor:f.mejor,dec:f.dec||0}))],
+        ['Técnico-táctico', TECNICO.map(t=>({...t,mejor:'alto',dec:0,escala:true}))],
+        ['Comportamiento', CONDUCTA.map(t=>({...t,mejor:'alto',dec:0,escala:true}))]
+      ];
+      tablas.forEach(([titulo,items])=>{
+        const usados = items.filter(i=>evs.some(e=>typeof e[i.id]==='number'));
+        if (!usados.length) return;
+        h += `<div class="block"><div class="block-title">${titulo} <span>${evs.length} toma${evs.length>1?'s':''}</span></div>
+          <div class="scroll-x"><table class="cmp"><thead><tr><th>Ítem</th>
+          ${evs.map(e=>`<th>${esc(nombreToma(e.tomaId))}</th>`).join('')}</tr></thead><tbody>`;
+        usados.forEach(i=>{
+          h += `<tr><td>${esc(i.nombre)}${i.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(i.unidad)}</span>`:''}</td>`;
+          evs.forEach((e,k)=>{
+            const v = e[i.id];
+            if (typeof v!=='number'){ h += `<td class="val flat">—</td>`; return; }
+            const col = i.escala ? colorSem(v) : 'var(--ink)';
+            let d = '';
+            const prev = k>0 ? [...evs.slice(0,k)].reverse().find(x=>typeof x[i.id]==='number') : null;
+            if (prev){
+              const dif = v - prev[i.id];
+              const mejora = i.mejor==='alto' ? dif>0 : dif<0;
+              d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(i.dec)}</span>`;
+            }
+            h += `<td class="val" style="color:${col}">${v.toFixed(i.dec)}${d}</td>`;
+          });
+          h += `</tr>`;
+        });
+        h += `</tbody></table></div></div>`;
+      });
+    }
+  }
+
+  /* ===================== POSICIONES ===================== */
+  if (tab==='posiciones'){
+    const pos = posiciones(j);
+    h += `<div class="block"><div class="block-title">Puestos declarados</div>`;
+    if (!pos.length){
+      h += `<div class="empty"><p>Todavía no tiene puestos cargados.</p>
+        <button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button></div>`;
+    } else {
+      h += `<div class="ficha-tags">${pos.map((p,i)=>
+        `<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}</div>
+        <p class="screen-note" style="margin-top:10px">El primero es su puesto principal; es el que la Cancha usa para sugerirlo.</p>`;
+    }
+    h += `</div>`;
+
+    const porPos = pjPorPosicion(j.id);
+    h += `<div class="block"><div class="block-title">Dónde jugó <span>${porPos.length} puesto${porPos.length===1?'':'s'}</span></div>`;
+    if (!porPos.length){
+      h += `<div class="empty"><p>Sin partidos con el puesto anotado. Cargá un partido eligiendo el puesto de cada uno y acá vas a ver dónde jugó de verdad.</p></div>`;
+    } else {
+      const total = porPos.reduce((a,b)=>a+b[1],0);
+      porPos.forEach(([p,n])=>{
+        const af = afinidad(j,p);
+        const col = af===0?'var(--verde)':(af===1?'var(--naranja)':'var(--ink-2)');
+        h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(p)}</span>
+          <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+            <span style="display:block;height:100%;width:${Math.round(n/total*100)}%;background:${col};border-radius:99px"></span></span>
+          <span style="font-family:var(--mono);font-size:13px;font-weight:600;width:34px;text-align:right">${n} PJ</span></div>`;
+      });
+      h += `<p class="screen-note" style="margin-top:10px">Verde: es su puesto. Naranja: puesto alternativo. Gris: jugó ahí sin tenerlo declarado.</p>`;
+    }
+    h += `</div>`;
   }
 
   h += `<div class="block">
@@ -1356,6 +1465,9 @@ app.addEventListener('click', async e=>{
   const chipOrden = t.closest('.chip[data-orden]');
   if (chipOrden){ view.orden=chipOrden.dataset.orden; window.scrollTo(0,0); return render(); }
 
+  const chipFicha = t.closest('.chip[data-ficha]');
+  if (chipFicha){ view.fichaTab=chipFicha.dataset.ficha; window.scrollTo(0,0); return render(); }
+
   const chipForm = t.closest('.chip[data-form]');
   if (chipForm){ view.formacion=chipForm.dataset.form; view.slotAbierto=null; return render(); }
 
@@ -1454,7 +1566,7 @@ app.addEventListener('click', async e=>{
   }
 
   const row = t.closest('[data-jugador]');
-  if (row){ view.jugadorId=row.dataset.jugador; window.scrollTo(0,0); return render(); }
+  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; window.scrollTo(0,0); return render(); }
 
   if (t.closest('[data-back]')){
     if (view.jugadorId) view.jugadorId=null;
