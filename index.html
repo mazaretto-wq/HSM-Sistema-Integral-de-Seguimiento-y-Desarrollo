@@ -45,6 +45,13 @@ button{cursor:pointer;border:none;background:none}
 .crest::after{content:"";position:absolute;inset:4px;background:var(--naranja);border-radius:50%}
 .mark{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:.1em;text-transform:uppercase;line-height:1}
 .mark small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--ink-2);font-weight:400;margin-top:3px}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--naranja);text-decoration:underline;cursor:pointer}
+.puerta{max-width:420px;margin:0 auto;padding:8px 0 40px}
+.puerta .opt{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--linea);
+  border-radius:var(--r);padding:18px 16px;margin-bottom:12px;cursor:pointer}
+.puerta .opt:hover{border-color:var(--naranja)}
+.puerta .opt strong{display:block;font-family:var(--display);font-size:22px;letter-spacing:.01em}
+.puerta .opt span{display:block;font-size:13px;color:var(--ink-2);margin-top:3px}
 .rolebox{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-2);text-align:right;max-width:130px;line-height:1.3}
 
 h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter-spacing:.04em;text-transform:uppercase;margin:20px 0 3px}
@@ -265,11 +272,16 @@ const FASES = [
 ];
 const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
 
-let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], config:{rol:'Coordinador', categoriaDT:''} };
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], config:{rol:'Coordinador', categoriaDT:'', acceso:null} };
+
+/* La clave es una puerta para no editar sin querer, no un candado: viaja en el
+   HTML y cualquiera que mire el código fuente la ve. */
+const CLAVE_COORD = '20coordhsm26';
+const esCoord = () => db.config.acceso === 'coordinacion';
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general' };
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -335,6 +347,7 @@ function faltaCargar(){
   };
 }
 function botonesPendientes(){
+  if (!esCoord()) return '';
   const f = faltaCargar(); let h = '';
   if (f.juveniles) h += `<div class="gap"></div><button class="btn btn-naranja" id="cargarJuv">Cargar datos de Juveniles</button>`;
   if (f.planteles) h += `<div class="gap"></div><button class="btn btn-naranja" id="cargarPlanteles">Cargar planteles del club</button>`;
@@ -464,10 +477,47 @@ const colorSem = v => v>=7?'var(--verde)':v>=5?'var(--ambar)':'var(--rojo)';
    ========================================================= */
 const app = document.getElementById('app');
 
+function pantallaAcceso(){
+  app.innerHTML = `<div class="puerta">
+    <h2 class="screen-title">Entrar</h2>
+    <p class="screen-note">Elegí cómo vas a usar la app. Podés cambiar después desde "salir", arriba a la derecha.</p>
+    ${view.puerta==='clave' ? `
+      <div class="block"><div class="block-title">Coordinación</div>
+        <div class="field"><label class="label" for="ac-clave">Contraseña</label>
+          <input type="password" id="ac-clave" autocomplete="current-password" placeholder="••••••••"></div>
+        ${view.claveMal?`<p class="screen-note" style="color:var(--rojo);margin-top:-6px">Contraseña incorrecta.</p>`:''}
+        <button class="btn btn-naranja" id="ac-entrar">Entrar</button>
+        <div class="gap"></div>
+        <button class="btn btn-ghost" id="ac-volver">Volver</button>
+      </div>` : `
+      <button class="opt" id="ac-jugador">
+        <strong>Soy jugador</strong>
+        <span>Ver el plantel, la cancha y los entrenamientos. Sin contraseña.</span></button>
+      <button class="opt" id="ac-coord">
+        <strong>Coordinación</strong>
+        <span>Además cargar partidos, entrenamientos y editar los datos. Pide contraseña.</span></button>`}
+  </div>`;
+  const inp = document.getElementById('ac-clave'); if (inp) inp.focus();
+}
+
 function render(){
   const c = db.config;
-  document.getElementById('rolebox').textContent =
-    c.rol==='DT' ? 'DT · '+(c.categoriaDT||'sin categoría') : 'Coordinación · todas';
+  const nav = document.querySelector('.tabs');
+  if (!c.acceso){
+    nav.style.display = 'none';
+    document.getElementById('rolebox').textContent = '';
+    return pantallaAcceso();
+  }
+  nav.style.display = '';
+  const permitidas = esCoord() ? ['plantel','cancha','entrenos','cargar','datos']
+                               : ['plantel','cancha','entrenos'];
+  nav.querySelectorAll('button').forEach(b=>{
+    b.style.display = permitidas.includes(b.dataset.tab) ? '' : 'none'; });
+  if (!permitidas.includes(view.tab)){ view.tab='plantel'; marcarTab('plantel'); }
+  document.getElementById('rolebox').innerHTML = esCoord()
+    ? `${c.rol==='DT' ? 'DT · '+esc(c.categoriaDT||'sin categoría') : 'Coordinación · todas'}<br>
+       <button class="linkish" id="salir">salir</button>`
+    : `Jugador · solo lectura<br><button class="linkish" id="salir">salir</button>`;
   if (view.jugadorId) return fichaJugador();
   if (view.tab==='plantel') return pantallaPlantel();
   if (view.tab==='cancha')  return pantallaCancha();
@@ -501,7 +551,9 @@ function pantallaPlantel(){
       ${pendientes}</div>`;
   }
 
-  if (!db.jugadores.length){
+  if (!db.jugadores.length && !esCoord()){
+    h += `<div class="empty"><p>Todavía no hay datos cargados. Pedile a coordinación que los cargue.</p></div>`;
+  } else if (!db.jugadores.length){
     h += `<div class="empty"><p>Todavía no hay jugadores. Podés cargar el plantel real desde la planilla del club, o probar con datos de ejemplo.</p>
       <button class="btn btn-naranja" id="cargarHSM">Cargar plantel del club</button><div class="gap"></div>
       <button class="btn btn-ghost" data-go="nuevoJugador">Agregar uno a mano</button><div class="gap"></div>
@@ -525,7 +577,7 @@ function pantallaPlantel(){
         </span></span>
         <span class="score ${claseSem(p)}">${p!==null?p.toFixed(1):'—'}</span></button>`;
     }).join('')+`</div><div class="gap"></div>
-    <button class="btn btn-ghost" data-go="nuevoJugador">Agregar jugador</button>`;
+    ${esCoord()?`<button class="btn btn-ghost" data-go="nuevoJugador">Agregar jugador</button>`:''}`;
   }
   app.innerHTML = h;
 }
@@ -720,7 +772,7 @@ function fichaJugador(){
     h += `<div class="block"><div class="block-title">Puestos declarados</div>`;
     if (!pos.length){
       h += `<div class="empty"><p>Todavía no tiene puestos cargados.</p>
-        <button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button></div>`;
+        ${esCoord()?`<button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button>`:''}</div>`;
     } else {
       h += `<div class="ficha-tags">${pos.map((p,i)=>
         `<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}</div>
@@ -748,7 +800,7 @@ function fichaJugador(){
     h += `</div>`;
   }
 
-  h += `<div class="block">
+  if (esCoord()) h += `<div class="block">
     <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
     <div class="gap"></div><button class="btn btn-ghost" data-editar="${j.id}">Editar datos del jugador</button>
     <div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button></div>`;
@@ -884,7 +936,7 @@ function formEvaluacion(){
   if (!db.tomas.length){
     app.innerHTML = `<button class="back" data-back="1">← Cargar</button><h2 class="screen-title">Evaluación</h2>
       <div class="empty"><p>Antes necesitás abrir una toma: el ciclo de evaluación (por ejemplo "Toma 1 · Marzo 2026").</p>
-      <button class="btn" data-go="nuevaToma">Crear la primera toma</button></div>`;
+      ${esCoord()?`<button class="btn" data-go="nuevaToma">Crear la primera toma</button>`:''}</div>`;
     return;
   }
   const tomas = tomasOrden();
@@ -1110,7 +1162,7 @@ function pantallaEntrenos(){
     } else {
       h += `<div class="empty"><p>Todavía no hay sesiones cargadas. Cada técnico arma la suya eligiendo ejercicios de la biblioteca.</p></div>`;
     }
-    h += `<div class="gap"></div><button class="btn btn-naranja" id="nuevaSesion">Armar sesión</button>`;
+    if (esCoord()) h += `<div class="gap"></div><button class="btn btn-naranja" id="nuevaSesion">Armar sesión</button>`;
 
   } else {
     const fs = ['Todas',...FASES.map(f=>f.id)];
@@ -1126,7 +1178,7 @@ function pantallaEntrenos(){
     if (!db.ejercicios.length){
       h += `<div class="empty"><p>La biblioteca está vacía. Podés arrancar con una base de ejercicios estándar y después editarla, o cargar directamente los tuyos.</p>
         <button class="btn" id="seedEjercicios">Cargar base inicial</button><div class="gap"></div>
-        <button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button></div>`;
+        ${esCoord()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
     } else if (!lista.length){
       h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
     } else {
@@ -1137,7 +1189,7 @@ function pantallaEntrenos(){
         ${e.duracion?`<span>${e.duracion}'</span>`:''}${e.jugadores?`<span>${esc(e.jugadores)} jug.</span>`:''}
         ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
         <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
-        <div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`;
+        ${esCoord()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
     }
   }
   app.innerHTML = h + `<div style="height:26px"></div>`;
@@ -1185,10 +1237,10 @@ function detalleSesion(){
     h += `<div class="block"><div class="block-title">Escrito a mano</div>
       <p style="white-space:pre-wrap">${esc(s.otros)}</p>
       <div class="aviso" style="margin-top:12px">Esto no entra en el reparto de tiempo. Si es un ejercicio que se repite, conviene sumarlo a la biblioteca.</div>
-      <button class="btn btn-ghost" data-go="nuevoEjercicio">Sumarlo a la biblioteca</button></div>`;
+      ${esCoord()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Sumarlo a la biblioteca</button>`:''}</div>`;
   }
   if (s.notas) h += `<div class="block"><div class="block-title">Notas</div><p>${esc(s.notas)}</p></div>`;
-  h += `<div class="block"><button class="btn btn-danger" data-borrarSesion="${s.id}">Eliminar sesión</button></div>`;
+  if (esCoord()) h += `<div class="block"><button class="btn btn-danger" data-borrarSesion="${s.id}">Eliminar sesión</button></div>`;
   app.innerHTML = h + `<div style="height:26px"></div>`;
 }
 
@@ -1210,7 +1262,7 @@ function detalleEjercicio(){
     ${e.material?`<div class="block"><div class="block-title">Material</div><p>${esc(e.material)}</p></div>`:''}
     <div class="block"><div class="block-title">Uso</div>
       <p class="screen-note">Usado en ${usos} sesión${usos===1?'':'es'}${e.autor?` · creado por ${esc(e.autor)}`:''}.</p></div>
-    <div class="block"><button class="btn btn-danger" data-borrarEj="${e.id}">Eliminar ejercicio</button></div>
+    ${esCoord()?`<div class="block"><button class="btn btn-danger" data-borrarEj="${e.id}">Eliminar ejercicio</button></div>`:''}
     <div style="height:26px"></div>`;
 }
 
@@ -1452,11 +1504,24 @@ function guardarBorrador(){
   if (v('s-otros')!==null)   d.otros = v('s-otros');
 }
 
+document.getElementById('rolebox').addEventListener('click', async e=>{
+  if (!e.target.closest('#salir')) return;
+  db.config.acceso=null; view.puerta=null; view.jugadorId=null; view.form=null;
+  view.tab='plantel'; marcarTab('plantel');
+  await Store.save(db); render();
+});
+
 document.querySelector('.tabs').addEventListener('click', e=>{
   const b = e.target.closest('button[data-tab]'); if(!b) return;
   view.tab=b.dataset.tab; view.jugadorId=null; view.form=null; view.slotAbierto=null; view.editJugador=null;
   view.sesionId=null; view.ejercicioId=null; view.draft=null;
   marcarTab(view.tab); window.scrollTo(0,0); render();
+});
+
+app.addEventListener('keydown', e=>{
+  if (e.target.id==='ac-clave' && e.key==='Enter'){
+    e.preventDefault(); document.getElementById('ac-entrar').click();
+  }
 });
 
 app.addEventListener('change', async e=>{
@@ -1481,6 +1546,25 @@ app.addEventListener('change', async e=>{
 
 app.addEventListener('click', async e=>{
   const t = e.target;
+
+  /* puerta de entrada; los botones tienen texto adentro, así que subimos al botón */
+  const puerta = t.closest('#ac-jugador,#ac-coord');
+  if (puerta && puerta.id==='ac-jugador'){ db.config.acceso='jugador'; await Store.save(db); return render(); }
+  if (puerta && puerta.id==='ac-coord'){ view.puerta='clave'; view.claveMal=false; return render(); }
+  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
+  if (t.id==='ac-entrar'){
+    const v = (document.getElementById('ac-clave')||{}).value || '';
+    if (v !== CLAVE_COORD){ view.claveMal=true; return render(); }
+    db.config.acceso='coordinacion'; view.puerta=null; view.claveMal=false;
+    await Store.save(db); return render();
+  }
+  /* como jugador se mira, no se toca */
+  if (!esCoord()){
+    const muta = t.closest('[data-editar],[data-borrar],[data-borrarSesion],[data-borrarEj],[data-guardar],[data-go]');
+    const ids = ['guardarJugador','guardarToma','guardarPartidoPlantel','guardarSesion','guardarEjercicio',
+                 'cargarHSM','cargarJuv','cargarPlanteles','seed','borrarTodo'];
+    if (muta || ids.includes(t.id)) return toast('Solo coordinación puede cargar o editar');
+  }
 
   const chipCat = t.closest('.chip[data-cat]');
   if (chipCat){ view.categoria=chipCat.dataset.cat; view.slotAbierto=null; return render(); }
