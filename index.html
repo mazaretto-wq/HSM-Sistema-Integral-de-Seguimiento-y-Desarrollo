@@ -204,7 +204,7 @@ const Store = {
 /* =========================================================
    2. MODELO
    ========================================================= */
-const CATEGORIAS = ['Promocional','Cadetes','Juveniles','Selección','Selección Libre','Primera'];
+const CATEGORIAS = ['Promocional','Cadetes','Juveniles','Juveniles B','Selección','Selección Libre','Primera'];
 const POSICIONES = ['Arquero','Lateral Derecho','Central Derecho','Central Izquierdo','Lateral Izquierdo',
   'Mediocampista Defensivo','Mediocampista Interior','Volante Derecho','Volante Izquierdo','Enganche',
   'Extremo Derecho','Extremo Izquierdo','Delantero Centro'];
@@ -331,6 +331,18 @@ function historialTotal(j){
 function partidosDe(id, cat){
   return db.partidos.filter(p=>p.jugadorId===id && (!cat||cat==='Todas'||p.categoria===cat));
 }
+function baseCat(j, cat){
+  const filas = (j && j.base || []).filter(b=>!cat||cat==='Todas'||b.categoria===cat);
+  return filas.reduce((a,b)=>({pj:a.pj+(b.pj||0), goles:a.goles+(b.goles||0),
+    amarillas:a.amarillas+(b.ta||0), rojas:a.rojas+(b.tr||0)}),{pj:0,goles:0,amarillas:0,rojas:0});
+}
+/* lo cargado partido a partido más la base de planilla de esa categoría */
+function totalesConBase(id, cat){
+  const j = db.jugadores.find(x=>x.id===id);
+  const t = totales(id,cat), b = baseCat(j,cat);
+  return {...t, pj:t.pj+b.pj, goles:t.goles+b.goles,
+    amarillas:t.amarillas+b.amarillas, rojas:t.rojas+b.rojas};
+}
 function totales(id, cat){
   return partidosDe(id,cat).reduce((a,p)=>({
     pj:a.pj+(p.jugo?1:0), goles:a.goles+(p.goles||0), asistencias:a.asistencias+(p.asistencias||0),
@@ -394,7 +406,7 @@ function pantallaPlantel(){
     h += `<div class="empty"><p>No hay jugadores en ${esc(view.categoria)}.</p></div>`;
   } else {
     h += `<div class="roster">`+lista.map(j=>{
-      const p = promedioTecnico(j.id), t = totales(j.id, view.categoria), e = edad(j.fechaNac);
+      const p = promedioTecnico(j.id), t = totalesConBase(j.id, view.categoria), e = edad(j.fechaNac);
       return `<button class="row" data-jugador="${j.id}">
         <span class="dorsal">${esc(inic(j))}</span>
         <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
@@ -438,14 +450,14 @@ function fichaJugador(){
   if (cats.length>1){
     h += `<div class="scroll-x"><table class="cmp"><thead><tr>
       <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
-    cats.forEach(c=>{ const t=totales(j.id,c);
+    cats.forEach(c=>{ const t=totalesConBase(j.id,c);
       h += `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
         <td class="val">${t.minutos}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
-    const T = totales(j.id);
+    const T = totalesConBase(j.id);
     h += `<tr><td><strong>Total</strong></td><td class="val">${T.pj}</td><td class="val">${T.goles}</td>
       <td class="val">${T.minutos}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
   } else {
-    const t = totales(j.id);
+    const t = totalesConBase(j.id);
     h += `<div class="stat-grid">
       <div class="stat"><div class="stat-label">PJ</div><div class="stat-value">${t.pj}</div></div>
       <div class="stat"><div class="stat-label">Goles</div><div class="stat-value">${t.goles}</div></div>
@@ -459,7 +471,7 @@ function fichaJugador(){
   /* temporadas anteriores: totales anuales, no hay partido a partido de esos años */
   const hist = historialDe(j);
   if (hist.length){
-    const H = historialTotal(j), P = totales(j.id);
+    const H = historialTotal(j), P = totalesConBase(j.id);
     h += `<div class="block"><div class="block-title">Temporadas anteriores <span>${hist.length} año${hist.length>1?'s':''}</span></div>
       <div class="scroll-x"><table class="cmp"><thead><tr>
         <th>Año</th><th>PJ</th><th>Goles</th><th>Asist.</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
@@ -473,6 +485,18 @@ function fichaJugador(){
       <td class="val">${H.amarillas+P.amarillas}</td><td class="val">${H.rojas+P.rojas}</td></tr></tbody></table></div>
       <p class="screen-note" style="margin-top:8px">Totales anuales importados; de esos años no hay partido a partido.
       "Carrera" los suma con los partidos cargados arriba.</p></div>`;
+  }
+
+  /* de dónde salen los números que no vienen de partidos cargados */
+  if ((j.base||[]).length){
+    h += `<div class="block"><div class="block-title">Según planilla <span>${j.base.length} categoría${j.base.length>1?'s':''}</span></div>
+      <div class="scroll-x"><table class="cmp"><thead><tr>
+        <th>Categoría</th><th>PJ</th><th>Goles</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>
+      ${j.base.map(b=>`<tr><td>${esc(b.categoria)}</td><td class="val">${b.pj||0}</td>
+        <td class="val">${b.goles||0}</td><td class="val">${b.ta||0}</td><td class="val">${b.tr||0}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="screen-note" style="margin-top:8px">Totales de la planilla del club, sin partido a partido.
+      Ya están sumados arriba; si cargás esos partidos uno por uno se contarían dos veces.</p></div>`;
   }
 
   /* asistencia a entrenamientos */
@@ -1213,6 +1237,11 @@ function pantallaDatos(){
       <p class="screen-note">Amistosos 2026 partido a partido, tests físicos 2025-2026 y totales por temporada 2023-2026.</p>
       <div class="gap"></div><button class="btn btn-naranja" id="cargarJuv">Cargar datos de Juveniles</button>
     </div>
+    <div class="block"><div class="block-title">Planteles por categoría</div>
+      <p class="screen-note">Promocionales, Cadetes, Juveniles B y Selección: altas que faltaban,
+      categorías y PJ/goles/tarjetas de planilla. No toca Juveniles.</p>
+      <div class="gap"></div><button class="btn btn-naranja" id="cargarPlanteles">Cargar planteles</button>
+    </div>
     <div class="block"><div class="block-title">Exportar</div>
       <button class="btn btn-ghost" data-csv="jugadores">CSV de jugadores</button><div class="gap"></div>
       <button class="btn btn-ghost" data-csv="evaluaciones">CSV de evaluaciones</button><div class="gap"></div>
@@ -1413,6 +1442,7 @@ app.addEventListener('click', async e=>{
 
   if (t.id==='cargarHSM'){ return cargarBaseHSM(); }
   if (t.id==='cargarJuv'){ return cargarJuveniles(); }
+  if (t.id==='cargarPlanteles'){ return cargarPlanteles(); }
   if (t.id==='seed'){ return sembrar(); }
   if (t.id==='guardarJugador'){ return guardarJugador(); }
   if (t.id==='guardarToma'){ return guardarToma(); }
@@ -1612,6 +1642,45 @@ async function cargarJuveniles(){
   await Store.save(db);
   if (sinMatch.size) console.warn('Juveniles sin match:', [...sinMatch]);
   toast(`Juveniles: ${par} partidos · ${evs} tests · ${his} historiales`);
+  render();
+}
+
+const SEED_PLANTELES = {"_meta":{"origen":"planteles_haras_santa_maria.pdf","nota":"Juveniles A no se toca"},"correcciones":[{"key":"LEVYYEVATINICOLAS","apellido":"LEVY YEYATI","nombre":"Nicolas"},{"key":"PATONURICHANDREASMARTIN","apellido":"PATON URICH","nombre":"Andres Martin"},{"key":"ZMBIMBAKISFACUNDO","apellido":"ZIMBIMBAKIS","nombre":"Facundo"}],"nuevos":[{"key":"AVILATOBIAS","apellido":"AVILA","nombre":"Tobias","categorias":["Juveniles B"]},{"key":"BARCAROLOMAXIMILIANO","apellido":"BARCAROLO","nombre":"Maximiliano","categorias":["Juveniles B"]},{"key":"BARCAROLOSEBASTIAN","apellido":"BARCAROLO","nombre":"Sebastian","categorias":["Juveniles B"]},{"key":"BERTRALEZEQUIEL","apellido":"BERTRAL","nombre":"Ezequiel","categorias":["Juveniles B"]},{"key":"BEUNZATOMAS","apellido":"BEUNZA","nombre":"Tomas","categorias":["Juveniles B"]},{"key":"BIANDRATTIBENJAMIN","apellido":"BIANDRATTI","nombre":"Benjamin","categorias":["Juveniles B"]},{"key":"CARREGAJUANFRANCISCO","apellido":"CARREGA","nombre":"Juan Francisco","categorias":["Juveniles B"]},{"key":"DEALZAAMATEO","apellido":"DE ALZAA","nombre":"Mateo","categorias":["Juveniles B"]},{"key":"ERRASTIBENJAMIN","apellido":"ERRASTI","nombre":"Benjamin","categorias":["Juveniles B"]},{"key":"FERNANDEZJOAQUIN","apellido":"FERNANDEZ","nombre":"Joaquin","categorias":["Juveniles B"]},{"key":"GASPARIAGUSTIN","apellido":"GASPARI","nombre":"Agustin","categorias":["Juveniles B"]},{"key":"GROSSOALMIRONGALO","apellido":"GROSSO ALMIRON","nombre":"Galo","categorias":["Juveniles B"]},{"key":"IERVASIFRANCISCO","apellido":"IERVASI","nombre":"Francisco","categorias":["Juveniles B"]},{"key":"LOPEZROBBIOIGNACIO","apellido":"LOPEZ ROBBIO","nombre":"Ignacio","categorias":["Juveniles B"]},{"key":"ODRIOZOLALUCAS","apellido":"ODRIOZOLA","nombre":"Lucas","categorias":["Juveniles B"]},{"key":"SANCHEZCORRAOBAUTISTA","apellido":"SANCHEZ CORRAO","nombre":"Bautista","categorias":["Juveniles B"]},{"key":"SCAVETTAFACUNDO","apellido":"SCAVETTA","nombre":"Facundo","categorias":["Juveniles B"]},{"key":"SPINELLIJUANBAUTISTA","apellido":"SPINELLI","nombre":"Juan Bautista","categorias":["Cadetes","Juveniles B"]},{"key":"ZIMBIMBAKISSANTIAGO","apellido":"ZIMBIMBAKIS","nombre":"Santiago","categorias":["Selección"]},{"key":"ZOFFISANTINO","apellido":"ZOFFI","nombre":"Santino","categorias":["Juveniles B"]}],"categorias":{"ALBOROBLESSANTIAGO":["Cadetes","Juveniles B"],"ALMENARAMANUEL":["Promocional"],"AMATOJANO":["Promocional"],"ANGANUZZILUCASEZEQUIEL":["Selección"],"ARANGURENJAVIER":["Selección"],"ARESBAUTISTA":["Cadetes"],"AVENAIGNACIO":["Selección"],"AWADAFELIPE":["Cadetes"],"BARRABINFACUNDO":["Selección"],"BAUTISTACAMPANOFRANCISCO":["Promocional"],"BESZESANTIAGO":["Selección"],"BIBBOMATEO":["Selección"],"BRITOSJUANIGNACIO":["Cadetes"],"BRITOSSANTIAGO":["Promocional"],"CANNONEMATIAS":["Selección"],"CARREGABAUTISTA":["Promocional"],"CAVALLEROFABRICIO":["Cadetes"],"CAVALLEROTIZIANO":["Cadetes","Juveniles B"],"CLARKIGNACIOMARTIN":["Selección"],"CODNERFELIPE":["Selección"],"CODNERTOMAS":["Selección"],"COLOMBOSANTIAGO":["Selección"],"DECICCOBENJAMIN":["Cadetes"],"FERNANDEZRAFAEL":["Cadetes","Juveniles B"],"FERNANDEZVITTARJOAQUIN":["Selección"],"FIOREFRANCISCOJOSE":["Selección"],"FIRPOMAXIMO":["Promocional"],"FRANZOLINILORENZO":["Cadetes"],"FREANFACUNDO":["Cadetes"],"FREANNICOLAS":["Promocional"],"GALINDEZSANTIAGO":["Selección"],"GALLAGHERMATEO":["Cadetes"],"GARBOVESKYBORIS":["Promocional"],"GARCIAMOSQIGNACIO":["Cadetes"],"GARZONFRANCO":["Cadetes","Juveniles B"],"GAVIRIAIKER":["Promocional"],"GONZALEZFABRICIO":["Promocional"],"JACOMEPEDRO":["Cadetes"],"LEVYYEYATINICOLAS":["Promocional"],"LONGUETFRANCISCO":["Promocional"],"LOPEZTODAROJULIAN":["Cadetes"],"MARTINNAHUELNICOLAS":["Selección"],"MARTINSALVADOR":["Promocional"],"MATAMILO":["Promocional"],"MAURERNICOLAS":["Promocional"],"MAZZONISANTINO":["Selección"],"MENENDEZFELIX":["Cadetes"],"MENENDEZMANUEL":["Cadetes"],"MIRAVEFACUNDO":["Selección"],"MIRAVELUCAS":["Cadetes"],"MITAGSTEINSANTIAGO":["Cadetes","Juveniles B"],"MOCETTIPEDRO":["Selección"],"MONCALVOPEDRO":["Cadetes","Selección"],"MUSSOFRANCISCO":["Selección"],"PATONURICHANDRESMARTIN":["Selección"],"PENALBATHEO":["Promocional"],"PEREYRABAUTISTA":["Cadetes"],"PEREYRARAMIRO":["Selección"],"PIRESMADEIRALUCAS":["Promocional"],"PIRESMADEIRAMATEO":["Promocional"],"POZZONILUCAS":["Promocional"],"QUIROGADIEGOFACUNDO":["Selección"],"QUIROGANAZARENORAFAEL":["Selección"],"RETAMARBAUTISTA":["Cadetes","Selección"],"RIZZOLUCAS":["Cadetes","Juveniles B"],"RUIZDIAZMATEO":["Promocional"],"SABANICOLAS":["Cadetes","Juveniles B"],"SARBENJAMIN":["Selección"],"SARSANTIAGO":["Selección"],"SOMMAVALENTINO":["Cadetes","Juveniles B"],"STRACKGONZALO":["Promocional"],"TANFERNABAUTISTA":["Cadetes","Juveniles B"],"TOLEDOGONZALO":["Selección"],"VANZINIFRANCISCO":["Promocional"],"VELASCOFACUNDO":["Promocional"],"VINCENTSANTIAGO":["Cadetes"],"VINZONMATEO":["Selección"],"VINZONPABLOHORACIO":["Selección"],"VITULLOIGNACIO":["Promocional"],"ZIMBIMBAKISFACUNDO":["Selección"]},"base":{"ALBOROBLESSANTIAGO":[{"categoria":"Cadetes","pj":1,"goles":1,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":8,"goles":0,"ta":0,"tr":0}],"ALMENARAMANUEL":[{"categoria":"Promocional","pj":14,"goles":6,"ta":0,"tr":0}],"AMATOJANO":[{"categoria":"Promocional","pj":14,"goles":7,"ta":0,"tr":0}],"ANGANUZZILUCASEZEQUIEL":[{"categoria":"Selección","pj":11,"goles":0,"ta":1,"tr":0}],"ARANGURENJAVIER":[{"categoria":"Selección","pj":11,"goles":0,"ta":2,"tr":0}],"ARESBAUTISTA":[{"categoria":"Cadetes","pj":16,"goles":13,"ta":2,"tr":0}],"AVENAIGNACIO":[{"categoria":"Selección","pj":16,"goles":2,"ta":4,"tr":0}],"AVILATOBIAS":[{"categoria":"Juveniles B","pj":0,"goles":0,"ta":0,"tr":0}],"AWADAFELIPE":[{"categoria":"Cadetes","pj":1,"goles":0,"ta":0,"tr":0}],"BARCAROLOMAXIMILIANO":[{"categoria":"Juveniles B","pj":14,"goles":1,"ta":0,"tr":0}],"BARCAROLOSEBASTIAN":[{"categoria":"Juveniles B","pj":14,"goles":0,"ta":1,"tr":0}],"BARRABINFACUNDO":[{"categoria":"Selección","pj":1,"goles":0,"ta":0,"tr":0}],"BAUTISTACAMPANOFRANCISCO":[{"categoria":"Promocional","pj":15,"goles":0,"ta":0,"tr":0}],"BERTRALEZEQUIEL":[{"categoria":"Juveniles B","pj":15,"goles":0,"ta":1,"tr":0}],"BESZESANTIAGO":[{"categoria":"Selección","pj":2,"goles":0,"ta":0,"tr":0}],"BEUNZATOMAS":[{"categoria":"Juveniles B","pj":2,"goles":0,"ta":0,"tr":0}],"BIANDRATTIBENJAMIN":[{"categoria":"Juveniles B","pj":8,"goles":0,"ta":0,"tr":0}],"BIBBOMATEO":[{"categoria":"Selección","pj":0,"goles":0,"ta":0,"tr":0}],"BRITOSJUANIGNACIO":[{"categoria":"Cadetes","pj":7,"goles":0,"ta":0,"tr":0}],"BRITOSSANTIAGO":[{"categoria":"Promocional","pj":16,"goles":2,"ta":0,"tr":0}],"CANNONEMATIAS":[{"categoria":"Selección","pj":16,"goles":0,"ta":2,"tr":0}],"CARREGABAUTISTA":[{"categoria":"Promocional","pj":5,"goles":0,"ta":0,"tr":0}],"CARREGAJUANFRANCISCO":[{"categoria":"Juveniles B","pj":13,"goles":3,"ta":0,"tr":0}],"CAVALLEROFABRICIO":[{"categoria":"Cadetes","pj":13,"goles":5,"ta":0,"tr":0}],"CAVALLEROTIZIANO":[{"categoria":"Cadetes","pj":2,"goles":1,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":13,"goles":2,"ta":1,"tr":0}],"CLARKIGNACIOMARTIN":[{"categoria":"Selección","pj":5,"goles":0,"ta":2,"tr":0}],"CODNERFELIPE":[{"categoria":"Selección","pj":13,"goles":1,"ta":4,"tr":1}],"CODNERTOMAS":[{"categoria":"Selección","pj":15,"goles":1,"ta":0,"tr":0}],"COLOMBOSANTIAGO":[{"categoria":"Selección","pj":16,"goles":2,"ta":1,"tr":0}],"DEALZAAMATEO":[{"categoria":"Juveniles B","pj":5,"goles":1,"ta":0,"tr":0}],"DECICCOBENJAMIN":[{"categoria":"Cadetes","pj":13,"goles":6,"ta":1,"tr":1}],"ERRASTIBENJAMIN":[{"categoria":"Juveniles B","pj":10,"goles":0,"ta":1,"tr":0}],"FERNANDEZJOAQUIN":[{"categoria":"Juveniles B","pj":0,"goles":0,"ta":0,"tr":0}],"FERNANDEZRAFAEL":[{"categoria":"Cadetes","pj":8,"goles":2,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":10,"goles":2,"ta":0,"tr":0}],"FERNANDEZVITTARJOAQUIN":[{"categoria":"Selección","pj":1,"goles":0,"ta":0,"tr":0}],"FIOREFRANCISCOJOSE":[{"categoria":"Selección","pj":8,"goles":1,"ta":3,"tr":0}],"FIRPOMAXIMO":[{"categoria":"Promocional","pj":13,"goles":9,"ta":0,"tr":0}],"FRANZOLINILORENZO":[{"categoria":"Cadetes","pj":10,"goles":0,"ta":0,"tr":0}],"FREANFACUNDO":[{"categoria":"Cadetes","pj":12,"goles":4,"ta":0,"tr":0}],"FREANNICOLAS":[{"categoria":"Promocional","pj":0,"goles":0,"ta":0,"tr":0}],"GALINDEZSANTIAGO":[{"categoria":"Selección","pj":5,"goles":0,"ta":0,"tr":0}],"GALLAGHERMATEO":[{"categoria":"Cadetes","pj":13,"goles":1,"ta":0,"tr":0}],"GARBOVESKYBORIS":[{"categoria":"Promocional","pj":16,"goles":5,"ta":0,"tr":0}],"GARCIAMOSQIGNACIO":[{"categoria":"Cadetes","pj":15,"goles":2,"ta":2,"tr":0}],"GARZONFRANCO":[{"categoria":"Cadetes","pj":10,"goles":3,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":9,"goles":0,"ta":0,"tr":0}],"GASPARIAGUSTIN":[{"categoria":"Juveniles B","pj":8,"goles":0,"ta":0,"tr":0}],"GAVIRIAIKER":[{"categoria":"Promocional","pj":14,"goles":0,"ta":0,"tr":0}],"GONZALEZFABRICIO":[{"categoria":"Promocional","pj":14,"goles":0,"ta":0,"tr":0}],"GROSSOALMIRONGALO":[{"categoria":"Juveniles B","pj":6,"goles":0,"ta":4,"tr":0}],"IERVASIFRANCISCO":[{"categoria":"Juveniles B","pj":4,"goles":0,"ta":0,"tr":0}],"JACOMEPEDRO":[{"categoria":"Cadetes","pj":5,"goles":1,"ta":0,"tr":0}],"LEVYYEYATINICOLAS":[{"categoria":"Promocional","pj":10,"goles":5,"ta":0,"tr":0}],"LONGUETFRANCISCO":[{"categoria":"Promocional","pj":14,"goles":2,"ta":0,"tr":0}],"LOPEZROBBIOIGNACIO":[{"categoria":"Juveniles B","pj":0,"goles":0,"ta":0,"tr":0}],"LOPEZTODAROJULIAN":[{"categoria":"Cadetes","pj":12,"goles":0,"ta":0,"tr":0}],"MARTINNAHUELNICOLAS":[{"categoria":"Selección","pj":0,"goles":0,"ta":0,"tr":0}],"MARTINSALVADOR":[{"categoria":"Promocional","pj":13,"goles":0,"ta":0,"tr":0}],"MATAMILO":[{"categoria":"Promocional","pj":8,"goles":3,"ta":0,"tr":0}],"MAURERNICOLAS":[{"categoria":"Promocional","pj":16,"goles":2,"ta":1,"tr":0}],"MAZZONISANTINO":[{"categoria":"Selección","pj":13,"goles":2,"ta":9,"tr":2}],"MENENDEZFELIX":[{"categoria":"Cadetes","pj":12,"goles":2,"ta":0,"tr":0}],"MENENDEZMANUEL":[{"categoria":"Cadetes","pj":8,"goles":0,"ta":2,"tr":1}],"MIRAVEFACUNDO":[{"categoria":"Selección","pj":8,"goles":0,"ta":0,"tr":0}],"MIRAVELUCAS":[{"categoria":"Cadetes","pj":14,"goles":0,"ta":0,"tr":0}],"MITAGSTEINSANTIAGO":[{"categoria":"Cadetes","pj":16,"goles":8,"ta":2,"tr":0},{"categoria":"Juveniles B","pj":16,"goles":0,"ta":1,"tr":0}],"MOCETTIPEDRO":[{"categoria":"Selección","pj":13,"goles":2,"ta":4,"tr":0}],"MONCALVOPEDRO":[{"categoria":"Cadetes","pj":4,"goles":0,"ta":1,"tr":0},{"categoria":"Selección","pj":1,"goles":0,"ta":0,"tr":0}],"MUSSOFRANCISCO":[{"categoria":"Selección","pj":15,"goles":2,"ta":3,"tr":0}],"ODRIOZOLALUCAS":[{"categoria":"Juveniles B","pj":3,"goles":0,"ta":0,"tr":0}],"PATONURICHANDRESMARTIN":[{"categoria":"Selección","pj":13,"goles":0,"ta":1,"tr":0}],"PENALBATHEO":[{"categoria":"Promocional","pj":15,"goles":0,"ta":0,"tr":0}],"PEREYRABAUTISTA":[{"categoria":"Cadetes","pj":8,"goles":2,"ta":0,"tr":0}],"PEREYRARAMIRO":[{"categoria":"Selección","pj":1,"goles":0,"ta":1,"tr":0}],"PIRESMADEIRALUCAS":[{"categoria":"Promocional","pj":15,"goles":25,"ta":1,"tr":0}],"PIRESMADEIRAMATEO":[{"categoria":"Promocional","pj":13,"goles":10,"ta":0,"tr":0}],"POZZONILUCAS":[{"categoria":"Promocional","pj":17,"goles":38,"ta":0,"tr":0}],"QUIROGADIEGOFACUNDO":[{"categoria":"Selección","pj":9,"goles":0,"ta":4,"tr":0}],"QUIROGANAZARENORAFAEL":[{"categoria":"Selección","pj":2,"goles":0,"ta":0,"tr":0}],"RETAMARBAUTISTA":[{"categoria":"Cadetes","pj":3,"goles":8,"ta":0,"tr":1},{"categoria":"Selección","pj":4,"goles":1,"ta":0,"tr":0}],"RIZZOLUCAS":[{"categoria":"Cadetes","pj":13,"goles":1,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":6,"goles":0,"ta":0,"tr":0}],"RUIZDIAZMATEO":[{"categoria":"Promocional","pj":7,"goles":0,"ta":0,"tr":0}],"SABANICOLAS":[{"categoria":"Cadetes","pj":10,"goles":2,"ta":2,"tr":1},{"categoria":"Juveniles B","pj":8,"goles":0,"ta":0,"tr":0}],"SANCHEZCORRAOBAUTISTA":[{"categoria":"Juveniles B","pj":13,"goles":2,"ta":5,"tr":1}],"SARBENJAMIN":[{"categoria":"Selección","pj":9,"goles":0,"ta":2,"tr":0}],"SARSANTIAGO":[{"categoria":"Selección","pj":13,"goles":1,"ta":4,"tr":0}],"SCAVETTAFACUNDO":[{"categoria":"Juveniles B","pj":0,"goles":0,"ta":0,"tr":0}],"SOMMAVALENTINO":[{"categoria":"Cadetes","pj":16,"goles":1,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":11,"goles":1,"ta":0,"tr":0}],"SPINELLIJUANBAUTISTA":[{"categoria":"Cadetes","pj":0,"goles":0,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":12,"goles":0,"ta":3,"tr":0}],"STRACKGONZALO":[{"categoria":"Promocional","pj":11,"goles":1,"ta":0,"tr":0}],"TANFERNABAUTISTA":[{"categoria":"Cadetes","pj":3,"goles":0,"ta":0,"tr":0},{"categoria":"Juveniles B","pj":3,"goles":0,"ta":0,"tr":0}],"TOLEDOGONZALO":[{"categoria":"Selección","pj":14,"goles":0,"ta":1,"tr":1}],"VANZINIFRANCISCO":[{"categoria":"Promocional","pj":12,"goles":1,"ta":1,"tr":0}],"VELASCOFACUNDO":[{"categoria":"Promocional","pj":9,"goles":0,"ta":0,"tr":0}],"VINCENTSANTIAGO":[{"categoria":"Cadetes","pj":16,"goles":2,"ta":0,"tr":0}],"VINZONMATEO":[{"categoria":"Selección","pj":14,"goles":1,"ta":5,"tr":0}],"VINZONPABLOHORACIO":[{"categoria":"Selección","pj":5,"goles":0,"ta":2,"tr":1}],"VITULLOIGNACIO":[{"categoria":"Promocional","pj":14,"goles":0,"ta":0,"tr":0}],"ZIMBIMBAKISFACUNDO":[{"categoria":"Selección","pj":9,"goles":0,"ta":3,"tr":0}],"ZIMBIMBAKISSANTIAGO":[{"categoria":"Selección","pj":0,"goles":0,"ta":0,"tr":0}],"ZOFFISANTINO":[{"categoria":"Juveniles B","pj":17,"goles":0,"ta":0,"tr":0}]}};
+
+/* Planteles por categoría (planilla del club). No toca Juveniles: esa categoría
+   ya está cargada partido a partido y sumarle el agregado la duplicaría. */
+async function cargarPlanteles(){
+  if (!db.jugadores.length) return toast('Primero cargá el plantel del club');
+  const S = SEED_PLANTELES;
+
+  /* 1. apellidos que la planilla corrige */
+  const antes = {}; db.jugadores.forEach(j=>{ antes[keyJugador(j)] = j; });
+  let corr = 0;
+  S.correcciones.forEach(c=>{ const j = antes[c.key]; if (!j) return;
+    j.apellido = c.apellido; j.nombre = c.nombre; corr++; });
+
+  const idx = {}; db.jugadores.forEach(j=>{ idx[keyJugador(j)] = j; });
+
+  /* 2. altas que faltaban */
+  let alta = 0;
+  S.nuevos.forEach(n=>{ if (idx[n.key]) return;
+    const j = { id:uid(), apellido:n.apellido, nombre:n.nombre, carnet:'', fechaNac:null,
+      categorias:[...n.categorias], posiciones:[], pierna:'', piernaMala:null, altura:null };
+    db.jugadores.push(j); idx[n.key] = j; alta++; });
+
+  /* 3. categorías: se suman, no se reemplazan */
+  let cats = 0;
+  Object.keys(S.categorias).forEach(k=>{ const j = idx[k]; if (!j) return;
+    j.categorias = j.categorias || [];
+    S.categorias[k].forEach(c=>{ if (!j.categorias.includes(c)){ j.categorias.push(c); cats++; } }); });
+
+  /* 4. PJ, goles y tarjetas de planilla */
+  let base = 0;
+  Object.keys(S.base).forEach(k=>{ const j = idx[k]; if (!j) return;
+    j.base = S.base[k].map(b=>({...b})); base++; });
+
+  await Store.save(db);
+  toast(`Planteles: ${alta} altas · ${cats} categorías · ${base} con datos` + (corr?` · ${corr} apellidos`:''));
   render();
 }
 
