@@ -244,6 +244,15 @@ const FORMACIONES = {
            ['Delantero Centro',37,15],['Delantero Centro',63,15]]
 };
 
+const ORDENES = [
+  {id:'apellido',  nombre:'A-Z'},
+  {id:'pj',        nombre:'Partidos'},
+  {id:'goles',     nombre:'Goles'},
+  {id:'amarillas', nombre:'Amarillas'},
+  {id:'rojas',     nombre:'Rojas'},
+  {id:'nota',      nombre:'Nota'}
+];
+
 const FASES = [
   {id:'activacion', nombre:'Entrada en calor',  color:'#8AA1B1'},
   {id:'tecnica',    nombre:'Técnica',           color:'#2E7D46'},
@@ -260,7 +269,7 @@ let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], 
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'' };
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido' };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -302,6 +311,19 @@ function puedeVer(j){
   return cats.some(c => p.includes(c));
 }
 function jugadoresVisibles(){ return db.jugadores.filter(puedeVer); }
+
+/* orden del plantel: alfabético, o de mayor a menor por la columna elegida */
+function ordenarPlantel(lista, cat){
+  const az = (a,b)=>(a.apellido||'').localeCompare(b.apellido||'');
+  const o = view.orden || 'apellido';
+  if (o==='apellido') return lista.sort(az);
+  const valor = j => {
+    if (o==='nota') return promedioTecnico(j.id) ?? -1;
+    const t = totalesConBase(j.id, cat);
+    return t[o] || 0;
+  };
+  return lista.sort((a,b)=> (valor(b)-valor(a)) || az(a,b));
+}
 
 /* la app trae tres bases embebidas; esto dice cuáles faltan cargar */
 function faltaCargar(){
@@ -405,13 +427,15 @@ function render(){
 function pantallaPlantel(){
   const cats = catsPermitidas();
   if (!cats.includes(view.categoria) && view.categoria!=='Todas') view.categoria='Todas';
-  const lista = jugadoresVisibles()
-    .filter(j => view.categoria==='Todas' || (j.categorias||[]).includes(view.categoria))
-    .sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+  const lista = ordenarPlantel(jugadoresVisibles()
+    .filter(j => view.categoria==='Todas' || (j.categorias||[]).includes(view.categoria)),
+    view.categoria);
 
   let h = `<h2 class="screen-title">Plantel</h2>
     <p class="screen-note">${jugadoresVisibles().length} jugadores. La nota es el promedio técnico-táctico de la última toma.</p>
-    <div class="chips">${['Todas',...cats].map(c=>`<button class="chip" data-cat="${esc(c)}" aria-pressed="${view.categoria===c}">${esc(c)}</button>`).join('')}</div>`;
+    <div class="chips">${['Todas',...cats].map(c=>`<button class="chip" data-cat="${esc(c)}" aria-pressed="${view.categoria===c}">${esc(c)}</button>`).join('')}</div>
+    <span class="label" style="display:block;margin-bottom:6px">Ordenar por</span>
+    <div class="chips">${ORDENES.map(o=>`<button class="chip" data-orden="${o.id}" aria-pressed="${(view.orden||'apellido')===o.id}">${esc(o.nombre)}</button>`).join('')}</div>`;
 
   const pendientes = botonesPendientes();
   if (db.jugadores.length && pendientes){
@@ -1328,6 +1352,9 @@ app.addEventListener('click', async e=>{
 
   const chipCat = t.closest('.chip[data-cat]');
   if (chipCat){ view.categoria=chipCat.dataset.cat; view.slotAbierto=null; return render(); }
+
+  const chipOrden = t.closest('.chip[data-orden]');
+  if (chipOrden){ view.orden=chipOrden.dataset.orden; window.scrollTo(0,0); return render(); }
 
   const chipForm = t.closest('.chip[data-form]');
   if (chipForm){ view.formacion=chipForm.dataset.form; view.slotAbierto=null; return render(); }
