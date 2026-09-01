@@ -303,6 +303,22 @@ function puedeVer(j){
 }
 function jugadoresVisibles(){ return db.jugadores.filter(puedeVer); }
 
+/* la app trae tres bases embebidas; esto dice cuáles faltan cargar */
+function faltaCargar(){
+  const hay = {}; db.jugadores.forEach(j=>{ hay[keyJugador(j)] = 1; });
+  return {
+    club:      !db.jugadores.length,
+    juveniles: db.jugadores.length && !db.jugadores.some(j=>(j.historial||[]).length),
+    planteles: db.jugadores.length && SEED_PLANTELES.nuevos.some(n=>!hay[n.key])
+  };
+}
+function botonesPendientes(){
+  const f = faltaCargar(); let h = '';
+  if (f.juveniles) h += `<div class="gap"></div><button class="btn btn-naranja" id="cargarJuv">Cargar datos de Juveniles</button>`;
+  if (f.planteles) h += `<div class="gap"></div><button class="btn btn-naranja" id="cargarPlanteles">Cargar planteles del club</button>`;
+  return h;
+}
+
 function tomasOrden(){ return [...db.tomas].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')); }
 function evalsDe(id){
   const orden = tomasOrden().map(t=>t.id);
@@ -397,13 +413,22 @@ function pantallaPlantel(){
     <p class="screen-note">${jugadoresVisibles().length} jugadores. La nota es el promedio técnico-táctico de la última toma.</p>
     <div class="chips">${['Todas',...cats].map(c=>`<button class="chip" data-cat="${esc(c)}" aria-pressed="${view.categoria===c}">${esc(c)}</button>`).join('')}</div>`;
 
+  const pendientes = botonesPendientes();
+  if (db.jugadores.length && pendientes){
+    h += `<div class="block" style="border-color:var(--naranja)">
+      <div class="block-title">Falta cargar</div>
+      <p class="screen-note" style="margin:0">La app trae más datos embebidos que todavía no están en esta base.</p>
+      ${pendientes}</div>`;
+  }
+
   if (!db.jugadores.length){
     h += `<div class="empty"><p>Todavía no hay jugadores. Podés cargar el plantel real desde la planilla del club, o probar con datos de ejemplo.</p>
       <button class="btn btn-naranja" id="cargarHSM">Cargar plantel del club</button><div class="gap"></div>
       <button class="btn btn-ghost" data-go="nuevoJugador">Agregar uno a mano</button><div class="gap"></div>
       <button class="btn btn-ghost" id="seed">Datos de ejemplo</button></div>`;
   } else if (!lista.length){
-    h += `<div class="empty"><p>No hay jugadores en ${esc(view.categoria)}.</p></div>`;
+    h += `<div class="empty"><p>No hay jugadores en ${esc(view.categoria)}.</p>
+      ${botonesPendientes()?`<p class="screen-note">Puede que falte cargar datos: mirá "Falta cargar" arriba.</p>`:''}</div>`;
   } else {
     h += `<div class="roster">`+lista.map(j=>{
       const p = promedioTecnico(j.id), t = totalesConBase(j.id, view.categoria), e = edad(j.fechaNac);
@@ -1235,12 +1260,12 @@ function pantallaDatos(){
     </div>
     <div class="block"><div class="block-title">Juveniles 2026</div>
       <p class="screen-note">Amistosos 2026 partido a partido, tests físicos 2025-2026 y totales por temporada 2023-2026.</p>
-      <div class="gap"></div><button class="btn btn-naranja" id="cargarJuv">Cargar datos de Juveniles</button>
+      <div class="gap"></div><button class="btn ${faltaCargar().juveniles?'btn-naranja':'btn-ghost'}" id="cargarJuv">${faltaCargar().juveniles?'Cargar datos de Juveniles':'Ya cargado · volver a cargar'}</button>
     </div>
     <div class="block"><div class="block-title">Planteles por categoría</div>
       <p class="screen-note">Promocionales, Cadetes, Juveniles B y Selección: altas que faltaban,
       categorías y PJ/goles/tarjetas de planilla. No toca Juveniles.</p>
-      <div class="gap"></div><button class="btn btn-naranja" id="cargarPlanteles">Cargar planteles</button>
+      <div class="gap"></div><button class="btn ${faltaCargar().planteles?'btn-naranja':'btn-ghost'}" id="cargarPlanteles">${faltaCargar().planteles?'Cargar planteles':'Ya cargado · volver a cargar'}</button>
     </div>
     <div class="block"><div class="block-title">Exportar</div>
       <button class="btn btn-ghost" data-csv="jugadores">CSV de jugadores</button><div class="gap"></div>
