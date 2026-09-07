@@ -191,20 +191,105 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 
 <div class="toast" id="toast"></div>
 
+<!-- Firebase, build "compat": funciona sin bundler ni pasos de compilacion.
+     Si estos archivos no cargan, la app sigue andando contra el navegador. -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
 <script>
 /* =========================================================
    1. ALMACENAMIENTO — única capa a reemplazar por Firebase
    ========================================================= */
 const KEY = 'hsm:v2';
 let memoria = null;
+/* =========================================================
+   1b. FIREBASE
+   La base entera vive en un documento. Si el SDK no carga, si no hay red
+   o si las reglas no dejan, todo cae a la copia local del navegador.
+   ========================================================= */
+const FB_CONFIG = {
+  apiKey: "AIzaSyDUtDEhpvG9gkTPRtyM3K9GDK_3ax8Wroo",
+  authDomain: "hsm-base-de-datos.firebaseapp.com",
+  projectId: "hsm-base-de-datos",
+  storageBucket: "hsm-base-de-datos.firebasestorage.app",
+  messagingSenderId: "306283022793",
+  appId: "1:306283022793:web:00a395e55947a288ce8018"
+};
+const FB_COL = 'hsm', FB_DOC = 'base';
+
+let fb = null;            /* { db, auth, ref } cuando el SDK está */
+let fbUser = null;        /* usuario logueado, o null */
+let fbEstado = 'off';     /* off · listo · sinPermiso · error */
+
+function fbInit(){
+  try{
+    if (typeof firebase === 'undefined' || !FB_CONFIG.projectId) return false;
+    firebase.initializeApp(FB_CONFIG);
+    fb = { db: firebase.firestore(), auth: firebase.auth() };
+    fb.ref = fb.db.collection(FB_COL).doc(FB_DOC);
+    fb.auth.onAuthStateChanged(u=>{ fbUser = u || null; });
+    return true;
+  }catch(e){ console.warn('Firebase no disponible:', e); fb = null; return false; }
+}
+/* espera a que Firebase resuelva si hay sesión guardada */
+function fbEsperarSesion(){
+  if (!fb) return Promise.resolve(null);
+  return new Promise(res=>{
+    const off = fb.auth.onAuthStateChanged(u=>{ off(); fbUser = u || null; res(fbUser); });
+    setTimeout(()=>res(fbUser), 4000);
+  });
+}
+async function fbLeer(){
+  if (!fb) return null;
+  try{
+    const snap = await fb.ref.get();
+    fbEstado = 'listo';
+    const d = snap.exists ? snap.data() : null;
+    return d && d.json ? JSON.parse(d.json) : null;
+  }catch(e){
+    fbEstado = (e && e.code === 'permission-denied') ? 'sinPermiso' : 'error';
+    console.warn('Firestore · lectura:', (e && e.code) || e);
+    return null;
+  }
+}
+async function fbEscribir(d){
+  if (!fb || !fbUser) return false;
+  try{
+    await fb.ref.set({ json: JSON.stringify(d), actualizado: Date.now(),
+                       por: (fbUser.email || '') });
+    return true;
+  }catch(e){ console.warn('Firestore · escritura:', (e && e.code) || e); return false; }
+}
+/* no escribimos en cada tecla: se junta y se sube una vez */
+let subidaPend = null, subidaUlt = null;
+function programarSubida(d){
+  subidaUlt = d;
+  clearTimeout(subidaPend);
+  subidaPend = setTimeout(async ()=>{
+    const ok = await fbEscribir(subidaUlt);
+    if (!ok && fbUser) toast('No se pudo guardar en la nube; quedó en este dispositivo');
+  }, 1200);
+}
+
 const Store = {
-  async load(){
+  async local(){
     if (window.storage){ try{ const r = await window.storage.get(KEY,false); return r?JSON.parse(r.value):null; }catch(e){ return null; } }
     try{ const v = localStorage.getItem(KEY); return v?JSON.parse(v):null; }catch(e){ return memoria; }
   },
-  async save(d){
+  async guardarLocal(d){
     if (window.storage){ try{ await window.storage.set(KEY, JSON.stringify(d), false); return true; }catch(e){ return false; } }
     try{ localStorage.setItem(KEY, JSON.stringify(d)); return true; }catch(e){ memoria = d; return true; }
+  },
+  async load(){
+    const nube = await fbLeer();
+    if (nube) return nube;
+    return await Store.local();
+  },
+  async save(d){
+    await Store.guardarLocal(d);     /* siempre, para que ande sin conexión */
+    if (fb && fbUser) programarSubida(d);
+    return true;
   }
 };
 
@@ -281,7 +366,7 @@ const esCoord = () => db.config.acceso === 'coordinacion';
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false };
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false, acMail:'' };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -478,26 +563,66 @@ const colorSem = v => v>=7?'var(--verde)':v>=5?'var(--ambar)':'var(--rojo)';
 const app = document.getElementById('app');
 
 function pantallaAcceso(){
-  app.innerHTML = `<div class="puerta">
-    <h2 class="screen-title">Entrar</h2>
-    <p class="screen-note">Elegí cómo vas a usar la app. Podés cambiar después desde "salir", arriba a la derecha.</p>
-    ${view.puerta==='clave' ? `
-      <div class="block"><div class="block-title">Coordinación</div>
+  const conNube = !!fb;
+  const pideLoginJugador = conNube && fbEstado === 'sinPermiso';
+  const formLogin = (titulo, nota) => `
+      <div class="block"><div class="block-title">${titulo}</div>
+        ${nota?`<p class="screen-note" style="margin-top:0">${nota}</p>`:''}
+        ${conNube?`<div class="field"><label class="label" for="ac-mail">Correo</label>
+          <input type="email" id="ac-mail" autocomplete="username" placeholder="nombre@correo.com"
+            value="${esc(view.acMail||'')}"></div>`:''}
         <div class="field"><label class="label" for="ac-clave">Contraseña</label>
           <input type="password" id="ac-clave" autocomplete="current-password" placeholder="••••••••"></div>
-        ${view.claveMal?`<p class="screen-note" style="color:var(--rojo);margin-top:-6px">Contraseña incorrecta.</p>`:''}
+        ${view.claveMal?`<p class="screen-note" style="color:var(--rojo);margin-top:-6px">${esc(view.claveMal)}</p>`:''}
         <button class="btn btn-naranja" id="ac-entrar">Entrar</button>
         <div class="gap"></div>
         <button class="btn btn-ghost" id="ac-volver">Volver</button>
-      </div>` : `
+      </div>`;
+
+  app.innerHTML = `<div class="puerta">
+    <h2 class="screen-title">Entrar</h2>
+    <p class="screen-note">Elegí cómo vas a usar la app. Podés cambiar después desde "salir", arriba a la derecha.</p>
+    ${view.puerta==='coord' ? formLogin('Coordinación','')
+    : view.puerta==='jugador' ? formLogin('Jugadores','Pedile el usuario y la contraseña a coordinación.')
+    : `
       <button class="opt" id="ac-jugador">
         <strong>Soy jugador</strong>
-        <span>Ver el plantel, la cancha y los entrenamientos. Sin contraseña.</span></button>
+        <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide usuario.':' Sin contraseña.'}</span></button>
       <button class="opt" id="ac-coord">
         <strong>Coordinación</strong>
-        <span>Además cargar partidos, entrenamientos y editar los datos. Pide contraseña.</span></button>`}
+        <span>Además cargar partidos, entrenamientos y editar los datos. Pide usuario y contraseña.</span></button>
+      ${fbEstado==='error'?`<p class="screen-note" style="color:var(--rojo)">
+        No se pudo conectar con la nube. Vas a trabajar contra este dispositivo solamente.</p>`:''}`}
   </div>`;
-  const inp = document.getElementById('ac-clave'); if (inp) inp.focus();
+  /* si ya escribió el correo, el foco va a la contraseña */
+  const inp = document.getElementById(conNube && view.puerta && !view.acMail ? 'ac-mail' : 'ac-clave');
+  if (inp) inp.focus();
+}
+
+/* entra y, si hay nube, se loguea de verdad */
+async function entrar(rol){
+  const mail  = (document.getElementById('ac-mail')||{}).value || '';
+  const clave = (document.getElementById('ac-clave')||{}).value || '';
+  view.acMail = mail;                     /* no se pierde si la clave sale mal */
+
+  if (!fb){                                   /* sin nube: la clave del archivo */
+    if (rol==='coordinacion' && clave !== CLAVE_COORD){
+      view.claveMal = 'Contraseña incorrecta.'; return render();
+    }
+  } else {
+    try { await fb.auth.signInWithEmailAndPassword(mail.trim(), clave); }
+    catch(e){
+      view.claveMal = (e && e.code==='auth/invalid-email')
+        ? 'Ese correo no es válido.' : 'Correo o contraseña incorrectos.';
+      return render();
+    }
+    /* con sesión abierta ya podemos leer; si la nube está vacía, subimos lo de acá */
+    const nube = await fbLeer();
+    if (nube) { db = Object.assign(db, nube, {config: Object.assign(db.config, nube.config||{})}); }
+    else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
+  }
+  db.config.acceso = rol; view.puerta = null; view.claveMal = false; view.acMail = '';
+  await Store.save(db); render();
 }
 
 function render(){
@@ -1508,6 +1633,7 @@ document.getElementById('rolebox').addEventListener('click', async e=>{
   if (!e.target.closest('#salir')) return;
   db.config.acceso=null; view.puerta=null; view.jugadorId=null; view.form=null;
   view.tab='plantel'; marcarTab('plantel');
+  if (fb){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
   await Store.save(db); render();
 });
 
@@ -1519,7 +1645,7 @@ document.querySelector('.tabs').addEventListener('click', e=>{
 });
 
 app.addEventListener('keydown', e=>{
-  if (e.target.id==='ac-clave' && e.key==='Enter'){
+  if ((e.target.id==='ac-clave'||e.target.id==='ac-mail') && e.key==='Enter'){
     e.preventDefault(); document.getElementById('ac-entrar').click();
   }
 });
@@ -1549,15 +1675,13 @@ app.addEventListener('click', async e=>{
 
   /* puerta de entrada; los botones tienen texto adentro, así que subimos al botón */
   const puerta = t.closest('#ac-jugador,#ac-coord');
-  if (puerta && puerta.id==='ac-jugador'){ db.config.acceso='jugador'; await Store.save(db); return render(); }
-  if (puerta && puerta.id==='ac-coord'){ view.puerta='clave'; view.claveMal=false; return render(); }
-  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
-  if (t.id==='ac-entrar'){
-    const v = (document.getElementById('ac-clave')||{}).value || '';
-    if (v !== CLAVE_COORD){ view.claveMal=true; return render(); }
-    db.config.acceso='coordinacion'; view.puerta=null; view.claveMal=false;
-    await Store.save(db); return render();
+  if (puerta && puerta.id==='ac-jugador'){
+    if (fb && fbEstado==='sinPermiso'){ view.puerta='jugador'; view.claveMal=false; return render(); }
+    db.config.acceso='jugador'; await Store.save(db); return render();
   }
+  if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
+  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
+  if (t.id==='ac-entrar'){ return entrar(view.puerta==='jugador' ? 'jugador' : 'coordinacion'); }
   /* como jugador se mira, no se toca */
   if (!esCoord()){
     const muta = t.closest('[data-editar],[data-borrar],[data-borrarSesion],[data-borrarEj],[data-guardar],[data-go]');
@@ -2010,6 +2134,8 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
 
 /* ---------- arranque ---------- */
 (async function(){
+  fbInit();
+  await fbEsperarSesion();
   const g = await Store.load();
   if (g) db = Object.assign(db, g, {config: Object.assign(db.config, g.config||{})});
   /* datos viejos: posicion + posicionAlt pasan a ser una lista */
@@ -2025,7 +2151,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
      así que se cargan solos. Sin esto, un jugador en una PC nueva no ve nada
      y no tiene cómo cargarlo. */
-  if (!db.jugadores.length){
+  if (!db.jugadores.length && fbEstado !== 'sinPermiso'){
     try {
       await cargarBaseHSM(true);
       await cargarJuveniles(true);
