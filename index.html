@@ -588,6 +588,7 @@ function pantallaAcceso(){
     <p class="screen-note">Elegí cómo vas a usar la app. Podés cambiar después desde "salir", arriba a la derecha.</p>
     ${view.puerta==='coord' ? formLogin('Coordinación','')
     : view.puerta==='jugador' ? formLogin('Jugadores','Pedile la contraseña a coordinación.')
+      + `<div class="gap"></div><button class="btn btn-ghost" id="ac-local">Ver sin conexión</button>`
     : `
       <button class="opt" id="ac-jugador">
         <strong>Soy jugador</strong>
@@ -644,10 +645,12 @@ function render(){
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = permitidas.includes(b.dataset.tab) ? '' : 'none'; });
   if (!permitidas.includes(view.tab)){ view.tab='plantel'; marcarTab('plantel'); }
-  document.getElementById('rolebox').innerHTML = esCoord()
-    ? `${c.rol==='DT' ? 'DT · '+esc(c.categoriaDT||'sin categoría') : 'Coordinación · todas'}<br>
-       <button class="linkish" id="salir">salir</button>`
-    : `Jugador · solo lectura<br><button class="linkish" id="salir">salir</button>`;
+  const sinNube = fbEstado !== 'listo';
+  document.getElementById('rolebox').innerHTML = (esCoord()
+    ? `${c.rol==='DT' ? 'DT · '+esc(c.categoriaDT||'sin categoría') : 'Coordinación · todas'}`
+    : `Jugador · solo lectura`)
+    + (sinNube ? `<br><span style="color:var(--rojo)">solo este dispositivo</span>` : '')
+    + `<br><button class="linkish" id="salir">salir</button>`;
   if (view.jugadorId) return fichaJugador();
   if (view.tab==='plantel') return pantallaPlantel();
   if (view.tab==='cancha')  return pantallaCancha();
@@ -1686,6 +1689,10 @@ app.addEventListener('click', async e=>{
   }
   if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
   if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
+  if (t.id==='ac-local'){          /* mirar lo que hay en este dispositivo */
+    db.config.acceso='jugador'; view.puerta=null; view.claveMal=false;
+    await Store.save(db); return render();
+  }
   if (t.id==='ac-entrar'){ return entrar(view.puerta==='jugador' ? 'jugador' : 'coordinacion'); }
   /* como jugador se mira, no se toca */
   if (!esCoord()){
@@ -2156,7 +2163,9 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
      así que se cargan solos. Sin esto, un jugador en una PC nueva no ve nada
      y no tiene cómo cargarlo. */
-  if (!db.jugadores.length && fbEstado !== 'sinPermiso'){
+  /* Si no hay nada, sembramos igual aunque la nube haya rechazado la lectura:
+     una app vacía no le sirve a nadie, y estos datos vienen en el archivo. */
+  if (!db.jugadores.length){
     try {
       await cargarBaseHSM(true);
       await cargarJuveniles(true);
