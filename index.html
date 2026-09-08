@@ -366,9 +366,10 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
 
 let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], config:{rol:'Coordinador', categoriaDT:'', acceso:null} };
 
-/* La clave es una puerta para no editar sin querer, no un candado: viaja en el
-   HTML y cualquiera que mire el código fuente la ve. */
-const CLAVE_COORD = '20coordhsm26';
+/* Respaldo para cuando Firebase no carga. NO es la contraseña de coordinación:
+   esa la valida Firebase y no está en este archivo. Esta solo permite editar en
+   este dispositivo, y esos cambios no se sincronizan con nadie. */
+const CLAVE_LOCAL = 'hsm-sin-conexion';
 const esCoord = () => db.config.acceso === 'coordinacion';
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
@@ -608,7 +609,7 @@ async function entrar(rol){
   const clave = (document.getElementById('ac-clave')||{}).value || '';
 
   if (!fb){                                   /* sin nube: la clave del archivo */
-    if (rol==='coordinacion' && clave !== CLAVE_COORD){
+    if (rol==='coordinacion' && clave !== CLAVE_LOCAL){
       view.claveMal = 'Contraseña incorrecta.'; return render();
     }
   } else {
