@@ -408,7 +408,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false, dtCat:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
-             pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas' };
+             pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -1372,7 +1372,7 @@ const pizSubNombre = (catId, subId) => {
 
 function pizNuevo(categoria, subcategoria){
   return { id:uid(), categoria:categoria||'', subcategoria:subcategoria||'',
-           nombre:'', duracion:'', explicacion:'', creado:new Date().toISOString(),
+           nombre:'', duracion:'', explicacion:'', creado:new Date().toISOString(), modificado:null,
            elementos:[], trazos:[] };
 }
 const pizClonarDraft = ej => JSON.parse(JSON.stringify(ej));
@@ -1622,6 +1622,34 @@ function pizPushUndo(){
   view.pizRedo = [];
 }
 function pizAplicar(cambios){ pizPushUndo(); Object.assign(view.pizDraft, cambios); render(); }
+/* deshacer/rehacer compartidos entre los botones de la barra y los atajos de teclado */
+function pizDeshacer(){
+  if (!view.pizUndo.length) return false;
+  view.pizRedo.push(JSON.stringify({elementos:view.pizDraft.elementos, trazos:view.pizDraft.trazos}));
+  const prev = JSON.parse(view.pizUndo.pop());
+  view.pizDraft.elementos = prev.elementos; view.pizDraft.trazos = prev.trazos;
+  view.pizSelId = null; return true;
+}
+function pizRehacer(){
+  if (!view.pizRedo.length) return false;
+  view.pizUndo.push(JSON.stringify({elementos:view.pizDraft.elementos, trazos:view.pizDraft.trazos}));
+  const next = JSON.parse(view.pizRedo.pop());
+  view.pizDraft.elementos = next.elementos; view.pizDraft.trazos = next.trazos;
+  view.pizSelId = null; return true;
+}
+function pizCopiarSel(){
+  const el = view.pizSelId && (view.pizDraft.elementos||[]).find(x=>x.id===view.pizSelId);
+  if (!el || !PIZ_PUNTO.includes(el.tipo)) return false;
+  view.pizClipboard = {...el}; return true;
+}
+function pizPegar(){
+  if (!view.pizClipboard) return false;
+  pizPushUndo();
+  const copia = {...view.pizClipboard, id:uid(),
+    x:Math.min(PIZ_W-1, view.pizClipboard.x+3), y:Math.min(PIZ_H-1, view.pizClipboard.y+3)};
+  view.pizDraft.elementos.push(copia);
+  view.pizSelId = copia.id; return true;
+}
 
 /* ---- interacción sobre el svg: cada gesto mueve el DOM directamente
    (fluido) y recién al soltar toca el estado y vuelve a pintar una vez ---- */
@@ -1774,13 +1802,18 @@ function pizWire(){
 
   if (pizTeclado) window.removeEventListener('keydown', pizTeclado);
   pizTeclado = e=>{
-    if (!view.pizDraft || !view.pizSelId) return;
+    if (!view.pizDraft) return;
     if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
-    if (e.key==='Delete' || e.key==='Backspace'){
+    const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    if (view.pizSelId && (e.key==='Delete' || e.key==='Backspace')){
       e.preventDefault(); pizPushUndo();
       view.pizDraft.elementos = view.pizDraft.elementos.filter(x=>x.id!==view.pizSelId);
-      view.pizSelId = null; render();
+      view.pizSelId = null; render(); return;
     }
+    if (mod && k==='z' && !e.shiftKey){ e.preventDefault(); if (pizDeshacer()) render(); return; }
+    if (mod && (k==='y' || (k==='z' && e.shiftKey))){ e.preventDefault(); if (pizRehacer()) render(); return; }
+    if (mod && k==='c'){ if (pizCopiarSel()) e.preventDefault(); return; }
+    if (mod && k==='v'){ e.preventDefault(); if (pizPegar()) render(); return; }
   };
   window.addEventListener('keydown', pizTeclado);
 }
@@ -1796,19 +1829,19 @@ function pantallaEntrenos(){
   if (view.sub==='pizarra' && view.pizSub==='categoria') return pizarraCategoria();
   if (view.sub==='pizarra' && view.pizSub==='editor') return pizarraEditor();
   if (view.sub==='pizarra' && view.pizSub==='ver')    return pizarraVer();
+  if (view.sub==='biblioteca') return pantallaBiblioteca();
 
   const cats = catsPermitidas();
   let h = `<h2 class="screen-title">Entrenos</h2>
     <div class="chips" data-toggle="sub">
       <button class="chip" data-v="sesiones" aria-pressed="${view.sub==='sesiones'}">Día a día</button>
-      <button class="chip" data-v="biblioteca" aria-pressed="${view.sub==='biblioteca'}">Ejercicios</button>
-      ${puedeEditar()?`<button class="chip" data-v="pizarra" aria-pressed="${view.sub==='pizarra'}">Pizarra</button>`:''}
+      ${puedeEditar()?`<button class="chip" data-v="pizarra" aria-pressed="${view.sub==='pizarra'}">Ejercicios</button>`:''}
     </div>`;
 
   if (view.sub==='pizarra'){
     h += `<p class="screen-note">Diseñá el ejercicio sobre una cancha: conos, flechas, pecheras y dibujo libre.</p>`
        + pizarraLista();
-  } else if (view.sub==='sesiones'){
+  } else {
     const ses = db.sesiones.filter(s=>cats.includes(s.categoria))
       .filter(s=>view.categoria==='Todas'||s.categoria===view.categoria)
       .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
@@ -1837,34 +1870,42 @@ function pantallaEntrenos(){
       h += `<div class="empty"><p>Todavía no hay sesiones cargadas. Cada técnico arma la suya eligiendo ejercicios de la biblioteca.</p></div>`;
     }
     if (puedeEditar()) h += `<div class="gap"></div><button class="btn btn-naranja" id="nuevaSesion">Armar sesión</button>`;
+    h += `<div class="gap"></div><button class="linkish" data-verBiblioteca="1">Ver la base de ejercicios del club</button>`;
+  }
+  app.innerHTML = h + `<div style="height:26px"></div>`;
+}
 
+/* biblioteca de ejercicios de sesión (fase/objetivo/material): la usa
+   "Armar sesión" para el reparto de tiempo; se navega como pantalla propia,
+   no como pestaña, desde el enlace en Día a día */
+function pantallaBiblioteca(){
+  const fs = ['Todas',...FASES.map(f=>f.id)];
+  const lista = db.ejercicios
+    .filter(e=>view.faseFiltro==='Todas'||e.fase===view.faseFiltro)
+    .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  let h = `<button class="back" data-volverDia="1">← Día a día</button>
+    <h2 class="screen-title">Base de ejercicios</h2>
+    <p class="screen-note">Base común del club: cualquier técnico puede usarlos y sumar los suyos al armar una sesión.</p>
+    <div class="chips">${fs.map(f=>{
+      const n = f==='Todas'?'Todas':fase(f).nombre;
+      return `<button class="chip" data-fase="${esc(f)}" aria-pressed="${view.faseFiltro===f}">${esc(n)}</button>`;
+    }).join('')}</div>`;
+
+  if (!db.ejercicios.length){
+    h += `<div class="empty"><p>La biblioteca está vacía. Podés arrancar con una base de ejercicios estándar y después editarla, o cargar directamente los tuyos.</p>
+      <button class="btn" id="seedEjercicios">Cargar base inicial</button><div class="gap"></div>
+      ${puedeEditar()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
+  } else if (!lista.length){
+    h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
   } else {
-    const fs = ['Todas',...FASES.map(f=>f.id)];
-    const lista = db.ejercicios
-      .filter(e=>view.faseFiltro==='Todas'||e.fase===view.faseFiltro)
-      .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
-    h += `<p class="screen-note">Base común del club: cualquier técnico puede usarlos y sumar los suyos.</p>
-      <div class="chips">${fs.map(f=>{
-        const n = f==='Todas'?'Todas':fase(f).nombre;
-        return `<button class="chip" data-fase="${esc(f)}" aria-pressed="${view.faseFiltro===f}">${esc(n)}</button>`;
-      }).join('')}</div>`;
-
-    if (!db.ejercicios.length){
-      h += `<div class="empty"><p>La biblioteca está vacía. Podés arrancar con una base de ejercicios estándar y después editarla, o cargar directamente los tuyos.</p>
-        <button class="btn" id="seedEjercicios">Cargar base inicial</button><div class="gap"></div>
-        ${puedeEditar()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
-    } else if (!lista.length){
-      h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
-    } else {
-      h += `<div class="roster">`+lista.map(e=>`<button class="row" data-ejercicio="${e.id}">
-        <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
-        <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
-        <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>
-        ${e.duracion?`<span>${e.duracion}'</span>`:''}${e.jugadores?`<span>${esc(e.jugadores)} jug.</span>`:''}
-        ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
-        <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
-        ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
-    }
+    h += `<div class="roster">`+lista.map(e=>`<button class="row" data-ejercicio="${e.id}">
+      <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
+      <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
+      <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>
+      ${e.duracion?`<span>${e.duracion}'</span>`:''}${e.jugadores?`<span>${esc(e.jugadores)} jug.</span>`:''}
+      ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
+      <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
+      ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
   }
   app.innerHTML = h + `<div style="height:26px"></div>`;
 }
@@ -2313,20 +2354,8 @@ app.addEventListener('click', async e=>{
       }
       return render();
     }
-    if (accion==='undo'){
-      if (!view.pizUndo.length) return;
-      view.pizRedo.push(JSON.stringify({elementos:view.pizDraft.elementos, trazos:view.pizDraft.trazos}));
-      const prev = JSON.parse(view.pizUndo.pop());
-      view.pizDraft.elementos = prev.elementos; view.pizDraft.trazos = prev.trazos;
-      view.pizSelId=null; return render();
-    }
-    if (accion==='redo'){
-      if (!view.pizRedo.length) return;
-      view.pizUndo.push(JSON.stringify({elementos:view.pizDraft.elementos, trazos:view.pizDraft.trazos}));
-      const next = JSON.parse(view.pizRedo.pop());
-      view.pizDraft.elementos = next.elementos; view.pizDraft.trazos = next.trazos;
-      view.pizSelId=null; return render();
-    }
+    if (accion==='undo'){ if (pizDeshacer()) render(); return; }
+    if (accion==='redo'){ if (pizRehacer()) render(); return; }
     if (accion==='duplicarsel'){
       const el = (view.pizDraft.elementos||[]).find(x=>x.id===view.pizSelId);
       if (!el || !PIZ_PUNTO.includes(el.tipo)) return;
@@ -2354,6 +2383,7 @@ app.addEventListener('click', async e=>{
     d.nombre = nombre.trim();
     d.explicacion = (document.getElementById('piz-explicacion')||{}).value||'';
     d.duracion = (document.getElementById('piz-duracion')||{}).value||'';
+    d.modificado = new Date().toISOString();
     const existente = db.pizarra.find(x=>x.id===d.id);
     if (existente) Object.assign(existente, d);
     else { if (!d.creado) d.creado = new Date().toISOString(); db.pizarra.push(d); }
@@ -2418,6 +2448,9 @@ app.addEventListener('click', async e=>{
 
   const subBtn = t.closest('[data-toggle="sub"] .chip');
   if (subBtn){ view.sub=subBtn.dataset.v; return render(); }
+
+  if (t.closest('[data-verBiblioteca]')){ view.sub='biblioteca'; window.scrollTo(0,0); return render(); }
+  if (t.closest('[data-volverDia]')){ view.sub='sesiones'; window.scrollTo(0,0); return render(); }
 
   const faseBtn = t.closest('.chip[data-fase]');
   if (faseBtn){ view.faseFiltro=faseBtn.dataset.fase; return render(); }
