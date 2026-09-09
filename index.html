@@ -215,6 +215,11 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
+<!-- jsPDF: genera la ficha del jugador en PDF en el propio navegador, sin backend.
+     Si no carga, el botón de descarga avisa y el resto de la app sigue andando. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
+
 <script>
 /* =========================================================
    1. ALMACENAMIENTO — única capa a reemplazar por Firebase
@@ -993,11 +998,132 @@ function fichaJugador(){
     h += `</div>`;
   }
 
+  h += `<div class="block"><button class="btn btn-ghost" data-pdf="${j.id}">Descargar ficha en PDF</button></div>`;
+
   if (puedeEditar()) h += `<div class="block">
     <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
     <div class="gap"></div><button class="btn btn-ghost" data-editar="${j.id}">Editar datos del jugador</button>
     ${esCoord()?`<div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button>`:''}</div>`;
   app.innerHTML = h;
+}
+
+/* ---- ficha en PDF: mismos datos y fuentes que la pantalla (perfil físico,
+   detalle técnico/comportamiento toma a toma, partidos e historial) ---- */
+function descargarFichaPDF(j){
+  if (!window.jspdf || !window.jspdf.jsPDF){
+    return toast('No se pudo cargar el generador de PDF. Revisá la conexión e intentá de nuevo.');
+  }
+  const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+  const margin = 14;
+  const anchoUtil = doc.internal.pageSize.getWidth() - margin*2;
+  let y = 18;
+  const saltoSiHaceFalta = alto => {
+    if (y + alto > 280){ doc.addPage(); y = 18; }
+  };
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text('HARAS SANTA MARÍA', margin, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(110,110,110);
+  doc.text('Ficha de jugador', margin, y+5.5);
+  doc.setTextColor(0,0,0);
+  y += 14;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(17);
+  doc.text(nomb(j), margin, y); y += 6.5;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+  const edadJ = edad(j.fechaNac);
+  const meta = [(j.categorias||[]).join(' · ') || 'Sin categoría', edadJ!=null?`${edadJ} años`:null,
+    j.carnet?`Carnet ${j.carnet}`:null].filter(Boolean).join('   ·   ');
+  doc.text(meta, margin, y); y += 9;
+  doc.setTextColor(0,0,0);
+
+  const g = puntuacion(j.id), tec = promedioTecnico(j.id), con = promedioDe(j.id, CONDUCTA);
+  doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+    head:[['Resumen','Nota / 10']],
+    body:[['General', g!=null?g.toFixed(1):'—'],
+          ['Técnico-táctico', tec!=null?tec.toFixed(1):'—'],
+          ['Comportamiento', con!=null?con.toFixed(1):'—']],
+    theme:'grid', styles:{fontSize:9,cellPadding:2.2}, headStyles:{fillColor:[17,17,17]} });
+  y = doc.lastAutoTable.finalY + 8;
+
+  /* físico: perfil (puesto, pierna, altura) + último valor de cada test */
+  const fis = fisicoUltimo(j.id);
+  const filasFisico = [
+    ['Puesto principal', posPrincipal(j) || '—'],
+    ['También juega de', posiciones(j).slice(1).join(' · ') || '—'],
+    ['Pierna hábil', j.pierna || '—'],
+    ['Pierna inhábil', j.piernaMala ? `${j.piernaMala}/5` : '—'],
+    ['Altura', j.altura ? `${j.altura} cm` : '—'],
+    ...FISICO.map(f=>[f.nombre, fis[f.id]!==undefined ? `${fis[f.id].toFixed(f.dec||0)} ${f.unidad}` : '—'])
+  ];
+  saltoSiHaceFalta(14 + filasFisico.length*6);
+  doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+    head:[['Físico','Valor']], body:filasFisico,
+    theme:'grid', styles:{fontSize:9,cellPadding:2.2}, headStyles:{fillColor:[234,91,12]} });
+  y = doc.lastAutoTable.finalY + 8;
+
+  /* técnico-táctico y comportamiento: toma a toma, igual que la solapa Detalle */
+  const evs = evalsDe(j.id);
+  const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
+  [['Técnico-táctico', TECNICO, [46,125,70]], ['Comportamiento', CONDUCTA, [31,95,169]]].forEach(([titulo,items,color])=>{
+    const usados = items.filter(i=>evs.some(e=>typeof e[i.id]==='number'));
+    if (!usados.length) return;
+    saltoSiHaceFalta(14 + usados.length*6);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text(titulo, margin, y); y += 5;
+    doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+      head:[['Ítem', ...evs.map(e=>nombreToma(e.tomaId))]],
+      body: usados.map(i=>[i.nombre, ...evs.map(e=>typeof e[i.id]==='number' ? e[i.id].toFixed(0) : '—')]),
+      theme:'grid', styles:{fontSize:8.5,cellPadding:2}, headStyles:{fillColor:color} });
+    y = doc.lastAutoTable.finalY + 8;
+  });
+
+  /* partidos e historial */
+  saltoSiHaceFalta(20);
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.text('Partidos e historial', margin, y); y += 6;
+
+  const T = totalesTemporada(j.id);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+    head:[[`Temporada ${ANIO_ACTUAL}`,'PJ','Goles','Asist.','Min','Amar.','Rojas']],
+    body:[['Total', T.pj, T.goles, T.asistencias, T.minutos, T.amarillas, T.rojas]],
+    theme:'grid', styles:{fontSize:8.5,cellPadding:2}, headStyles:{fillColor:[17,17,17]} });
+  y = doc.lastAutoTable.finalY + 6;
+
+  const partidos = partidosDe(j.id).slice().sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  if (partidos.length){
+    saltoSiHaceFalta(14 + Math.min(partidos.length,10)*5);
+    doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+      head:[['Fecha','Rival','Categoría','Puesto','Min','Goles','Asist.','Am.','Roj.']],
+      body: partidos.map(p=>[p.fecha||'—', p.rival||'—', p.categoria||'—', p.posicion||'—',
+        p.jugo?(p.minutos||0):'—', p.goles||0, p.asistencias||0, p.amarillas||0, p.rojas||0]),
+      theme:'grid', styles:{fontSize:8,cellPadding:1.8}, headStyles:{fillColor:[17,17,17]} });
+    y = doc.lastAutoTable.finalY + 8;
+  } else {
+    doc.setTextColor(120,120,120); doc.setFontSize(9);
+    doc.text('Sin partidos cargados partido a partido.', margin, y); doc.setTextColor(0,0,0); y += 7;
+  }
+
+  const hist = historialDe(j);
+  if (hist.length){
+    saltoSiHaceFalta(14 + hist.length*5);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Temporadas anteriores', margin, y); y += 5;
+    doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+      head:[['Año','PJ','Goles','Asist.','Min','Amar.','Rojas']],
+      body: hist.map(x=>[x.anio||'—', x.pj||0, x.goles||0, x.asis||0, x.min||0, x.ta||0, x.tr||0]),
+      theme:'grid', styles:{fontSize:8,cellPadding:1.8}, headStyles:{fillColor:[108,104,98]} });
+    y = doc.lastAutoTable.finalY + 4;
+  }
+
+  const paginas = doc.internal.getNumberOfPages();
+  for (let p=1; p<=paginas; p++){
+    doc.setPage(p);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
+    doc.text(`Generado el ${new Date().toLocaleDateString('es-AR')} · página ${p} de ${paginas}`, margin, 290);
+  }
+
+  const archivo = `Ficha_${nomb(j)}`.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Za-z0-9]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'') + '.pdf';
+  doc.save(archivo);
 }
 
 /* ---------- CANCHA ---------- */
@@ -2550,6 +2676,13 @@ app.addEventListener('click', async e=>{
 
   const g = t.closest('[data-guardar]');
   if (g){ return guardarRegistro(g.dataset.guardar); }
+
+  const pdf = t.closest('[data-pdf]');
+  if (pdf){
+    const j = db.jugadores.find(x=>x.id===pdf.dataset.pdf);
+    if (j) descargarFichaPDF(j);
+    return;
+  }
 
   const ed = t.closest('[data-editar]');
   if (ed){
