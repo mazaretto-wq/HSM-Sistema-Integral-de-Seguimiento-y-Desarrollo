@@ -47,13 +47,23 @@ button{cursor:pointer;border:none;background:none}
 .mark small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--ink-2);font-weight:400;margin-top:3px}
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--naranja);text-decoration:underline;cursor:pointer}
 .piz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px 14px;margin:16px 0}
-.piz-card-info{padding:8px 2px 2px}
-.piz-card-acciones{padding:4px 2px 0;display:flex;flex-wrap:wrap;gap:4px 14px}
+.piz-card{border:1px solid var(--linea);border-radius:var(--r);overflow:hidden;background:var(--paper)}
+.piz-card-info{padding:10px 12px 2px}
+.piz-card-cat{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);margin-top:2px}
+.piz-card-acciones{padding:6px 12px 12px;display:flex;flex-wrap:wrap;gap:4px 14px}
 .piz-card-acciones .linkish{font-size:12px}
 .piz-paleta{align-items:center;gap:8px}
 .piz-swatch{width:28px;height:28px;border-radius:50%;border:2px solid var(--linea);flex:0 0 auto;padding:0;cursor:pointer}
 .piz-swatch[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--paper),0 0 0 3px var(--ink)}
 .chip:disabled{opacity:.35;pointer-events:none}
+/* cancha horizontal de la pizarra: aparte de .pitch (vertical, usada por Cancha/alineación) */
+.piz-pitch{position:relative;width:100%;aspect-ratio:100/68;background:var(--wash);border:2px solid var(--ink);border-radius:var(--r);overflow:hidden}
+.piz-tipos{display:grid;grid-template-columns:1fr;gap:12px;margin:14px 0}
+@media (min-width:480px){ .piz-tipos{grid-template-columns:1fr 1fr} }
+.piz-tipo{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--linea);border-radius:var(--r);padding:22px 18px;cursor:pointer}
+.piz-tipo:hover{border-color:var(--naranja)}
+.piz-tipo-emoji{display:block;font-size:32px;line-height:1;margin-bottom:10px}
+.piz-tipo-nombre{display:block;font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
 .puerta{max-width:420px;margin:0 auto;padding:8px 0 40px}
 .puerta .opt{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--linea);
   border-radius:var(--r);padding:18px 16px;margin-bottom:12px;cursor:pointer}
@@ -397,7 +407,8 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false, dtCat:null,
-             pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[] };
+             pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
+             pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas' };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -1331,9 +1342,33 @@ const PIZ_HERRAMIENTAS = [
   {id:'lapiz',     nombre:'Lápiz'}
 ];
 const PIZ_NS = 'http://www.w3.org/2000/svg';
+const PIZ_W = 100, PIZ_H = 68;   // cancha horizontal; proporción real de campo (ancho x alto)
 
-function pizNuevo(){
-  return { id:uid(), nombre:'', duracion:'', explicacion:'', creado:new Date().toISOString(),
+/* Clasificación de ejercicios. Cada categoría es {id,nombre,emoji,subs:[{id,nombre}]}.
+   Para sumar una categoría o subcategoría nueva más adelante alcanza con agregarla
+   acá: la selección, los filtros de "Mis ejercicios" y el guardado ya la toman sola. */
+const PIZ_CATEGORIAS = [
+  { id:'pelota', nombre:'Ejercicios con pelota', emoji:'🟠',
+    subs:[
+      {id:'controles',    nombre:'Ejercicios de controles'},
+      {id:'recuperacion', nombre:'Ejercicios de recuperación / tenencia'},
+      {id:'definicion',   nombre:'Ejercicios de definición'},
+      {id:'defensa',      nombre:'Ejercicios de defensa'}
+    ]},
+  { id:'fisico', nombre:'Ejercicios físicos', emoji:'⚫',
+    subs:[
+      {id:'pasadas', nombre:'Pasadas'}
+    ]}
+];
+const pizCat = id => PIZ_CATEGORIAS.find(c=>c.id===id);
+const pizSubNombre = (catId, subId) => {
+  const c = pizCat(catId), s = c && c.subs.find(x=>x.id===subId);
+  return s ? s.nombre : '';
+};
+
+function pizNuevo(categoria, subcategoria){
+  return { id:uid(), categoria:categoria||'', subcategoria:subcategoria||'',
+           nombre:'', duracion:'', explicacion:'', creado:new Date().toISOString(),
            elementos:[], trazos:[] };
 }
 const pizClonarDraft = ej => JSON.parse(JSON.stringify(ej));
@@ -1351,13 +1386,17 @@ function pizDefsSVG(){
     </marker>`).join('')}</defs>`;
 }
 function pizLineasSVG(){
+  /* cancha horizontal, apaisada: mismas proporciones reales de una cancha
+     de fútbol (perímetro, mitad, círculo central, áreas grandes y chicas,
+     arcos y puntos de penal), con el eje largo acostado sobre el ancho. */
   return `<g fill="none" stroke="#CFCBC4" stroke-width=".5">
-    <rect x="1.5" y="1.5" width="65" height="97"/>
-    <line x1="1.5" y1="50" x2="66.5" y2="50"/>
-    <circle cx="34" cy="50" r="9"/>
-    <rect x="16" y="1.5" width="36" height="15"/><rect x="16" y="83.5" width="36" height="15"/>
-    <rect x="26" y="1.5" width="16" height="6"/><rect x="26" y="92.5" width="16" height="6"/>
-    <rect x="30" y=".4" width="8" height="1.1"/><rect x="30" y="98.5" width="8" height="1.1"/>
+    <rect x="1.5" y="1.5" width="97" height="65"/>
+    <line x1="50" y1="1.5" x2="50" y2="66.5"/>
+    <circle cx="50" cy="34" r="9"/>
+    <rect x="1.5" y="16" width="15" height="36"/><rect x="83.5" y="16" width="15" height="36"/>
+    <rect x="1.5" y="26" width="6" height="16"/><rect x="92.5" y="26" width="6" height="16"/>
+    <rect x=".4" y="30" width="1.1" height="8"/><rect x="98.5" y="30" width="1.1" height="8"/>
+    <circle cx="11.5" cy="34" r=".5" fill="#CFCBC4"/><circle cx="88.5" cy="34" r=".5" fill="#CFCBC4"/>
   </g>`;
 }
 function pizConoSVG(el, sel){
@@ -1407,7 +1446,7 @@ function pizElementosSVG(draft, interactivo){
 }
 function pizSvgCompleto(draft, opts){
   opts = opts || {};
-  return `<svg id="${opts.id||'piz-svg'}" viewBox="0 0 68 100" preserveAspectRatio="none"
+  return `<svg id="${opts.id||'piz-svg'}" viewBox="0 0 ${PIZ_W} ${PIZ_H}" preserveAspectRatio="none"
       style="${opts.interactivo?'touch-action:none':''}" aria-label="Cancha del ejercicio">
     ${pizDefsSVG()}${pizLineasSVG()}${pizElementosSVG(draft, !!opts.interactivo)}
   </svg>`;
@@ -1415,16 +1454,40 @@ function pizSvgCompleto(draft, opts){
 
 /* ---- pantallas ---- */
 function pizarraLista(){
-  const lista = [...db.pizarra].sort((a,b)=>(b.creado||'').localeCompare(a.creado||''));
-  if (!lista.length){
+  if (!db.pizarra.length){
     return `<div class="empty"><p>Todavía no tenés ejercicios creados.</p>
       <button class="btn btn-naranja" data-piz="crear">Crear ejercicio</button></div>`;
   }
-  return `<div class="piz-grid">` + lista.map(ej=>`
-    <div class="piz-card">
-      <div class="piz-card-thumb">${pizSvgCompleto(ej,{id:'piz-mini-'+ej.id})}</div>
+  const filtroTipo = view.pizFiltroTipo || 'todos';
+  const filtroSub  = view.pizFiltroSub  || 'todas';
+  let lista = [...db.pizarra];
+  if (filtroTipo!=='todos') lista = lista.filter(e=>e.categoria===filtroTipo);
+  if (filtroTipo!=='todos' && filtroSub!=='todas') lista = lista.filter(e=>e.subcategoria===filtroSub);
+  lista.sort((a,b)=>(b.creado||'').localeCompare(a.creado||''));
+
+  let h = `<div class="chips">
+    <button class="chip" data-piz="filtroTipo" data-v="todos" aria-pressed="${filtroTipo==='todos'}">Todos</button>
+    ${PIZ_CATEGORIAS.map(c=>`<button class="chip" data-piz="filtroTipo" data-v="${c.id}" aria-pressed="${filtroTipo===c.id}">${esc(c.nombre)}</button>`).join('')}
+  </div>`;
+  const catFiltro = pizCat(filtroTipo);
+  if (catFiltro){
+    h += `<div class="chips">
+      <button class="chip" data-piz="filtroSub" data-v="todas" aria-pressed="${filtroSub==='todas'}">Todas</button>
+      ${catFiltro.subs.map(s=>`<button class="chip" data-piz="filtroSub" data-v="${s.id}" aria-pressed="${filtroSub===s.id}">${esc(s.nombre)}</button>`).join('')}
+    </div>`;
+  }
+
+  if (!lista.length){
+    return h + `<div class="empty"><p>No hay ejercicios con este filtro.</p></div>
+      <div class="gap"></div><button class="btn btn-naranja" data-piz="crear">Crear ejercicio</button>`;
+  }
+  return h + `<div class="piz-grid">` + lista.map(ej=>{
+    const cat = pizCat(ej.categoria), sub = pizSubNombre(ej.categoria, ej.subcategoria);
+    return `<div class="piz-card">
+      <div class="piz-pitch">${pizSvgCompleto(ej,{id:'piz-mini-'+ej.id})}</div>
       <div class="piz-card-info">
         <div class="row-name">${esc(ej.nombre||'Sin nombre')}</div>
+        ${cat?`<div class="piz-card-cat">${esc(cat.nombre)}${sub?' · '+esc(sub):''}</div>`:''}
         <div class="row-meta"><span>${esc(ej.duracion||'—')}</span><span>${pizFecha(ej.creado)}</span></div>
       </div>
       <div class="piz-card-acciones">
@@ -1433,17 +1496,44 @@ function pizarraLista(){
         <button class="linkish" data-piz="duplicar" data-id="${ej.id}">Duplicar</button>
         <button class="linkish" style="color:var(--rojo)" data-piz="borrar" data-id="${ej.id}">Eliminar</button>
       </div>
-    </div>`).join('') + `</div>
+    </div>`;
+  }).join('') + `</div>
     <div class="gap"></div><button class="btn btn-naranja" data-piz="crear">Crear ejercicio</button>`;
+}
+
+function pizarraCategoria(){
+  const tipo = view.pizTipoTmp;
+  if (!tipo){
+    app.innerHTML = `<button class="back" data-piz="volver">← Entrenos</button>
+      <h2 class="screen-title">Crear ejercicio</h2>
+      <p class="screen-note">¿Qué tipo de ejercicio querés crear?</p>
+      <div class="piz-tipos">${PIZ_CATEGORIAS.map(c=>`
+        <button class="piz-tipo" data-piz="tipo" data-v="${c.id}">
+          <span class="piz-tipo-emoji">${c.emoji}</span>
+          <span class="piz-tipo-nombre">${esc(c.nombre)}</span>
+        </button>`).join('')}</div>
+      <div style="height:26px"></div>`;
+    return;
+  }
+  const cat = pizCat(tipo);
+  app.innerHTML = `<button class="back" data-piz="cambiarTipo">← Cambiar tipo</button>
+    <h2 class="screen-title">${esc(cat.nombre)}</h2>
+    <p class="screen-note">Elegí la subcategoría del ejercicio.</p>
+    <div class="roster">${cat.subs.map(s=>
+      `<button class="row" data-piz="subcategoria" data-v="${s.id}">
+        <span class="row-main"><span class="row-name">${esc(s.nombre)}</span></span>
+      </button>`).join('')}</div>
+    <div style="height:26px"></div>`;
 }
 
 function pizarraVer(){
   const ej = db.pizarra.find(x=>x.id===view.pizId);
   if (!ej){ view.pizSub='lista'; return render(); }
+  const cat = pizCat(ej.categoria), sub = pizSubNombre(ej.categoria, ej.subcategoria);
   app.innerHTML = `<button class="back" data-piz="volver">← Entrenos</button>
     <h2 class="screen-title">${esc(ej.nombre||'Sin nombre')}</h2>
-    <p class="screen-note">${ej.duracion?esc(ej.duracion)+' · ':''}Creado el ${pizFecha(ej.creado)}</p>
-    <div class="pitch">${pizSvgCompleto(ej,{id:'piz-ver-svg'})}</div>
+    <p class="screen-note">${cat?esc(cat.nombre)+(sub?' · '+esc(sub):'')+' · ':''}${ej.duracion?esc(ej.duracion)+' · ':''}Creado el ${pizFecha(ej.creado)}</p>
+    <div class="piz-pitch">${pizSvgCompleto(ej,{id:'piz-ver-svg'})}</div>
     ${ej.explicacion?`<div class="block"><div class="block-title">Explicación</div><p style="white-space:pre-wrap">${esc(ej.explicacion)}</p></div>`:''}
     ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-piz="editar" data-id="${ej.id}">Editar</button>`:''}
     <div style="height:26px"></div>`;
@@ -1451,7 +1541,10 @@ function pizarraVer(){
 
 function pizarraEditor(){
   const d = view.pizDraft || (view.pizDraft = pizNuevo());
+  const cat = pizCat(d.categoria), sub = pizSubNombre(d.categoria, d.subcategoria);
+  const elSel = view.pizSelId ? (d.elementos||[]).find(x=>x.id===view.pizSelId) : null;
   app.innerHTML = `<button class="back" data-piz="volver">← Entrenos</button>
+    ${cat?`<p class="screen-note" style="margin-top:14px;margin-bottom:2px">Categoría: <strong>${esc(cat.nombre)}</strong>${sub?` · Subcategoría: <strong>${esc(sub)}</strong>`:''}</p>`:''}
     <div class="two">
       <div class="field"><label class="label" for="piz-nombre">Nombre del ejercicio</label>
         <input type="text" id="piz-nombre" placeholder="Ej. Juego de posición 5 vs 5" value="${esc(d.nombre)}"></div>
@@ -1467,10 +1560,12 @@ function pizarraEditor(){
       <span style="flex:1"></span>
       <button class="chip" data-piz="undo" ${view.pizUndo.length?'':'disabled'}>Deshacer</button>
       <button class="chip" data-piz="redo" ${view.pizRedo.length?'':'disabled'}>Rehacer</button>
+      ${elSel && (elSel.tipo==='cono'||elSel.tipo==='pechera')?`<button class="chip" data-piz="duplicarsel">Duplicar</button>`:''}
       ${view.pizSelId?`<button class="chip" data-piz="elimsel" style="color:var(--rojo)">Eliminar</button>`:''}
       <button class="chip" data-piz="limpiar">Limpiar cancha</button>
+      ${elSel && elSel.tipo==='pechera'?`<input type="text" id="piz-numero" maxlength="2" value="${esc(elSel.numero||'')}" placeholder="Nº" style="width:52px;text-align:center;padding:6px 8px">`:''}
     </div>
-    <div class="pitch">${pizSvgCompleto(d,{interactivo:true})}</div>
+    <div class="piz-pitch">${pizSvgCompleto(d,{interactivo:true})}</div>
     <p class="screen-note" style="margin-top:8px">
       ${view.pizHerr==='seleccion'?'Tocá un elemento para seleccionarlo y moverlo. Con uno seleccionado, elegí un color para cambiárselo.'
       :view.pizHerr==='lapiz'?'Dibujá arrastrando sobre la cancha.'
@@ -1501,7 +1596,7 @@ function pizWire(){
   const punto = evt => { const p = svg.createSVGPoint(); p.x=evt.clientX; p.y=evt.clientY;
     const m = svg.getScreenCTM(); if (!m) return {x:0,y:0};
     const r = p.matrixTransform(m.inverse());
-    return {x:Math.max(0,Math.min(68,r.x)), y:Math.max(0,Math.min(100,r.y))}; };
+    return {x:Math.max(0,Math.min(PIZ_W,r.x)), y:Math.max(0,Math.min(PIZ_H,r.y))}; };
 
   let g = null; // gesto en curso
 
@@ -1644,6 +1739,7 @@ function pantallaEntrenos(){
   if (view.ejercicioId) return detalleEjercicio();
   if (view.draft) return formSesion();
   if (view.form==='nuevoEjercicio') return formEjercicio();
+  if (view.sub==='pizarra' && view.pizSub==='categoria') return pizarraCategoria();
   if (view.sub==='pizarra' && view.pizSub==='editor') return pizarraEditor();
   if (view.sub==='pizarra' && view.pizSub==='ver')    return pizarraVer();
 
@@ -2050,6 +2146,10 @@ app.addEventListener('keydown', e=>{
 });
 
 app.addEventListener('change', async e=>{
+  if (e.target.id==='piz-numero'){
+    const el = view.pizDraft && (view.pizDraft.elementos||[]).find(x=>x.id===view.pizSelId);
+    if (el){ el.numero = e.target.value.slice(0,2); return render(); }
+  }
   if (e.target.id==='p-cat'){
     const f=document.getElementById('p-fecha'), r=document.getElementById('p-rival');
     view.partidoFecha = f?f.value:null; view.partidoRival = r?r.value:'';
@@ -2117,10 +2217,17 @@ app.addEventListener('click', async e=>{
   if (piz){
     const accion = piz.dataset.piz, id = piz.dataset.id;
     if (accion==='crear'){
-      view.pizDraft=pizNuevo(); view.pizId=null; view.pizSelId=null;
+      view.pizTipoTmp=null; view.pizSub='categoria'; window.scrollTo(0,0); return render();
+    }
+    if (accion==='tipo'){ view.pizTipoTmp=piz.dataset.v; window.scrollTo(0,0); return render(); }
+    if (accion==='cambiarTipo'){ view.pizTipoTmp=null; window.scrollTo(0,0); return render(); }
+    if (accion==='subcategoria'){
+      view.pizDraft=pizNuevo(view.pizTipoTmp, piz.dataset.v); view.pizId=null; view.pizSelId=null;
       view.pizHerr='seleccion'; view.pizUndo=[]; view.pizRedo=[];
       view.pizSub='editor'; window.scrollTo(0,0); return render();
     }
+    if (accion==='filtroTipo'){ view.pizFiltroTipo=piz.dataset.v; view.pizFiltroSub='todas'; return render(); }
+    if (accion==='filtroSub'){ view.pizFiltroSub=piz.dataset.v; return render(); }
     if (accion==='abrir'){ view.pizId=id; view.pizSub='ver'; window.scrollTo(0,0); return render(); }
     if (accion==='editar'){
       const ej = db.pizarra.find(x=>x.id===id); if (!ej) return;
@@ -2140,7 +2247,7 @@ app.addEventListener('click', async e=>{
       await Store.save(db); toast('Ejercicio eliminado'); return render();
     }
     if (accion==='volver'){
-      view.pizSub='lista'; view.pizDraft=null; view.pizId=null; view.pizSelId=null;
+      view.pizSub='lista'; view.pizDraft=null; view.pizId=null; view.pizSelId=null; view.pizTipoTmp=null;
       window.scrollTo(0,0); return render();
     }
     if (accion==='herr'){ view.pizHerr=piz.dataset.v; view.pizSelId=null; return render(); }
@@ -2166,6 +2273,14 @@ app.addEventListener('click', async e=>{
       view.pizDraft.elementos = next.elementos; view.pizDraft.trazos = next.trazos;
       view.pizSelId=null; return render();
     }
+    if (accion==='duplicarsel'){
+      const el = (view.pizDraft.elementos||[]).find(x=>x.id===view.pizSelId);
+      if (!el || (el.tipo!=='cono' && el.tipo!=='pechera')) return;
+      pizPushUndo();
+      const copia = {...el, id:uid(), x:Math.min(PIZ_W-1, el.x+3), y:Math.min(PIZ_H-1, el.y+3)};
+      view.pizDraft.elementos.push(copia);
+      view.pizSelId = copia.id; return render();
+    }
     if (accion==='elimsel'){
       if (!view.pizSelId) return;
       pizPushUndo();
@@ -2189,7 +2304,7 @@ app.addEventListener('click', async e=>{
     if (existente) Object.assign(existente, d);
     else { if (!d.creado) d.creado = new Date().toISOString(); db.pizarra.push(d); }
     await Store.save(db);
-    toast('Ejercicio guardado'); view.pizSub='lista'; view.pizDraft=null; view.pizId=null; view.pizSelId=null;
+    toast('Ejercicio guardado'); view.pizSub='lista'; view.pizDraft=null; view.pizId=null; view.pizSelId=null; view.pizTipoTmp=null;
     window.scrollTo(0,0); return render();
   }
 
