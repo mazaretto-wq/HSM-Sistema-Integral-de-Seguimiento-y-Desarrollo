@@ -224,6 +224,14 @@ const FB_CUENTAS = {
   coordinacion: 'coordinacion@harassantamaria.com',
   jugador:      'jugadores@harassantamaria.com'
 };
+/* un DT por categoría: elige la suya y entra con su contraseña */
+const FB_DTS = [
+  { categoria:'Promocional', mail:'dt.promocional@harassantamaria.com' },
+  { categoria:'Cadetes',     mail:'dt.cadetes@harassantamaria.com' },
+  { categoria:'Juveniles',   mail:'dt.juveniles@harassantamaria.com' },
+  { categoria:'Juveniles B', mail:'dt.juvenilesb@harassantamaria.com' },
+  { categoria:'Selección',   mail:'dt.seleccion@harassantamaria.com' }
+];
 
 let fb = null;            /* { db, auth, ref } cuando el SDK está */
 let fbUser = null;        /* usuario logueado, o null */
@@ -263,7 +271,10 @@ async function fbLeer(){
 async function fbEscribir(d){
   if (!fb || !fbUser) return false;
   try{
-    await fb.ref.set({ json: JSON.stringify(d), actualizado: Date.now(),
+    /* el rol con el que entraste es de este dispositivo, no del club:
+       si viajara, otro equipo bajaría "coordinación" y entraría sin clave */
+    const limpio = {...d, config: {...d.config, acceso:null}};
+    await fb.ref.set({ json: JSON.stringify(limpio), actualizado: Date.now(),
                        por: (fbUser.email || '') });
     return true;
   }catch(e){ console.warn('Firestore · escritura:', (e && e.code) || e); return false; }
@@ -371,10 +382,13 @@ let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], 
    este dispositivo, y esos cambios no se sincronizan con nadie. */
 const CLAVE_LOCAL = 'hsm-sin-conexion';
 const esCoord = () => db.config.acceso === 'coordinacion';
+const esDT    = () => db.config.acceso === 'dt';
+/* el DT edita, pero catsPermitidas() lo deja solo dentro de su categoría */
+const puedeEditar = () => esCoord() || esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false };
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false, dtCat:null };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -587,16 +601,30 @@ function pantallaAcceso(){
   app.innerHTML = `<div class="puerta">
     <h2 class="screen-title">Entrar</h2>
     <p class="screen-note">Elegí cómo vas a usar la app. Podés cambiar después desde "salir", arriba a la derecha.</p>
-    ${view.puerta==='coord' ? formLogin('Coordinación','')
+    ${view.puerta==='dt' ? `
+      <div class="block"><div class="block-title">Director técnico</div>
+        <div class="field"><label class="label" for="ac-cat">Categoría a cargo</label>
+          <select id="ac-cat">${FB_DTS.map(d=>
+            `<option value="${esc(d.categoria)}" ${view.dtCat===d.categoria?'selected':''}>${esc(d.categoria)}</option>`).join('')}</select></div>
+        <div class="field"><label class="label" for="ac-clave">Contraseña</label>
+          <input type="password" id="ac-clave" autocomplete="current-password" placeholder="••••••••"></div>
+        ${view.claveMal?`<p class="screen-note" style="color:var(--rojo);margin-top:-6px">${esc(view.claveMal)}</p>`:''}
+        <button class="btn btn-naranja" id="ac-entrar">Entrar</button>
+        <div class="gap"></div><button class="btn btn-ghost" id="ac-volver">Volver</button>
+      </div>`
+    : view.puerta==='coord' ? formLogin('Coordinación','')
     : view.puerta==='jugador' ? formLogin('Jugadores','Pedile la contraseña a coordinación.')
       + `<div class="gap"></div><button class="btn btn-ghost" id="ac-local">Ver sin conexión</button>`
     : `
       <button class="opt" id="ac-jugador">
         <strong>Soy jugador</strong>
         <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña.':' Sin contraseña.'}</span></button>
+      <button class="opt" id="ac-dt">
+        <strong>Soy DT</strong>
+        <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide contraseña.</span></button>
       <button class="opt" id="ac-coord">
         <strong>Coordinación</strong>
-        <span>Además cargar partidos, entrenamientos y editar los datos. Pide contraseña.</span></button>
+        <span>Todas las categorías, más las cargas y la configuración. Pide contraseña.</span></button>
       ${fbEstado==='error'?`<p class="screen-note" style="color:var(--rojo)">
         No se pudo conectar con la nube. Vas a trabajar contra este dispositivo solamente.</p>`:''}`}
   </div>`;
@@ -607,13 +635,19 @@ function pantallaAcceso(){
 /* entra y, si hay nube, se loguea de verdad */
 async function entrar(rol){
   const clave = (document.getElementById('ac-clave')||{}).value || '';
+  const cat   = (document.getElementById('ac-cat')||{}).value || '';
+  if (rol==='dt'){ view.dtCat = cat; }
 
   if (!fb){                                   /* sin nube: la clave del archivo */
-    if (rol==='coordinacion' && clave !== CLAVE_LOCAL){
+    if (rol!=='jugador' && clave !== CLAVE_LOCAL){
       view.claveMal = 'Contraseña incorrecta.'; return render();
     }
   } else {
-    try { await fb.auth.signInWithEmailAndPassword(FB_CUENTAS[rol], clave); }
+    const cuenta = rol==='dt'
+      ? (FB_DTS.find(d=>d.categoria===cat)||{}).mail
+      : FB_CUENTAS[rol];
+    if (!cuenta){ view.claveMal='Elegí una categoría.'; return render(); }
+    try { await fb.auth.signInWithEmailAndPassword(cuenta, clave); }
     catch(e){
       const c = e && e.code;
       view.claveMal =
@@ -629,6 +663,9 @@ async function entrar(rol){
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
   }
   db.config.acceso = rol; view.puerta = null; view.claveMal = false;
+  if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
+  else { db.config.rol = 'Coordinador'; db.config.categoriaDT = ''; }
+  view.categoria = 'Todas'; view.partidoCat = null;
   await Store.save(db); render();
 }
 
@@ -642,13 +679,15 @@ function render(){
   }
   nav.style.display = '';
   const permitidas = esCoord() ? ['plantel','cancha','entrenos','cargar','datos']
-                               : ['plantel','cancha','entrenos'];
+                 : esDT()    ? ['plantel','cancha','entrenos','cargar']
+                             : ['plantel','cancha','entrenos'];
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = permitidas.includes(b.dataset.tab) ? '' : 'none'; });
   if (!permitidas.includes(view.tab)){ view.tab='plantel'; marcarTab('plantel'); }
   const sinNube = fbEstado !== 'listo';
   document.getElementById('rolebox').innerHTML = (esCoord()
-    ? `${c.rol==='DT' ? 'DT · '+esc(c.categoriaDT||'sin categoría') : 'Coordinación · todas'}`
+    ? `Coordinación · todas`
+    : esDT() ? `DT · ${esc(c.categoriaDT||'sin categoría')}`
     : `Jugador · solo lectura`)
     + (sinNube ? `<br><span style="color:var(--rojo)">solo este dispositivo</span>` : '')
     + `<br><button class="linkish" id="salir">salir</button>`;
@@ -711,7 +750,7 @@ function pantallaPlantel(){
         </span></span>
         <span class="score ${claseSem(p)}">${p!==null?p.toFixed(1):'—'}</span></button>`;
     }).join('')+`</div><div class="gap"></div>
-    ${esCoord()?`<button class="btn btn-ghost" data-go="nuevoJugador">Agregar jugador</button>`:''}`;
+    ${puedeEditar()?`<button class="btn btn-ghost" data-go="nuevoJugador">Agregar jugador</button>`:''}`;
   }
   app.innerHTML = h;
 }
@@ -906,7 +945,7 @@ function fichaJugador(){
     h += `<div class="block"><div class="block-title">Puestos declarados</div>`;
     if (!pos.length){
       h += `<div class="empty"><p>Todavía no tiene puestos cargados.</p>
-        ${esCoord()?`<button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button>`:''}</div>`;
+        ${puedeEditar()?`<button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button>`:''}</div>`;
     } else {
       h += `<div class="ficha-tags">${pos.map((p,i)=>
         `<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}</div>
@@ -934,10 +973,10 @@ function fichaJugador(){
     h += `</div>`;
   }
 
-  if (esCoord()) h += `<div class="block">
+  if (puedeEditar()) h += `<div class="block">
     <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
     <div class="gap"></div><button class="btn btn-ghost" data-editar="${j.id}">Editar datos del jugador</button>
-    <div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button></div>`;
+    ${esCoord()?`<div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button>`:''}</div>`;
   app.innerHTML = h;
 }
 
@@ -1070,7 +1109,7 @@ function formEvaluacion(){
   if (!db.tomas.length){
     app.innerHTML = `<button class="back" data-back="1">← Cargar</button><h2 class="screen-title">Evaluación</h2>
       <div class="empty"><p>Antes necesitás abrir una toma: el ciclo de evaluación (por ejemplo "Toma 1 · Marzo 2026").</p>
-      ${esCoord()?`<button class="btn" data-go="nuevaToma">Crear la primera toma</button>`:''}</div>`;
+      ${puedeEditar()?`<button class="btn" data-go="nuevaToma">Crear la primera toma</button>`:''}</div>`;
     return;
   }
   const tomas = tomasOrden();
@@ -1296,7 +1335,7 @@ function pantallaEntrenos(){
     } else {
       h += `<div class="empty"><p>Todavía no hay sesiones cargadas. Cada técnico arma la suya eligiendo ejercicios de la biblioteca.</p></div>`;
     }
-    if (esCoord()) h += `<div class="gap"></div><button class="btn btn-naranja" id="nuevaSesion">Armar sesión</button>`;
+    if (puedeEditar()) h += `<div class="gap"></div><button class="btn btn-naranja" id="nuevaSesion">Armar sesión</button>`;
 
   } else {
     const fs = ['Todas',...FASES.map(f=>f.id)];
@@ -1312,7 +1351,7 @@ function pantallaEntrenos(){
     if (!db.ejercicios.length){
       h += `<div class="empty"><p>La biblioteca está vacía. Podés arrancar con una base de ejercicios estándar y después editarla, o cargar directamente los tuyos.</p>
         <button class="btn" id="seedEjercicios">Cargar base inicial</button><div class="gap"></div>
-        ${esCoord()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
+        ${puedeEditar()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
     } else if (!lista.length){
       h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
     } else {
@@ -1323,7 +1362,7 @@ function pantallaEntrenos(){
         ${e.duracion?`<span>${e.duracion}'</span>`:''}${e.jugadores?`<span>${esc(e.jugadores)} jug.</span>`:''}
         ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
         <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
-        ${esCoord()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
+        ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
     }
   }
   app.innerHTML = h + `<div style="height:26px"></div>`;
@@ -1371,10 +1410,10 @@ function detalleSesion(){
     h += `<div class="block"><div class="block-title">Escrito a mano</div>
       <p style="white-space:pre-wrap">${esc(s.otros)}</p>
       <div class="aviso" style="margin-top:12px">Esto no entra en el reparto de tiempo. Si es un ejercicio que se repite, conviene sumarlo a la biblioteca.</div>
-      ${esCoord()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Sumarlo a la biblioteca</button>`:''}</div>`;
+      ${puedeEditar()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Sumarlo a la biblioteca</button>`:''}</div>`;
   }
   if (s.notas) h += `<div class="block"><div class="block-title">Notas</div><p>${esc(s.notas)}</p></div>`;
-  if (esCoord()) h += `<div class="block"><button class="btn btn-danger" data-borrarSesion="${s.id}">Eliminar sesión</button></div>`;
+  if (puedeEditar()) h += `<div class="block"><button class="btn btn-danger" data-borrarSesion="${s.id}">Eliminar sesión</button></div>`;
   app.innerHTML = h + `<div style="height:26px"></div>`;
 }
 
@@ -1683,24 +1722,33 @@ app.addEventListener('click', async e=>{
   const t = e.target;
 
   /* puerta de entrada; los botones tienen texto adentro, así que subimos al botón */
-  const puerta = t.closest('#ac-jugador,#ac-coord');
+  const puerta = t.closest('#ac-jugador,#ac-coord,#ac-dt');
   if (puerta && puerta.id==='ac-jugador'){
     if (fb && fbEstado==='sinPermiso'){ view.puerta='jugador'; view.claveMal=false; return render(); }
+    if (fb && fbUser){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
     db.config.acceso='jugador'; await Store.save(db); return render();
   }
   if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
+  if (puerta && puerta.id==='ac-dt'){ view.puerta='dt'; view.claveMal=false; return render(); }
   if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
   if (t.id==='ac-local'){          /* mirar lo que hay en este dispositivo */
     db.config.acceso='jugador'; view.puerta=null; view.claveMal=false;
     await Store.save(db); return render();
   }
-  if (t.id==='ac-entrar'){ return entrar(view.puerta==='jugador' ? 'jugador' : 'coordinacion'); }
+  if (t.id==='ac-entrar'){
+    return entrar(view.puerta==='jugador' ? 'jugador' : view.puerta==='dt' ? 'dt' : 'coordinacion');
+  }
   /* como jugador se mira, no se toca */
-  if (!esCoord()){
+  if (!puedeEditar()){
     const muta = t.closest('[data-editar],[data-borrar],[data-borrarSesion],[data-borrarEj],[data-guardar],[data-go]');
     const ids = ['guardarJugador','guardarToma','guardarPartidoPlantel','guardarSesion','guardarEjercicio',
                  'cargarHSM','cargarJuv','cargarPlanteles','seed','borrarTodo'];
-    if (muta || ids.includes(t.id)) return toast('Solo coordinación puede cargar o editar');
+    if (muta || ids.includes(t.id)) return toast('Como jugador solo se mira');
+  }
+  if (esDT()){    /* el DT no borra jugadores ni toca las bases del club */
+    const ids = ['cargarHSM','cargarJuv','cargarPlanteles','seed','borrarTodo'];
+    if (t.closest('[data-borrar]') || t.closest('[data-borrarEj]') || ids.includes(t.id))
+      return toast('Eso lo hace coordinación');
   }
 
   const chipCat = t.closest('.chip[data-cat]');
@@ -2151,6 +2199,9 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
   await fbEsperarSesion();
   const g = await Store.load();
   if (g) db = Object.assign(db, g, {config: Object.assign(db.config, g.config||{})});
+  /* siempre se elige al entrar: ni el dispositivo ni la nube deciden el rol */
+  db.config.acceso = null;
+  if (fb){ try{ await fb.auth.signOut(); }catch(e){} fbUser = null; }
   /* datos viejos: posicion + posicionAlt pasan a ser una lista */
   let migrado = false;
   db.jugadores.forEach(j=>{
