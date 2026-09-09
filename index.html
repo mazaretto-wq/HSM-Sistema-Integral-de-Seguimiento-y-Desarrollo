@@ -215,11 +215,6 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
-<!-- jsPDF: genera la ficha del jugador en PDF en el propio navegador, sin backend.
-     Si no carga, el botón de descarga avisa y el resto de la app sigue andando. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
-
 <script>
 /* =========================================================
    1. ALMACENAMIENTO — única capa a reemplazar por Firebase
@@ -1007,11 +1002,41 @@ function fichaJugador(){
   app.innerHTML = h;
 }
 
+/* ---- carga perezosa de jsPDF: recién al primer clic en "Descargar PDF",
+   y probando dos CDN por si alguna está bloqueada en la red del usuario ---- */
+let pdfLibsPromise = null;
+function cargarScript(src){
+  return new Promise((resolve,reject)=>{
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = ()=>reject(new Error('no cargó '+src));
+    document.head.appendChild(s);
+  });
+}
+function cargarLibsPDF(){
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+  if (pdfLibsPromise) return pdfLibsPromise;
+  const fuentes = [
+    ['https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+     'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js'],
+    ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+     'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js']
+  ];
+  const intentar = i => {
+    if (i>=fuentes.length) return Promise.reject(new Error('ninguna fuente de jsPDF cargó'));
+    const [jspdfUrl, autotableUrl] = fuentes[i];
+    return cargarScript(jspdfUrl).then(()=>cargarScript(autotableUrl)).catch(()=>intentar(i+1));
+  };
+  pdfLibsPromise = intentar(0).catch(err=>{ pdfLibsPromise=null; throw err; });
+  return pdfLibsPromise;
+}
+
 /* ---- ficha en PDF: mismos datos y fuentes que la pantalla (perfil físico,
    detalle técnico/comportamiento toma a toma, partidos e historial) ---- */
-function descargarFichaPDF(j){
+async function descargarFichaPDF(j){
+  try { await cargarLibsPDF(); }
+  catch(err){ return toast('No se pudo descargar el PDF. Probá de nuevo en unos segundos.'); }
   if (!window.jspdf || !window.jspdf.jsPDF){
-    return toast('No se pudo cargar el generador de PDF. Revisá la conexión e intentá de nuevo.');
+    return toast('No se pudo descargar el PDF. Probá de nuevo en unos segundos.');
   }
   const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
   const margin = 14;
@@ -2680,7 +2705,7 @@ app.addEventListener('click', async e=>{
   const pdf = t.closest('[data-pdf]');
   if (pdf){
     const j = db.jugadores.find(x=>x.id===pdf.dataset.pdf);
-    if (j) descargarFichaPDF(j);
+    if (j) await descargarFichaPDF(j);
     return;
   }
 
