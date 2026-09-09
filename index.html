@@ -1336,11 +1336,15 @@ const pizTexto = hex => { // negro o blanco según qué se lea mejor sobre el co
 const PIZ_HERRAMIENTAS = [
   {id:'seleccion', nombre:'Mover'},
   {id:'cono',      nombre:'Cono'},
+  {id:'pelota',    nombre:'Pelota'},
   {id:'flecha',    nombre:'Flecha'},
   {id:'linea',     nombre:'Línea'},
+  {id:'punteada',  nombre:'Línea punteada'},
   {id:'pechera',   nombre:'Pechera'},
   {id:'lapiz',     nombre:'Lápiz'}
 ];
+const PIZ_PUNTO = ['cono','pelota','pechera'];      // elementos de punto: {x,y}
+const PIZ_SEGMENTO = ['flecha','linea','punteada']; // elementos de segmento: {x1,y1,x2,y2}
 const PIZ_NS = 'http://www.w3.org/2000/svg';
 const PIZ_W = 100, PIZ_H = 68;   // cancha horizontal; proporción real de campo (ancho x alto)
 
@@ -1422,15 +1426,45 @@ function pizPecheraSVG(el, sel){
 function pizSegmentoSVG(el, sel){
   const hex=pizHex(el.color);
   const marker = el.tipo==='flecha' ? ` marker-end="url(#pizF-${el.color})"` : '';
+  const dash = el.tipo==='punteada' ? ` stroke-dasharray="2.2,1.6"` : '';
   return `<g data-piz-id="${el.id}" data-piz-tipo="${el.tipo}">
     <line x1="${el.x1}" y1="${el.y1}" x2="${el.x2}" y2="${el.y2}" stroke="transparent" stroke-width="3" style="cursor:grab"/>
-    <line x1="${el.x1}" y1="${el.y1}" x2="${el.x2}" y2="${el.y2}" stroke="${hex}" stroke-width=".6" stroke-linecap="round"${marker}/>
+    <line x1="${el.x1}" y1="${el.y1}" x2="${el.x2}" y2="${el.y2}" stroke="${hex}" stroke-width=".6" stroke-linecap="round"${marker}${dash}/>
     ${sel?`<circle data-piz-handle="1" data-piz-id="${el.id}" cx="${el.x1}" cy="${el.y1}" r="1.3" fill="#fff" stroke="var(--naranja)" stroke-width=".4" style="cursor:grab"/>
            <circle data-piz-handle="2" data-piz-id="${el.id}" cx="${el.x2}" cy="${el.y2}" r="1.3" fill="#fff" stroke="var(--naranja)" stroke-width=".4" style="cursor:grab"/>`:''}
   </g>`;
 }
+function pizPelotaSVG(el, sel){
+  const R=1.7, r=.55;
+  const ang = i => (-90 + i*72) * Math.PI/180;
+  const pent = [0,1,2,3,4].map(i=>`${(r*Math.cos(ang(i))).toFixed(2)},${(r*Math.sin(ang(i))).toFixed(2)}`).join(' ');
+  const rayos = [0,1,2,3,4].map(i=>{
+    const a=ang(i);
+    return `<line x1="${(r*1.05*Math.cos(a)).toFixed(2)}" y1="${(r*1.05*Math.sin(a)).toFixed(2)}"
+      x2="${(R*.92*Math.cos(a)).toFixed(2)}" y2="${(R*.92*Math.sin(a)).toFixed(2)}" stroke="#111" stroke-width=".16"/>`;
+  }).join('');
+  return `<g data-piz-id="${el.id}" data-piz-tipo="pelota" transform="translate(${el.x},${el.y})" style="cursor:grab">
+    ${sel?`<circle r="${R+.8}" fill="none" stroke="var(--naranja)" stroke-width=".35" stroke-dasharray="1,.8"/>`:''}
+    <circle r="${R}" fill="#fff" stroke="#111" stroke-width=".22"/>
+    ${rayos}
+    <polygon points="${pent}" fill="#111"/>
+  </g>`;
+}
 function pizTrazoSVG(t){
   return `<path d="${t.d}" stroke="${pizHex(t.color)}" stroke-width=".7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+/* repinta un solo elemento in-place (sin tocar el resto del DOM) para poder
+   cambiar la selección sin cortar un gesto de arrastre en curso: un render()
+   completo reemplazaría el <svg> vivo y el arrastre se quedaría sin destino */
+function pizRepintarElemento(svg, id){
+  const el = (view.pizDraft.elementos||[]).find(x=>x.id===id); if (!el) return;
+  const nodo = svg.querySelector(`[data-piz-id="${id}"]`); if (!nodo) return;
+  const sel = id===view.pizSelId;
+  const html = el.tipo==='cono' ? pizConoSVG(el,sel)
+    : el.tipo==='pechera' ? pizPecheraSVG(el,sel)
+    : el.tipo==='pelota' ? pizPelotaSVG(el,sel)
+    : pizSegmentoSVG(el,sel);
+  nodo.outerHTML = html;
 }
 function pizElementosSVG(draft, interactivo){
   const sel = interactivo ? view.pizSelId : null;
@@ -1439,7 +1473,8 @@ function pizElementosSVG(draft, interactivo){
   (draft.elementos||[]).forEach(el=>{
     if (el.tipo==='cono') h += pizConoSVG(el, el.id===sel);
     else if (el.tipo==='pechera') h += pizPecheraSVG(el, el.id===sel);
-    else if (el.tipo==='flecha'||el.tipo==='linea') h += pizSegmentoSVG(el, el.id===sel);
+    else if (el.tipo==='pelota') h += pizPelotaSVG(el, el.id===sel);
+    else if (PIZ_SEGMENTO.includes(el.tipo)) h += pizSegmentoSVG(el, el.id===sel);
   });
   h += `</g>`;
   return h;
@@ -1560,17 +1595,17 @@ function pizarraEditor(){
       <span style="flex:1"></span>
       <button class="chip" data-piz="undo" ${view.pizUndo.length?'':'disabled'}>Deshacer</button>
       <button class="chip" data-piz="redo" ${view.pizRedo.length?'':'disabled'}>Rehacer</button>
-      ${elSel && (elSel.tipo==='cono'||elSel.tipo==='pechera')?`<button class="chip" data-piz="duplicarsel">Duplicar</button>`:''}
+      ${elSel && (elSel.tipo==='cono'||elSel.tipo==='pechera'||elSel.tipo==='pelota')?`<button class="chip" data-piz="duplicarsel">Duplicar</button>`:''}
       ${view.pizSelId?`<button class="chip" data-piz="elimsel" style="color:var(--rojo)">Eliminar</button>`:''}
       <button class="chip" data-piz="limpiar">Limpiar cancha</button>
       ${elSel && elSel.tipo==='pechera'?`<input type="text" id="piz-numero" maxlength="2" value="${esc(elSel.numero||'')}" placeholder="Nº" style="width:52px;text-align:center;padding:6px 8px">`:''}
     </div>
     <div class="piz-pitch">${pizSvgCompleto(d,{interactivo:true})}</div>
     <p class="screen-note" style="margin-top:8px">
-      ${view.pizHerr==='seleccion'?'Tocá un elemento para seleccionarlo y moverlo. Con uno seleccionado, elegí un color para cambiárselo.'
+      ${view.pizHerr==='seleccion'?'Tocá un elemento para seleccionarlo y moverlo libremente. Con uno seleccionado, elegí un color para cambiárselo.'
       :view.pizHerr==='lapiz'?'Dibujá arrastrando sobre la cancha.'
-      :view.pizHerr==='cono'||view.pizHerr==='pechera'?'Tocá la cancha para colocarlo.'
-      :'Arrastrá sobre la cancha para trazar el '+(view.pizHerr==='flecha'?'movimiento':'línea')+'.'}</p>
+      :PIZ_PUNTO.includes(view.pizHerr)?'Tocá la cancha para colocarlo.'
+      :'Arrastrá sobre la cancha para trazar '+(view.pizHerr==='flecha'?'el movimiento':view.pizHerr==='punteada'?'la línea punteada':'la línea')+'.'}</p>
     <div class="field"><label class="label" for="piz-explicacion">Explicación del ejercicio</label>
       <textarea id="piz-explicacion" placeholder="Describí cómo se desarrolla el ejercicio, las consignas, objetivos, cantidad de jugadores, espacio de juego, progresiones, etc.">${esc(d.explicacion)}</textarea></div>
     <div class="field"><label class="label" for="piz-duracion">Duración ideal / aproximada</label>
@@ -1616,24 +1651,30 @@ function pizWire(){
               id: el.id, handle: handle.dataset.pizHandle, base: {...el}, inicio:p };
       } else if (nodo){
         const el = buscar(nodo.dataset.pizId);
-        view.pizSelId = nodo.dataset.pizId; render();
+        if (view.pizSelId !== nodo.dataset.pizId){
+          const prevId = view.pizSelId;
+          view.pizSelId = nodo.dataset.pizId;
+          if (prevId) pizRepintarElemento(svg, prevId);
+          pizRepintarElemento(svg, view.pizSelId);
+        }
         if (el) g = { tipo:'mover', id:el.id, base:{...el}, inicio:p };
       } else if (view.pizSelId){ view.pizSelId=null; render(); }
       return;
     }
-    if (view.pizHerr==='cono' || view.pizHerr==='pechera'){
+    if (PIZ_PUNTO.includes(view.pizHerr)){
       const el = { id:uid(), tipo:view.pizHerr, x:p.x, y:p.y, color:view.pizColor, rot:0, numero:'' };
       pizPushUndo(); view.pizDraft.elementos.push(el);
       view.pizSelId = el.id; view.pizHerr = 'seleccion'; render();
       return;
     }
-    if (view.pizHerr==='flecha' || view.pizHerr==='linea'){
+    if (PIZ_SEGMENTO.includes(view.pizHerr)){
       const linea = document.createElementNS(PIZ_NS,'line');
       linea.setAttribute('x1',p.x); linea.setAttribute('y1',p.y);
       linea.setAttribute('x2',p.x); linea.setAttribute('y2',p.y);
       linea.setAttribute('stroke', pizHex(view.pizColor)); linea.setAttribute('stroke-width','.6');
       linea.setAttribute('stroke-linecap','round');
       if (view.pizHerr==='flecha') linea.setAttribute('marker-end',`url(#pizF-${view.pizColor})`);
+      if (view.pizHerr==='punteada') linea.setAttribute('stroke-dasharray','2.2,1.6');
       gEl().appendChild(linea);
       g = { tipo:'segmento', nodo:linea, inicio:p, herr:view.pizHerr };
       return;
@@ -1663,6 +1704,13 @@ function pizWire(){
         const c = nodo.querySelector('circle'); if (c){ c.setAttribute('cx',g.base.x+dx); c.setAttribute('cy',g.base.y+dy); }
       } else if (el.tipo==='pechera'){
         nodo.setAttribute('transform', `translate(${g.base.x+dx},${g.base.y+dy}) rotate(${g.base.rot||0})`);
+      } else if (el.tipo==='pelota'){
+        nodo.setAttribute('transform', `translate(${g.base.x+dx},${g.base.y+dy})`);
+      } else if (PIZ_SEGMENTO.includes(el.tipo)){
+        const nx1=g.base.x1+dx, ny1=g.base.y1+dy, nx2=g.base.x2+dx, ny2=g.base.y2+dy;
+        nodo.querySelectorAll('line').forEach(l=>{ l.setAttribute('x1',nx1); l.setAttribute('y1',ny1); l.setAttribute('x2',nx2); l.setAttribute('y2',ny2); });
+        const h1 = nodo.querySelector('[data-piz-handle="1"]'); if (h1){ h1.setAttribute('cx',nx1); h1.setAttribute('cy',ny1); }
+        const h2 = nodo.querySelector('[data-piz-handle="2"]'); if (h2){ h2.setAttribute('cx',nx2); h2.setAttribute('cy',ny2); }
       }
       g._dx=dx; g._dy=dy;
     } else if (g.tipo==='handle'){
@@ -1689,7 +1737,13 @@ function pizWire(){
     if (g.tipo==='mover'){
       const el = buscar(g.id);
       if (el && (g._dx||g._dy)){
-        pizPushUndo(); el.x = g.base.x+(g._dx||0); el.y = g.base.y+(g._dy||0);
+        pizPushUndo();
+        if (PIZ_SEGMENTO.includes(el.tipo)){
+          el.x1 = g.base.x1+(g._dx||0); el.y1 = g.base.y1+(g._dy||0);
+          el.x2 = g.base.x2+(g._dx||0); el.y2 = g.base.y2+(g._dy||0);
+        } else {
+          el.x = g.base.x+(g._dx||0); el.y = g.base.y+(g._dy||0);
+        }
       }
       render();
     } else if (g.tipo==='handle'){
@@ -2275,7 +2329,7 @@ app.addEventListener('click', async e=>{
     }
     if (accion==='duplicarsel'){
       const el = (view.pizDraft.elementos||[]).find(x=>x.id===view.pizSelId);
-      if (!el || (el.tipo!=='cono' && el.tipo!=='pechera')) return;
+      if (!el || !PIZ_PUNTO.includes(el.tipo)) return;
       pizPushUndo();
       const copia = {...el, id:uid(), x:Math.min(PIZ_W-1, el.x+3), y:Math.min(PIZ_H-1, el.y+3)};
       view.pizDraft.elementos.push(copia);
