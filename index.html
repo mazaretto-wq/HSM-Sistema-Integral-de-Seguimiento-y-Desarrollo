@@ -28,7 +28,7 @@
   --mono:'JetBrains Mono',ui-monospace,monospace;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0}
+html,body{margin:0;padding:0;overflow-x:hidden}
 body{
   background:var(--paper);color:var(--ink);
   font-family:var(--body);font-size:15px;line-height:1.5;
@@ -71,6 +71,29 @@ button{cursor:pointer;border:none;background:none}
 .puerta .opt strong{display:block;font-family:var(--display);font-size:22px;letter-spacing:.01em}
 .puerta .opt span{display:block;font-size:13px;color:var(--ink-2);margin-top:3px}
 .rolebox{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-2);text-align:right;max-width:130px;line-height:1.3}
+
+/* ---- portada de entrada (antes de elegir usuario) ---- */
+.home-hero{min-height:calc(100vh - 54px - env(safe-area-inset-top));width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
+  padding:48px 20px 40px;display:flex;flex-direction:column;
+  align-items:center;text-align:center;background-size:cover;background-position:center;color:#fff}
+.home-escudo{width:104px;height:104px;object-fit:contain;margin-bottom:16px;filter:drop-shadow(0 2px 14px rgba(0,0,0,.55))}
+.home-titulo{font-family:var(--display);font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  font-size:26px;margin:0 0 36px;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.home-titulo small{display:block;font-family:var(--mono);font-weight:400;font-size:12px;letter-spacing:.2em;
+  color:rgba(255,255,255,.8);margin-top:6px;text-transform:uppercase}
+.home-roles{display:flex;flex-direction:column;gap:12px;width:100%;max-width:400px;margin-top:auto}
+.home-roles .opt{display:block;width:100%;text-align:left;background:rgba(17,17,17,.45);
+  border:1px solid rgba(255,255,255,.3);border-radius:var(--r);padding:18px 16px;cursor:pointer;
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.home-roles .opt:hover{border-color:var(--naranja);background:rgba(17,17,17,.65)}
+.home-roles .opt strong{display:block;font-family:var(--display);font-size:21px;letter-spacing:.01em;
+  color:var(--naranja);text-transform:uppercase}
+.home-roles .opt span{display:block;font-size:12.5px;color:rgba(255,255,255,.82);margin-top:3px}
+.home-aviso{font-size:12.5px;color:#FFC9BC;margin:20px 0 0;max-width:400px}
+@media (min-width:680px){
+  .home-roles{flex-direction:row;max-width:900px}
+  .home-roles .opt{flex:1}
+}
 
 h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter-spacing:.04em;text-transform:uppercase;margin:20px 0 3px}
 .screen-note{color:var(--ink-2);font-size:13px;margin:0 0 16px}
@@ -418,7 +441,7 @@ const puedeEditar = () => esCoord() || esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
@@ -624,6 +647,8 @@ const colorSem = v => v>=7?'var(--verde)':v>=5?'var(--ambar)':'var(--rojo)';
    ========================================================= */
 const app = document.getElementById('app');
 
+const FONDOS_HOME = ['Portada y fondo 1.jpg','Portada y fondo 2.jpg','Portada y fondo 3.jpg'];
+
 function pantallaAcceso(){
   const conNube = !!fb;
   const pideLoginJugador = conNube && fbEstado === 'sinPermiso';
@@ -637,6 +662,30 @@ function pantallaAcceso(){
         <div class="gap"></div>
         <button class="btn btn-ghost" id="ac-volver">Volver</button>
       </div>`;
+
+  if (!view.puerta){
+    /* portada de entrada: escudo grande, marca y los 3 accesos en fila
+       (se apilan solos en pantallas angostas). Fondo con una de las 3
+       fotos del club, elegida al azar una vez por visita a esta pantalla. */
+    if (!view.fondoHome) view.fondoHome = FONDOS_HOME[Math.floor(Math.random()*FONDOS_HOME.length)];
+    app.innerHTML = `<div class="home-hero" style="background-image:linear-gradient(180deg,rgba(10,10,8,.45),rgba(10,10,8,.82)),url('${encodeURI(view.fondoHome)}')">
+      <img class="home-escudo" src="${LOGO_HSM}" alt="">
+      <h1 class="home-titulo">Haras Santa María<small>Fútbol</small></h1>
+      <div class="home-roles">
+        <button class="opt" id="ac-jugador">
+          <strong>Soy jugador</strong>
+          <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña.':' Sin contraseña.'}</span></button>
+        <button class="opt" id="ac-dt">
+          <strong>Soy DT</strong>
+          <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide contraseña.</span></button>
+        <button class="opt" id="ac-coord">
+          <strong>Coordinación</strong>
+          <span>Todas las categorías, más las cargas y la configuración. Pide contraseña.</span></button>
+      </div>
+      ${fbEstado==='error'?`<p class="home-aviso">No se pudo conectar con la nube. Vas a trabajar contra este dispositivo solamente.</p>`:''}
+    </div>`;
+    return;
+  }
 
   app.innerHTML = `<div class="puerta">
     <h2 class="screen-title">Entrar</h2>
@@ -653,20 +702,8 @@ function pantallaAcceso(){
         <div class="gap"></div><button class="btn btn-ghost" id="ac-volver">Volver</button>
       </div>`
     : view.puerta==='coord' ? formLogin('Coordinación','')
-    : view.puerta==='jugador' ? formLogin('Jugadores','Pedile la contraseña a coordinación.')
-      + `<div class="gap"></div><button class="btn btn-ghost" id="ac-local">Ver sin conexión</button>`
-    : `
-      <button class="opt" id="ac-jugador">
-        <strong>Soy jugador</strong>
-        <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña.':' Sin contraseña.'}</span></button>
-      <button class="opt" id="ac-dt">
-        <strong>Soy DT</strong>
-        <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide contraseña.</span></button>
-      <button class="opt" id="ac-coord">
-        <strong>Coordinación</strong>
-        <span>Todas las categorías, más las cargas y la configuración. Pide contraseña.</span></button>
-      ${fbEstado==='error'?`<p class="screen-note" style="color:var(--rojo)">
-        No se pudo conectar con la nube. Vas a trabajar contra este dispositivo solamente.</p>`:''}`}
+    : formLogin('Jugadores','Pedile la contraseña a coordinación.')
+      + `<div class="gap"></div><button class="btn btn-ghost" id="ac-local">Ver sin conexión</button>`}
   </div>`;
   const inp = document.getElementById('ac-clave');
   if (inp) inp.focus();
