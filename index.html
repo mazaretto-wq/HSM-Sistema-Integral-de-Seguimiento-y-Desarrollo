@@ -1207,41 +1207,62 @@ function fotoWire(){
   });
 }
 
+function conLimite(promesa, ms){
+  return Promise.race([
+    promesa,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('tardó demasiado')), ms))
+  ]);
+}
+
 async function guardarFotoRecorte(){
   const fe = view.fotoEditor;
   if (!fe) return;
-  const j = db.jugadores.find(x=>x.id===fe.jugadorId);
-  if (!j){ view.fotoEditor=null; return render(); }
-
-  const scale = Math.max(fe.boxSize/fe.natW, fe.boxSize/fe.natH) * fe.zoom;
-  const sx = -fe.x/scale, sy = -fe.y/scale, sw = fe.boxSize/scale, sh = fe.boxSize/scale;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = FOTO_SIZE; canvas.height = FOTO_SIZE;
-  canvas.getContext('2d').drawImage(fe.img, sx, sy, sw, sh, 0, 0, FOTO_SIZE, FOTO_SIZE);
-
-  const blob = await new Promise(res=>canvas.toBlob(res, 'image/jpeg', 0.85));
-  const fotoAnterior = j.foto;
-  let url;
+  const boton = document.getElementById('guardarFoto');
+  if (boton){ boton.disabled = true; boton.textContent = 'Guardando…'; }
   try{
-    if (!fb || !fb.storage) throw new Error('sin Storage');
-    const ref = fb.storage.ref().child(`jugadores/${j.id}-${Date.now()}.jpg`);
-    await ref.put(blob, { contentType:'image/jpeg' });
-    url = await ref.getDownloadURL();
-  }catch(err){
-    /* sin nube (o reglas de Storage sin configurar): la foto queda igual,
-       pero solo en este dispositivo hasta que se habilite Storage */
-    url = await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
-  }
+    const j = db.jugadores.find(x=>x.id===fe.jugadorId);
+    if (!j){ view.fotoEditor=null; return render(); }
 
-  j.foto = url;
-  await Store.save(db);
-  if (fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
-    try{ await fb.storage.refFromURL(fotoAnterior).delete(); }catch(e){}
+    /* por si el recuadro todavía no tenía su tamaño calculado */
+    if (!fe.boxSize){
+      const box = document.getElementById('cropBox');
+      fe.boxSize = (box && box.clientWidth) || 300;
+    }
+    const scale = Math.max(fe.boxSize/fe.natW, fe.boxSize/fe.natH, 0.001) * (fe.zoom||1);
+    const sx = -fe.x/scale, sy = -fe.y/scale, sw = fe.boxSize/scale, sh = fe.boxSize/scale;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = FOTO_SIZE; canvas.height = FOTO_SIZE;
+    canvas.getContext('2d').drawImage(fe.img, sx, sy, sw, sh, 0, 0, FOTO_SIZE, FOTO_SIZE);
+
+    const blob = await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('no se pudo procesar la imagen')), 'image/jpeg', 0.85));
+    const fotoAnterior = j.foto;
+    let url;
+    try{
+      if (!fb || !fb.storage) throw new Error('sin Storage');
+      const ref = fb.storage.ref().child(`jugadores/${j.id}-${Date.now()}.jpg`);
+      await conLimite(ref.put(blob, { contentType:'image/jpeg' }), 15000);
+      url = await conLimite(ref.getDownloadURL(), 15000);
+    }catch(err){
+      /* sin nube (o reglas de Storage sin configurar, o subida lenta/caída):
+         la foto queda igual, pero solo en este dispositivo hasta que se
+         habilite Storage */
+      url = await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
+    }
+
+    j.foto = url;
+    await Store.save(db);
+    if (fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
+      try{ await fb.storage.refFromURL(fotoAnterior).delete(); }catch(e){}
+    }
+    view.fotoEditor = null;
+    toast('Foto actualizada');
+    render();
+  }catch(err){
+    console.error('Error al guardar la foto:', err);
+    toast('No se pudo guardar la foto. Probá de nuevo.');
+    if (boton){ boton.disabled = false; boton.textContent = 'Guardar foto'; }
   }
-  view.fotoEditor = null;
-  toast('Foto actualizada');
-  render();
 }
 
 async function eliminarFotoJugador(jugadorId){
