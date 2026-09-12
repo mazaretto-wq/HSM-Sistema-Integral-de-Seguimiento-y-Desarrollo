@@ -776,13 +776,83 @@ function pantallaPlantel(){
 }
 
 /* ---------- FICHA ---------- */
+/* último valor cargado de un ítem y el anterior a ese (para el delta),
+   buscando cada uno de forma independiente por si no se cargan siempre juntos */
+function ultimoParItem(id, itemId){
+  const evs = evalsDe(id);
+  let actual=null, anterior=null;
+  for (let i=evs.length-1; i>=0; i--){
+    const v = evs[i][itemId];
+    if (typeof v!=='number') continue;
+    if (actual===null) actual = v;
+    else { anterior = v; break; }
+  }
+  return { actual, anterior };
+}
+/* bloque "estado actual": último valor de cada ítem de la categoría, con
+   la comparación contra la toma anterior debajo, para ver de un vistazo
+   cómo viene el jugador ahora sin tener que leer todo el historial */
+function bloqueEstadoActual(j, titulo, items){
+  const filas = items.map(i=>({ ...i, ...ultimoParItem(j.id, i.id) })).filter(f=>f.actual!==null);
+  if (!filas.length) return '';
+  const r = ultimaCon(j.id, items.map(i=>i.id));
+  const toma = r ? (db.tomas.find(t=>t.id===r.ev.tomaId)||{}).nombre : '';
+  let h = `<div class="block"><div class="block-title">${esc(titulo)}${toma?` <span>${esc(toma)}</span>`:''}</div>
+    <div class="scroll-x"><table class="cmp"><tbody>`;
+  filas.forEach(f=>{
+    const col = f.escala ? colorSem(f.actual) : 'var(--ink)';
+    let d = '';
+    if (f.anterior!=null){
+      const dif = f.actual - f.anterior;
+      const mejora = f.mejor==='alto' ? dif>0 : dif<0;
+      d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(f.dec)}</span>`;
+    }
+    h += `<tr><td>${esc(f.nombre)}${f.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(f.unidad)}</span>`:''}</td>
+      <td class="val" style="color:${col}">${f.actual.toFixed(f.dec)}${d}</td></tr>`;
+  });
+  return h + `</tbody></table></div></div>`;
+}
+/* puestos: lo que el jugador dice jugar + dónde jugó de verdad según los
+   partidos cargados; antes era su propia solapa, ahora vive en Detalle */
+function bloquePosiciones(j){
+  const pos = posiciones(j);
+  let h = `<div class="block"><div class="block-title">Puestos declarados</div>`;
+  if (!pos.length){
+    h += `<div class="empty"><p>Todavía no tiene puestos cargados.</p>
+      ${puedeEditar()?`<button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button>`:''}</div>`;
+  } else {
+    h += `<div class="ficha-tags">${pos.map((p,i)=>
+      `<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}</div>
+      <p class="screen-note" style="margin-top:10px">El primero es su puesto principal; es el que la Cancha usa para sugerirlo.</p>`;
+  }
+  h += `</div>`;
+
+  const porPos = pjPorPosicion(j.id);
+  h += `<div class="block"><div class="block-title">Dónde jugó <span>${porPos.length} puesto${porPos.length===1?'':'s'}</span></div>`;
+  if (!porPos.length){
+    h += `<div class="empty"><p>Sin partidos con el puesto anotado. Cargá un partido eligiendo el puesto de cada uno y acá vas a ver dónde jugó de verdad.</p></div>`;
+  } else {
+    const total = porPos.reduce((a,b)=>a+b[1],0);
+    porPos.forEach(([p,n])=>{
+      const af = afinidad(j,p);
+      const col = af===0?'var(--verde)':(af===1?'var(--naranja)':'var(--ink-2)');
+      h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(p)}</span>
+        <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+          <span style="display:block;height:100%;width:${Math.round(n/total*100)}%;background:${col};border-radius:99px"></span></span>
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;width:34px;text-align:right">${n} PJ</span></div>`;
+    });
+    h += `<p class="screen-note" style="margin-top:10px">Verde: es su puesto. Naranja: puesto alternativo. Gris: jugó ahí sin tenerlo declarado.</p>`;
+  }
+  return h + `</div>`;
+}
 function fichaJugador(){
   const j = db.jugadores.find(x=>x.id===view.jugadorId);
   if (!j){ view.jugadorId=null; return render(); }
   const e = edad(j.fechaNac), evs = evalsDe(j.id);
   const cats = (j.categorias||[]);
   const tab = view.fichaTab || 'general';
-  const SOLAPAS = [['general','General'],['detalle','Detalle'],['posiciones','Posiciones']];
+  const SOLAPAS = [['general','General'],['detalle','Detalle'],['historial','Historial']];
 
   let h = `<button class="back" data-back="1">← Plantel</button>
    <div class="ficha-head">
@@ -919,8 +989,26 @@ function fichaJugador(){
     }
   }
 
-  /* ===================== DETALLE ===================== */
+  /* ===================== DETALLE: estado actual (última toma de cada
+     ítem, con la comparación contra la anterior) + puestos ===== */
   if (tab==='detalle'){
+    const tablas = [
+      ['Físico', FISICO.map(f=>({id:f.id,nombre:f.nombre,unidad:f.unidad,mejor:f.mejor,dec:f.dec||0,escala:false}))],
+      ['Técnico-táctico', TECNICO.map(t=>({...t,mejor:'alto',dec:0,escala:true}))],
+      ['Comportamiento', CONDUCTA.map(t=>({...t,mejor:'alto',dec:0,escala:true}))]
+    ];
+    const bloques = tablas.map(([titulo,items])=>bloqueEstadoActual(j, titulo, items)).filter(Boolean);
+    if (!bloques.length){
+      h += `<div class="block"><div class="block-title">Estado actual</div>
+        <div class="empty"><p>Sin evaluaciones. Cargá la primera toma para ver acá cómo viene el jugador.</p></div></div>`;
+    } else {
+      h += bloques.join('');
+    }
+    h += bloquePosiciones(j);
+  }
+
+  /* ===================== HISTORIAL: toma a toma completo ===================== */
+  if (tab==='historial'){
     if (!evs.length){
       h += `<div class="block"><div class="block-title">Evaluaciones</div>
         <div class="empty"><p>Sin evaluaciones. Cargá la primera toma y a partir de la segunda vas a ver la comparativa.</p></div></div>`;
@@ -957,40 +1045,6 @@ function fichaJugador(){
         h += `</tbody></table></div></div>`;
       });
     }
-  }
-
-  /* ===================== POSICIONES ===================== */
-  if (tab==='posiciones'){
-    const pos = posiciones(j);
-    h += `<div class="block"><div class="block-title">Puestos declarados</div>`;
-    if (!pos.length){
-      h += `<div class="empty"><p>Todavía no tiene puestos cargados.</p>
-        ${puedeEditar()?`<button class="btn btn-ghost" data-editar="${j.id}">Cargarlos ahora</button>`:''}</div>`;
-    } else {
-      h += `<div class="ficha-tags">${pos.map((p,i)=>
-        `<span class="tag${i===0?' cat':''}">${i===0?'':'también: '}${esc(p)}</span>`).join('')}</div>
-        <p class="screen-note" style="margin-top:10px">El primero es su puesto principal; es el que la Cancha usa para sugerirlo.</p>`;
-    }
-    h += `</div>`;
-
-    const porPos = pjPorPosicion(j.id);
-    h += `<div class="block"><div class="block-title">Dónde jugó <span>${porPos.length} puesto${porPos.length===1?'':'s'}</span></div>`;
-    if (!porPos.length){
-      h += `<div class="empty"><p>Sin partidos con el puesto anotado. Cargá un partido eligiendo el puesto de cada uno y acá vas a ver dónde jugó de verdad.</p></div>`;
-    } else {
-      const total = porPos.reduce((a,b)=>a+b[1],0);
-      porPos.forEach(([p,n])=>{
-        const af = afinidad(j,p);
-        const col = af===0?'var(--verde)':(af===1?'var(--naranja)':'var(--ink-2)');
-        h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(p)}</span>
-          <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
-            <span style="display:block;height:100%;width:${Math.round(n/total*100)}%;background:${col};border-radius:99px"></span></span>
-          <span style="font-family:var(--mono);font-size:13px;font-weight:600;width:34px;text-align:right">${n} PJ</span></div>`;
-      });
-      h += `<p class="screen-note" style="margin-top:10px">Verde: es su puesto. Naranja: puesto alternativo. Gris: jugó ahí sin tenerlo declarado.</p>`;
-    }
-    h += `</div>`;
   }
 
   h += `<div class="block"><button class="btn btn-ghost" data-pdf="${j.id}">Descargar ficha en PDF</button></div>`;
