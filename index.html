@@ -406,7 +406,7 @@ const puedeEditar = () => esCoord() || esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', puerta:null, claveMal:false, dtCat:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, puerta:null, claveMal:false, dtCat:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
@@ -776,30 +776,48 @@ function pantallaPlantel(){
 }
 
 /* ---------- FICHA ---------- */
+/* nombre de una toma para las tablas comparativas: sin el "Test físico"
+   de las tomas históricas de tests físicos, que solo ensucia la columna
+   (el nombre real de la toma no se toca, esto es nada más de exhibición) */
+function nombreToma(id){
+  const n = (db.tomas.find(t=>t.id===id)||{}).nombre || '';
+  const limpio = n.replace(/test\s*f[ií]sico\s*[·\-:]?\s*/gi, '').trim();
+  return limpio || n || '—';
+}
 /* último valor cargado de un ítem y el anterior a ese (para el delta),
    buscando cada uno de forma independiente por si no se cargan siempre juntos */
 function ultimoParItem(id, itemId){
   const evs = evalsDe(id);
-  let actual=null, anterior=null;
+  let actual=null, actualToma=null, anterior=null;
   for (let i=evs.length-1; i>=0; i--){
     const v = evs[i][itemId];
     if (typeof v!=='number') continue;
-    if (actual===null) actual = v;
+    if (actual===null){ actual = v; actualToma = evs[i].tomaId; }
     else { anterior = v; break; }
   }
-  return { actual, anterior };
+  return { actual, actualToma, anterior };
 }
 /* bloque "estado actual": último valor de cada ítem de la categoría, con
    la comparación contra la toma anterior debajo, para ver de un vistazo
-   cómo viene el jugador ahora sin tener que leer todo el historial */
+   cómo viene el jugador ahora sin tener que leer todo el historial.
+   En modo edición (coordinación) cada valor se puede corregir ahí mismo. */
 function bloqueEstadoActual(j, titulo, items){
   const filas = items.map(i=>({ ...i, ...ultimoParItem(j.id, i.id) })).filter(f=>f.actual!==null);
   if (!filas.length) return '';
   const r = ultimaCon(j.id, items.map(i=>i.id));
-  const toma = r ? (db.tomas.find(t=>t.id===r.ev.tomaId)||{}).nombre : '';
+  const toma = r ? nombreToma(r.ev.tomaId) : '';
   let h = `<div class="block"><div class="block-title">${esc(titulo)}${toma?` <span>${esc(toma)}</span>`:''}</div>
     <div class="scroll-x"><table class="cmp"><tbody>`;
   filas.forEach(f=>{
+    const etiqueta = `${esc(f.nombre)}${f.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(f.unidad)}</span>`:''}`;
+    if (view.fichaEditando){
+      const clave = `${f.id}|${f.actualToma}`;
+      const val = view.edicionesPendientes[clave] !== undefined ? view.edicionesPendientes[clave] : f.actual;
+      h += `<tr><td>${etiqueta}</td><td class="val"><input type="number" inputmode="decimal"
+        step="${f.dec?'0.01':'1'}" data-editval="${clave}" value="${esc(val)}"
+        style="width:84px;text-align:right;padding:6px"></td></tr>`;
+      return;
+    }
     const col = f.escala ? colorSem(f.actual) : 'var(--ink)';
     let d = '';
     if (f.anterior!=null){
@@ -807,7 +825,7 @@ function bloqueEstadoActual(j, titulo, items){
       const mejora = f.mejor==='alto' ? dif>0 : dif<0;
       d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(f.dec)}</span>`;
     }
-    h += `<tr><td>${esc(f.nombre)}${f.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(f.unidad)}</span>`:''}</td>
+    h += `<tr><td>${etiqueta}</td>
       <td class="val" style="color:${col}">${f.actual.toFixed(f.dec)}${d}</td></tr>`;
   });
   return h + `</tbody></table></div></div>`;
@@ -845,6 +863,31 @@ function bloquePosiciones(j){
     h += `<p class="screen-note" style="margin-top:10px">Verde: es su puesto. Naranja: puesto alternativo. Gris: jugó ahí sin tenerlo declarado.</p>`;
   }
   return h + `</div>`;
+}
+/* aplica las correcciones tecleadas en Detalle/Historial (clave "itemId|tomaId")
+   a la evaluación de esa toma; si no existía evaluación para esa toma la crea */
+async function guardarEdicionFicha(){
+  const jugadorId = view.jugadorId;
+  let cambios = 0;
+  Object.entries(view.edicionesPendientes).forEach(([clave, raw])=>{
+    const [itemId, tomaId] = clave.split('|');
+    if (!tomaId || tomaId==='null' || tomaId==='undefined') return;
+    let reg = db.evaluaciones.find(e=>e.jugadorId===jugadorId && e.tomaId===tomaId);
+    const v = String(raw).trim();
+    if (v===''){
+      if (reg && reg[itemId]!==undefined){ delete reg[itemId]; cambios++; }
+      return;
+    }
+    const n = Number(v);
+    if (!Number.isFinite(n)) return;
+    if (!reg){ reg = { id:uid(), jugadorId, tomaId, fecha:hoy() }; db.evaluaciones.push(reg); }
+    if (reg[itemId]!==n){ reg[itemId]=n; cambios++; }
+  });
+  view.fichaEditando=false; view.edicionesPendientes={};
+  if (!cambios) return render();
+  await Store.save(db);
+  toast(`${cambios} valor${cambios>1?'es':''} actualizado${cambios>1?'s':''}`);
+  render();
 }
 function fichaJugador(){
   const j = db.jugadores.find(x=>x.id===view.jugadorId);
@@ -1013,7 +1056,6 @@ function fichaJugador(){
       h += `<div class="block"><div class="block-title">Evaluaciones</div>
         <div class="empty"><p>Sin evaluaciones. Cargá la primera toma y a partir de la segunda vas a ver la comparativa.</p></div></div>`;
     } else {
-      const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
       const tablas = [
         ['Físico', FISICO.map(f=>({id:f.id,nombre:f.nombre,unidad:f.unidad,mejor:f.mejor,dec:f.dec||0}))],
         ['Técnico-táctico', TECNICO.map(t=>({...t,mejor:'alto',dec:0,escala:true}))],
@@ -1029,6 +1071,14 @@ function fichaJugador(){
           h += `<tr><td>${esc(i.nombre)}${i.unidad?` <span class="flat" style="font-family:var(--mono);font-size:10px">${esc(i.unidad)}</span>`:''}</td>`;
           evs.forEach((e,k)=>{
             const v = e[i.id];
+            if (view.fichaEditando){
+              const clave = `${i.id}|${e.tomaId}`;
+              const val = view.edicionesPendientes[clave] !== undefined ? view.edicionesPendientes[clave] : (typeof v==='number'?v:'');
+              h += `<td class="val"><input type="number" inputmode="decimal" step="${i.dec?'0.01':'1'}"
+                data-editval="${clave}" value="${esc(val)}"
+                style="width:64px;text-align:right;padding:6px"></td>`;
+              return;
+            }
             if (typeof v!=='number'){ h += `<td class="val flat">—</td>`; return; }
             const col = i.escala ? colorSem(v) : 'var(--ink)';
             let d = '';
@@ -1047,11 +1097,17 @@ function fichaJugador(){
     }
   }
 
-  h += `<div class="block"><button class="btn btn-ghost" data-pdf="${j.id}">Descargar ficha en PDF</button></div>`;
+  if (view.fichaEditando){
+    h += `<div class="block"><button class="btn btn-naranja" id="guardarEdicionFicha">Guardar cambios</button>
+      <div class="gap"></div><button class="btn btn-ghost" data-cancelarEdicionFicha="1">Cancelar</button></div>`;
+  } else {
+    h += `<div class="block"><button class="btn btn-ghost" data-pdf="${j.id}">Descargar ficha en PDF</button></div>`;
+  }
 
-  if (puedeEditar()) h += `<div class="block">
+  if (puedeEditar() && !view.fichaEditando) h += `<div class="block">
     <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
     <div class="gap"></div><button class="btn btn-ghost" data-editar="${j.id}">Editar datos del jugador</button>
+    ${esCoord()&&(tab==='detalle'||tab==='historial')?`<div class="gap"></div><button class="btn btn-ghost" data-editarFicha="1">Corregir valores de esta solapa</button>`:''}
     ${esCoord()?`<div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button>`:''}</div>`;
   app.innerHTML = h;
 }
@@ -1143,7 +1199,6 @@ async function descargarFichaPDF(j){
      solo con las tomas que tengan datos de esa categoría (una toma de test
      físico no debe aparecer vacía en la tabla de técnico-táctico, y viceversa) */
   const evs = evalsDe(j.id);
-  const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
   [['Test físicos', FISICO, [234,91,12]], ['Técnico-táctico', TECNICO, [46,125,70]], ['Comportamiento', CONDUCTA, [31,95,169]]]
     .forEach(([titulo,items,color])=>{
       const evsCol = evs.filter(e=>items.some(i=>typeof e[i.id]==='number'));
@@ -2476,10 +2531,16 @@ app.addEventListener('change', async e=>{
    redibujar: si un arrastre en el lienzo dispara un render mientras se
    está escribiendo, no se pierde lo tipeado */
 app.addEventListener('input', e=>{
-  if (!view.pizDraft) return;
-  if (e.target.id==='piz-nombre')       view.pizDraft.nombre = e.target.value;
-  else if (e.target.id==='piz-duracion')    view.pizDraft.duracion = e.target.value;
-  else if (e.target.id==='piz-explicacion') view.pizDraft.explicacion = e.target.value;
+  if (view.pizDraft){
+    if (e.target.id==='piz-nombre')       view.pizDraft.nombre = e.target.value;
+    else if (e.target.id==='piz-duracion')    view.pizDraft.duracion = e.target.value;
+    else if (e.target.id==='piz-explicacion') view.pizDraft.explicacion = e.target.value;
+  }
+  if (e.target.hasAttribute('data-editval')){
+    /* guarda lo tecleado aparte para no perderlo si cambia de solapa
+       antes de guardar (Detalle/Historial se vuelven a pintar enteros) */
+    view.edicionesPendientes[e.target.getAttribute('data-editval')] = e.target.value;
+  }
 });
 
 app.addEventListener('click', async e=>{
@@ -2710,10 +2771,10 @@ app.addEventListener('click', async e=>{
   }
 
   const row = t.closest('[data-jugador]');
-  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; window.scrollTo(0,0); return render(); }
+  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; window.scrollTo(0,0); return render(); }
 
   if (t.closest('[data-back]')){
-    if (view.jugadorId) view.jugadorId=null;
+    if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; }
     else if (view.sesionId) view.sesionId=null;
     else if (view.ejercicioId) view.ejercicioId=null;
     else if (view.draft) view.draft=null;
@@ -2765,6 +2826,14 @@ app.addEventListener('click', async e=>{
     if (j) await descargarFichaPDF(j);
     return;
   }
+
+  if (t.closest('[data-editarFicha]') && esCoord()){
+    view.fichaEditando=true; view.edicionesPendientes={}; window.scrollTo(0,0); return render();
+  }
+  if (t.closest('[data-cancelarEdicionFicha]')){
+    view.fichaEditando=false; view.edicionesPendientes={}; window.scrollTo(0,0); return render();
+  }
+  if (t.id==='guardarEdicionFicha'){ return guardarEdicionFicha(); }
 
   const ed = t.closest('[data-editar]');
   if (ed){
