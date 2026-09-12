@@ -1081,7 +1081,7 @@ async function descargarFichaPDF(j){
   ];
   saltoSiHaceFalta(14 + filasPerfil.length*6);
   doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
-    head:[['Perfil físico','Valor']], body:filasPerfil,
+    head:[['Detalles del jugador','']], body:filasPerfil,
     theme:'grid', styles:{fontSize:9,cellPadding:2.2}, headStyles:{fillColor:[234,91,12]} });
   y = doc.lastAutoTable.finalY + 8;
 
