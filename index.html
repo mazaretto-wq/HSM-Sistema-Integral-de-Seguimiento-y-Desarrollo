@@ -1071,36 +1071,39 @@ async function descargarFichaPDF(j){
     theme:'grid', styles:{fontSize:9,cellPadding:2.2}, headStyles:{fillColor:[17,17,17]} });
   y = doc.lastAutoTable.finalY + 8;
 
-  /* físico: perfil (puesto, pierna, altura) + último valor de cada test */
-  const fis = fisicoUltimo(j.id);
-  const filasFisico = [
+  /* perfil físico: puesto, pierna y altura (no depende de tomas) */
+  const filasPerfil = [
     ['Puesto principal', posPrincipal(j) || '—'],
     ['También juega de', posiciones(j).slice(1).join(' · ') || '—'],
     ['Pierna hábil', j.pierna || '—'],
     ['Pierna inhábil', j.piernaMala ? `${j.piernaMala}/5` : '—'],
-    ['Altura', j.altura ? `${j.altura} cm` : '—'],
-    ...FISICO.map(f=>[f.nombre, fis[f.id]!==undefined ? `${fis[f.id].toFixed(f.dec||0)} ${f.unidad}` : '—'])
+    ['Altura', j.altura ? `${j.altura} cm` : '—']
   ];
-  saltoSiHaceFalta(14 + filasFisico.length*6);
+  saltoSiHaceFalta(14 + filasPerfil.length*6);
   doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
-    head:[['Físico','Valor']], body:filasFisico,
+    head:[['Perfil físico','Valor']], body:filasPerfil,
     theme:'grid', styles:{fontSize:9,cellPadding:2.2}, headStyles:{fillColor:[234,91,12]} });
   y = doc.lastAutoTable.finalY + 8;
 
-  /* técnico-táctico y comportamiento: toma a toma, igual que la solapa Detalle */
+  /* test físicos, técnico-táctico y comportamiento: toma a toma, cada uno
+     solo con las tomas que tengan datos de esa categoría (una toma de test
+     físico no debe aparecer vacía en la tabla de técnico-táctico, y viceversa) */
   const evs = evalsDe(j.id);
   const nombreToma = id => (db.tomas.find(t=>t.id===id)||{}).nombre || '—';
-  [['Técnico-táctico', TECNICO, [46,125,70]], ['Comportamiento', CONDUCTA, [31,95,169]]].forEach(([titulo,items,color])=>{
-    const usados = items.filter(i=>evs.some(e=>typeof e[i.id]==='number'));
-    if (!usados.length) return;
-    saltoSiHaceFalta(14 + usados.length*6);
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text(titulo, margin, y); y += 5;
-    doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
-      head:[['Ítem', ...evs.map(e=>nombreToma(e.tomaId))]],
-      body: usados.map(i=>[i.nombre, ...evs.map(e=>typeof e[i.id]==='number' ? e[i.id].toFixed(0) : '—')]),
-      theme:'grid', styles:{fontSize:8.5,cellPadding:2}, headStyles:{fillColor:color} });
-    y = doc.lastAutoTable.finalY + 8;
-  });
+  [['Test físicos', FISICO, [234,91,12]], ['Técnico-táctico', TECNICO, [46,125,70]], ['Comportamiento', CONDUCTA, [31,95,169]]]
+    .forEach(([titulo,items,color])=>{
+      const evsCol = evs.filter(e=>items.some(i=>typeof e[i.id]==='number'));
+      const usados = items.filter(i=>evsCol.some(e=>typeof e[i.id]==='number'));
+      if (!usados.length) return;
+      saltoSiHaceFalta(14 + usados.length*6);
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text(titulo, margin, y); y += 5;
+      doc.autoTable({ startY:y, margin:{left:margin,right:margin}, tableWidth:anchoUtil,
+        head:[['Ítem', ...evsCol.map(e=>nombreToma(e.tomaId))]],
+        body: usados.map(i=>[i.nombre + (i.unidad?` (${i.unidad})`:''),
+          ...evsCol.map(e=>typeof e[i.id]==='number' ? e[i.id].toFixed(i.dec||0) : '—')]),
+        theme:'grid', styles:{fontSize:8.5,cellPadding:2}, headStyles:{fillColor:color} });
+      y = doc.lastAutoTable.finalY + 8;
+    });
 
   /* partidos e historial */
   saltoSiHaceFalta(20);
