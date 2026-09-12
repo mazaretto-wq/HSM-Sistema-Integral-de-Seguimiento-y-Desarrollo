@@ -322,15 +322,19 @@ async function fbLeer(){
   }
 }
 async function fbEscribir(d){
-  if (!fb || !fbUser) return false;
+  if (!fb || !fbUser) return {ok:false};
   try{
     /* el rol con el que entraste es de este dispositivo, no del club:
        si viajara, otro equipo bajaría "coordinación" y entraría sin clave */
     const limpio = {...d, config: {...d.config, acceso:null}};
     await fb.ref.set({ json: JSON.stringify(limpio), actualizado: Date.now(),
                        por: (fbUser.email || '') });
-    return true;
-  }catch(e){ console.warn('Firestore · escritura:', (e && e.code) || e); return false; }
+    return {ok:true};
+  }catch(e){
+    const motivo = (e && e.code) || String((e && e.message) || e);
+    console.warn('Firestore · escritura:', motivo);
+    return {ok:false, motivo};
+  }
 }
 /* no escribimos en cada tecla: se junta y se sube una vez */
 let subidaPend = null, subidaUlt = null;
@@ -338,10 +342,37 @@ function programarSubida(d){
   subidaUlt = d;
   clearTimeout(subidaPend);
   subidaPend = setTimeout(async ()=>{
-    const ok = await fbEscribir(subidaUlt);
-    if (!ok && fbUser) toast('No se pudo guardar en la nube; quedó en este dispositivo');
+    const r = await fbEscribir(subidaUlt);
+    if (!r.ok && fbUser){
+      const grande = /longer than|exceeds|too large|resource-exhausted|invalid-argument/i.test(String(r.motivo));
+      const detalle = grande ? ' (la base de datos quedó muy grande para la nube)'
+                     : r.motivo==='permission-denied' ? ' (sin permiso en Firestore)' : '';
+      toast('No se pudo guardar en la nube; quedó en este dispositivo'+detalle);
+    }
   }, 1200);
 }
+
+/* fotos que no se pudieron subir a Storage (sin nube, o reglas sin
+   configurar todavía): quedan SOLO en este dispositivo y AFUERA del
+   documento único que se sincroniza con Firestore, para que una foto
+   grande en base64 nunca arriesgue tirar abajo la sincronización de
+   el resto de la base del club */
+const KEY_FOTOS_LOCALES = 'hsm_fotos_locales';
+function fotosLocales(){
+  try{ return JSON.parse(localStorage.getItem(KEY_FOTOS_LOCALES)||'{}'); }catch(e){ return {}; }
+}
+function guardarFotoLocal(jugadorId, dataUrl){
+  try{
+    const m = fotosLocales(); m[jugadorId] = dataUrl;
+    localStorage.setItem(KEY_FOTOS_LOCALES, JSON.stringify(m));
+  }catch(e){ console.warn('No se pudo guardar la foto localmente:', e); }
+}
+function borrarFotoLocal(jugadorId){
+  try{ const m = fotosLocales(); delete m[jugadorId]; localStorage.setItem(KEY_FOTOS_LOCALES, JSON.stringify(m)); }catch(e){}
+}
+/* la foto a mostrar: la más nueva gana, aunque todavía no se haya
+   subido a la nube (así el propio dispositivo ve el cambio al toque) */
+function fotoDe(j){ return fotosLocales()[j.id] || j.foto || null; }
 
 const Store = {
   async local(){
@@ -461,8 +492,9 @@ function inic(j){ return ((j.apellido||'?')[0]+((j.nombre||'')[0]||'')).toUpperC
    así queda automáticamente en cualquier lista que ya arme un jugador así */
 const FOTO_SIZE = 480;   // resolución cuadrada de salida al recortar
 function avatarJugador(j){
-  return j.foto
-    ? `<img class="dorsal foto" src="${esc(j.foto)}" alt="" loading="lazy">`
+  const foto = fotoDe(j);
+  return foto
+    ? `<img class="dorsal foto" src="${esc(foto)}" alt="" loading="lazy">`
     : `<span class="dorsal">${esc(inic(j))}</span>`;
 }
 function posiciones(j){ return j.posiciones && j.posiciones.length ? j.posiciones : []; }
@@ -959,11 +991,11 @@ function fichaJugador(){
    ${esCoord()?`<input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">`:''}
    <div class="ficha-head">
      <div class="ficha-foto-wrap">
-       <div class="ficha-foto">${j.foto?`<img src="${esc(j.foto)}" alt="">`:`<span>${esc(inic(j))}</span>`}</div>
+       <div class="ficha-foto">${fotoDe(j)?`<img src="${esc(fotoDe(j))}" alt="">`:`<span>${esc(inic(j))}</span>`}</div>
        ${esCoord()?`<div class="ficha-foto-acciones">
-         <button class="linkish" data-foto-jugador="${j.id}">${j.foto?'Cambiar foto':'Agregar foto'}</button>
-         ${j.foto?`<button class="linkish" style="color:var(--rojo)" data-eliminar-foto="${j.id}">Eliminar foto</button>`:''}
-       </div>`:(!j.foto?`<p class="screen-note" style="margin:0">Sin foto todavía</p>`:'')}
+         <button class="linkish" data-foto-jugador="${j.id}">${fotoDe(j)?'Cambiar foto':'Agregar foto'}</button>
+         ${fotoDe(j)?`<button class="linkish" style="color:var(--rojo)" data-eliminar-foto="${j.id}">Eliminar foto</button>`:''}
+       </div>`:(!fotoDe(j)?`<p class="screen-note" style="margin:0">Sin foto todavía</p>`:'')}
      </div>
      <div class="ficha-name">${esc(nomb(j))}</div>
      ${j.carnet?`<div class="ficha-carnet">CARNET ${esc(j.carnet)}</div>`:''}
@@ -1274,26 +1306,35 @@ async function guardarFotoRecorte(){
 
     const blob = await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('no se pudo procesar la imagen')), 'image/jpeg', 0.85));
     const fotoAnterior = j.foto;
-    let url;
+    let subioANube = false, url;
     try{
       if (!fb || !fb.storage) throw new Error('sin Storage');
       const ref = fb.storage.ref().child(`jugadores/${j.id}-${Date.now()}.jpg`);
       await conLimite(ref.put(blob, { contentType:'image/jpeg' }), 15000);
       url = await conLimite(ref.getDownloadURL(), 15000);
+      subioANube = true;
     }catch(err){
       /* sin nube (o reglas de Storage sin configurar, o subida lenta/caída):
-         la foto queda igual, pero solo en este dispositivo hasta que se
-         habilite Storage */
+         la foto NO se toca acá adentro de "db" (que es lo único que se
+         sincroniza con Firestore) para no arriesgar, con una imagen en
+         base64, la sincronización de el resto de la base del club. Queda
+         guardada aparte, solo en este dispositivo, hasta que se habilite
+         Storage y una próxima subida sí llegue a la nube. */
       url = await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
     }
 
-    j.foto = url;
+    if (subioANube){
+      j.foto = url;
+      borrarFotoLocal(j.id);
+    } else {
+      guardarFotoLocal(j.id, url);
+    }
     await Store.save(db);
-    if (fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
+    if (subioANube && fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
       try{ await fb.storage.refFromURL(fotoAnterior).delete(); }catch(e){}
     }
     view.fotoEditor = null;
-    toast('Foto actualizada');
+    toast(subioANube ? 'Foto actualizada' : 'Foto guardada en este dispositivo (no se pudo subir a la nube)');
     render();
   }catch(err){
     console.error('Error al guardar la foto:', err);
@@ -1304,10 +1345,11 @@ async function guardarFotoRecorte(){
 
 async function eliminarFotoJugador(jugadorId){
   const j = db.jugadores.find(x=>x.id===jugadorId);
-  if (!j || !j.foto) return;
+  if (!j || !fotoDe(j)) return;
   if (!confirm('¿Eliminar la foto de perfil?')) return;
   const fotoAnterior = j.foto;
   delete j.foto;
+  borrarFotoLocal(jugadorId);
   await Store.save(db);
   if (fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
     try{ await fb.storage.refFromURL(fotoAnterior).delete(); }catch(e){}
