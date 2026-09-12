@@ -92,6 +92,7 @@ h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter
 .roster .row:last-child{border-bottom:none}
 .row:active{background:var(--wash)}
 .dorsal{font-family:var(--mono);font-weight:600;font-size:12px;width:34px;height:34px;flex:0 0 34px;border-radius:6px;background:var(--wash);display:grid;place-items:center;color:var(--ink-2)}
+.dorsal.foto{object-fit:cover;padding:0}
 .row-main{flex:1;min-width:0}
 .row-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row-meta{font-family:var(--mono);font-size:11px;color:var(--ink-2);display:flex;gap:8px;align-items:center;margin-top:2px;flex-wrap:wrap}
@@ -108,6 +109,15 @@ h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter
 /* ---- ficha ---- */
 .back{font-family:var(--display);text-transform:uppercase;letter-spacing:.09em;font-size:14px;color:var(--ink-2);font-weight:600;padding:14px 0 0}
 .ficha-head{border-bottom:2px solid var(--ink);padding-bottom:14px}
+.ficha-foto-wrap{display:flex;align-items:center;gap:14px;margin-top:14px}
+.ficha-foto{width:84px;height:84px;flex:0 0 84px;border-radius:14px;overflow:hidden;background:var(--wash);
+  border:1px solid var(--linea);display:grid;place-items:center;
+  font-family:var(--display);font-size:26px;font-weight:700;color:var(--ink-2)}
+.ficha-foto img{width:100%;height:100%;object-fit:cover}
+.ficha-foto-acciones{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.crop-box{position:relative;width:100%;max-width:360px;margin:0 auto;aspect-ratio:1;background:var(--wash);
+  border:2px solid var(--ink);border-radius:var(--r);overflow:hidden;touch-action:none;cursor:grab}
+.crop-box img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;pointer-events:none}
 .ficha-name{font-family:var(--display);font-size:31px;font-weight:700;line-height:1.05;margin:10px 0 4px;text-transform:uppercase}
 .ficha-carnet{font-family:var(--mono);font-size:11px;color:var(--naranja);letter-spacing:.06em;margin-bottom:9px}
 .ficha-tags{display:flex;flex-wrap:wrap;gap:5px}
@@ -214,6 +224,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
 <script>
 /* =========================================================
@@ -260,6 +271,7 @@ function fbInit(){
     if (typeof firebase === 'undefined' || !FB_CONFIG.projectId) return false;
     firebase.initializeApp(FB_CONFIG);
     fb = { db: firebase.firestore(), auth: firebase.auth() };
+    try{ fb.storage = firebase.storage(); }catch(e){ fb.storage = null; }   /* fotos de jugadores */
     fb.ref = fb.db.collection(FB_COL).doc(FB_DOC);
     fb.auth.onAuthStateChanged(u=>{ fbUser = u || null; });
     return true;
@@ -406,7 +418,7 @@ const puedeEditar = () => esCoord() || esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, puerta:null, claveMal:false, dtCat:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
@@ -422,6 +434,14 @@ function edad(f){ if(!f) return null; const n=new Date(f),h=new Date(); let a=h.
 function nomb(j){ return (j.apellido||'').toUpperCase()+(j.nombre?', '+j.nombre:''); }
 function corto(j){ return (j.apellido||'').toUpperCase(); }
 function inic(j){ return ((j.apellido||'?')[0]+((j.nombre||'')[0]||'')).toUpperCase(); }
+/* foto de perfil: mismo lugar (.dorsal) donde antes solo iban las iniciales,
+   así queda automáticamente en cualquier lista que ya arme un jugador así */
+const FOTO_SIZE = 480;   // resolución cuadrada de salida al recortar
+function avatarJugador(j){
+  return j.foto
+    ? `<img class="dorsal foto" src="${esc(j.foto)}" alt="" loading="lazy">`
+    : `<span class="dorsal">${esc(inic(j))}</span>`;
+}
 function posiciones(j){ return j.posiciones && j.posiciones.length ? j.posiciones : []; }
 function posPrincipal(j){ return posiciones(j)[0] || ''; }
 const ABREV = {'Arquero':'ARQ','Lateral Derecho':'LD','Lateral Izquierdo':'LI','Central Derecho':'CD',
@@ -711,6 +731,7 @@ function render(){
     : `Jugador · solo lectura`)
     + (sinNube ? `<br><span style="color:var(--rojo)">solo este dispositivo</span>` : '')
     + `<br><button class="linkish" id="salir">salir</button>`;
+  if (view.fotoEditor) return pantallaRecorteFoto();
   if (view.jugadorId) return fichaJugador();
   if (view.tab==='plantel') return pantallaPlantel();
   if (view.tab==='cancha')  return pantallaCancha();
@@ -758,7 +779,7 @@ function pantallaPlantel(){
     h += `<div class="roster">`+lista.map(j=>{
       const p = promedioTecnico(j.id), t = totalesTemporada(j.id, view.categoria), e = edad(j.fechaNac);
       return `<button class="row" data-jugador="${j.id}">
-        <span class="dorsal">${esc(inic(j))}</span>
+        ${avatarJugador(j)}
         <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
         <span class="row-meta">
           ${e!==null?`<span>${e} a.</span>`:''}
@@ -898,7 +919,15 @@ function fichaJugador(){
   const SOLAPAS = [['general','General'],['detalle','Detalle'],['historial','Historial']];
 
   let h = `<button class="back" data-back="1">← Plantel</button>
+   ${esCoord()?`<input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">`:''}
    <div class="ficha-head">
+     <div class="ficha-foto-wrap">
+       <div class="ficha-foto">${j.foto?`<img src="${esc(j.foto)}" alt="">`:`<span>${esc(inic(j))}</span>`}</div>
+       ${esCoord()?`<div class="ficha-foto-acciones">
+         <button class="linkish" data-foto-jugador="${j.id}">${j.foto?'Cambiar foto':'Agregar foto'}</button>
+         ${j.foto?`<button class="linkish" style="color:var(--rojo)" data-eliminar-foto="${j.id}">Eliminar foto</button>`:''}
+       </div>`:(!j.foto?`<p class="screen-note" style="margin:0">Sin foto todavía</p>`:'')}
+     </div>
      <div class="ficha-name">${esc(nomb(j))}</div>
      ${j.carnet?`<div class="ficha-carnet">CARNET ${esc(j.carnet)}</div>`:''}
      <div class="ficha-tags">
@@ -1110,6 +1139,123 @@ function fichaJugador(){
     ${esCoord()&&(tab==='detalle'||tab==='historial')?`<div class="gap"></div><button class="btn btn-ghost" data-editarFicha="1">Corregir valores de esta solapa</button>`:''}
     ${esCoord()?`<div class="gap"></div><button class="btn btn-danger" data-borrar="${j.id}">Eliminar jugador</button>`:''}</div>`;
   app.innerHTML = h;
+}
+
+/* ---- foto de perfil: recorte cuadrado con arrastre (mismo patrón de
+   pointer events usado en la pizarra) + zoom, y export a canvas ---- */
+function pantallaRecorteFoto(){
+  const fe = view.fotoEditor;
+  const j = db.jugadores.find(x=>x.id===fe.jugadorId);
+  const h = `<h2 class="screen-title">Ajustar encuadre${j?' · '+esc(nomb(j)):''}</h2>
+    <p class="screen-note">Arrastrá la imagen para centrarla y usá el control para acercar. Queda cuadrada, como en el resto de la app.</p>
+    <div class="crop-box" id="cropBox"><img id="cropImg" src="${fe.dataUrl}" alt=""></div>
+    <div class="block">
+      <input type="range" id="cropZoom" min="1" max="3" step="0.01" value="${fe.zoom}" style="width:100%">
+    </div>
+    <div class="block">
+      <button class="btn btn-naranja" id="guardarFoto">Guardar foto</button>
+      <div class="gap"></div><button class="btn btn-ghost" data-cancelarFoto="1">Cancelar</button>
+    </div>`;
+  app.innerHTML = h;
+  fotoWire();
+}
+
+function fotoWire(){
+  const fe = view.fotoEditor;
+  const box = document.getElementById('cropBox');
+  const img = document.getElementById('cropImg');
+  if (!box || !img || !fe) return;
+
+  const boxSize = box.clientWidth;
+  fe.boxSize = boxSize;
+  const baseScale = Math.max(boxSize/fe.natW, boxSize/fe.natH);
+
+  function limites(scale){
+    const w = fe.natW*scale, h = fe.natH*scale;
+    return { minX: Math.min(0, boxSize-w), maxX:0, minY: Math.min(0, boxSize-h), maxY:0 };
+  }
+  function aplicar(){
+    const scale = baseScale*fe.zoom;
+    const lim = limites(scale);
+    fe.x = Math.max(lim.minX, Math.min(lim.maxX, fe.x));
+    fe.y = Math.max(lim.minY, Math.min(lim.maxY, fe.y));
+    img.style.width = (fe.natW*scale)+'px';
+    img.style.height = (fe.natH*scale)+'px';
+    img.style.transform = `translate(${fe.x}px, ${fe.y}px)`;
+  }
+  aplicar();
+
+  let arrastrando=false, inicioX=0, inicioY=0, feX0=0, feY0=0;
+  box.addEventListener('pointerdown', e=>{
+    arrastrando=true; inicioX=e.clientX; inicioY=e.clientY; feX0=fe.x; feY0=fe.y;
+    box.setPointerCapture(e.pointerId); box.style.cursor='grabbing';
+  });
+  box.addEventListener('pointermove', e=>{
+    if (!arrastrando) return;
+    const scale = baseScale*fe.zoom, lim = limites(scale);
+    fe.x = Math.max(lim.minX, Math.min(lim.maxX, feX0 + (e.clientX-inicioX)));
+    fe.y = Math.max(lim.minY, Math.min(lim.maxY, feY0 + (e.clientY-inicioY)));
+    img.style.transform = `translate(${fe.x}px, ${fe.y}px)`;
+  });
+  const terminar = ()=>{ arrastrando=false; box.style.cursor='grab'; };
+  box.addEventListener('pointerup', terminar);
+  box.addEventListener('pointercancel', terminar);
+
+  document.getElementById('cropZoom').addEventListener('input', e=>{
+    fe.zoom = parseFloat(e.target.value)||1;
+    aplicar();
+  });
+}
+
+async function guardarFotoRecorte(){
+  const fe = view.fotoEditor;
+  if (!fe) return;
+  const j = db.jugadores.find(x=>x.id===fe.jugadorId);
+  if (!j){ view.fotoEditor=null; return render(); }
+
+  const scale = Math.max(fe.boxSize/fe.natW, fe.boxSize/fe.natH) * fe.zoom;
+  const sx = -fe.x/scale, sy = -fe.y/scale, sw = fe.boxSize/scale, sh = fe.boxSize/scale;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = FOTO_SIZE; canvas.height = FOTO_SIZE;
+  canvas.getContext('2d').drawImage(fe.img, sx, sy, sw, sh, 0, 0, FOTO_SIZE, FOTO_SIZE);
+
+  const blob = await new Promise(res=>canvas.toBlob(res, 'image/jpeg', 0.85));
+  const fotoAnterior = j.foto;
+  let url;
+  try{
+    if (!fb || !fb.storage) throw new Error('sin Storage');
+    const ref = fb.storage.ref().child(`jugadores/${j.id}-${Date.now()}.jpg`);
+    await ref.put(blob, { contentType:'image/jpeg' });
+    url = await ref.getDownloadURL();
+  }catch(err){
+    /* sin nube (o reglas de Storage sin configurar): la foto queda igual,
+       pero solo en este dispositivo hasta que se habilite Storage */
+    url = await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
+  }
+
+  j.foto = url;
+  await Store.save(db);
+  if (fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
+    try{ await fb.storage.refFromURL(fotoAnterior).delete(); }catch(e){}
+  }
+  view.fotoEditor = null;
+  toast('Foto actualizada');
+  render();
+}
+
+async function eliminarFotoJugador(jugadorId){
+  const j = db.jugadores.find(x=>x.id===jugadorId);
+  if (!j || !j.foto) return;
+  if (!confirm('¿Eliminar la foto de perfil?')) return;
+  const fotoAnterior = j.foto;
+  delete j.foto;
+  await Store.save(db);
+  if (fotoAnterior && /^https?:\/\//.test(fotoAnterior) && fb && fb.storage){
+    try{ await fb.storage.refFromURL(fotoAnterior).delete(); }catch(e){}
+  }
+  toast('Foto eliminada');
+  render();
 }
 
 /* ---- carga perezosa de jsPDF: recién al primer clic en "Descargar PDF",
@@ -1325,7 +1471,7 @@ function pantallaCancha(){
                        : af===1.5 ? `<span class="pill">${esc(posPrincipal(j))} · mismo sector</span>`
                        : `<span>${esc(posPrincipal(j)||'sin posición')}</span>`;
         return `<button class="row" data-asignar="${j.id}">
-          <span class="dorsal">${esc(inic(j))}</span>
+          ${avatarJugador(j)}
           <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
           <span class="row-meta">${etiqueta}</span></span>
           <span class="score ${claseSem(n)}">${n!==null?n.toFixed(1):'—'}</span></button>`;
@@ -2523,6 +2669,26 @@ app.addEventListener('change', async e=>{
     if (box) box.innerHTML = perfilJugador(db.jugadores.find(j=>j.id===e.target.value));
   }
   if (e.target.id==='cfg-cat'){ db.config.categoriaDT = e.target.value; await Store.save(db); render(); }
+  if (e.target.id==='fotoInput'){
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) return toast('Formato no admitido: usá JPG, PNG o WEBP');
+    if (file.size > 15*1024*1024) return toast('La imagen pesa demasiado (máx. 15MB)');
+    const jugadorId = view.jugadorId;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        view.fotoEditor = { jugadorId, dataUrl: reader.result, img, natW: img.naturalWidth, natH: img.naturalHeight, zoom:1, x:0, y:0, boxSize:0 };
+        render();
+      };
+      img.onerror = () => toast('No se pudo leer la imagen');
+      img.src = reader.result;
+    };
+    reader.onerror = () => toast('No se pudo leer el archivo');
+    reader.readAsDataURL(file);
+  }
   if (e.target.id==='s-cat' && view.draft){
     guardarBorrador();
     const validos = planteldeCategoria(view.draft.categoria).map(j=>j.id);
@@ -2830,6 +2996,20 @@ app.addEventListener('click', async e=>{
     if (j) await descargarFichaPDF(j);
     return;
   }
+
+  if (t.closest('[data-foto-jugador]')){
+    if (!esCoord()) return toast('Esto lo hace coordinación');
+    const el = document.getElementById('fotoInput');
+    if (el) el.click();
+    return;
+  }
+  const delFoto = t.closest('[data-eliminar-foto]');
+  if (delFoto){
+    if (!esCoord()) return toast('Esto lo hace coordinación');
+    return eliminarFotoJugador(delFoto.dataset.eliminarFoto);
+  }
+  if (t.id==='guardarFoto'){ return guardarFotoRecorte(); }
+  if (t.closest('[data-cancelarFoto]')){ view.fotoEditor=null; return render(); }
 
   if (t.closest('[data-editarFicha]') && esCoord()){
     view.fichaEditando=true; view.edicionesPendientes={}; window.scrollTo(0,0); return render();
