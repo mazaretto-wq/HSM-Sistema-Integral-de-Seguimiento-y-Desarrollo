@@ -234,7 +234,6 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 
 <nav class="tabs">
   <button data-tab="plantel" aria-current="true">Plantel</button>
-  <button data-tab="cancha">Cancha</button>
   <button data-tab="entrenos">Entrenos</button>
   <button data-tab="cargar">Cargar</button>
   <button data-tab="datos">Datos</button>
@@ -787,9 +786,9 @@ function render(){
     return pantallaAcceso();
   }
   nav.style.display = '';
-  const permitidas = esCoord() ? ['plantel','cancha','entrenos','cargar','datos']
-                 : esDT()    ? ['plantel','cancha','entrenos','cargar']
-                             : ['plantel','cancha','entrenos'];
+  const permitidas = esCoord() ? ['plantel','entrenos','cargar','datos']
+                 : esDT()    ? ['plantel','entrenos','cargar']
+                             : ['plantel','entrenos'];
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = permitidas.includes(b.dataset.tab) ? '' : 'none'; });
   if (!permitidas.includes(view.tab)){ view.tab='plantel'; marcarTab('plantel'); }
