@@ -788,7 +788,7 @@ function render(){
   nav.style.display = '';
   const permitidas = esCoord() ? ['plantel','entrenos','cargar','datos']
                  : esDT()    ? ['plantel','entrenos','cargar']
-                             : ['plantel','entrenos'];
+                             : ['plantel'];
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = permitidas.includes(b.dataset.tab) ? '' : 'none'; });
   if (!permitidas.includes(view.tab)){ view.tab='plantel'; marcarTab('plantel'); }
