@@ -457,6 +457,10 @@ const FASES = [
   {id:'vuelta',     nombre:'Vuelta a la calma', color:'#6C6862'}
 ];
 const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
+/* para agrupar la biblioteca (que usa fases) igual que los ejercicios de
+   pizarra (que usan "con pelota" / "físicos"): activación y vuelta a la
+   calma son trabajo físico general, el resto se hace con pelota */
+const grupoDeFase = id => (id==='fisico'||id==='activacion'||id==='vuelta') ? 'fisico' : 'pelota';
 
 let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], config:{rol:'Coordinador', categoriaDT:'', acceso:null} };
 
@@ -2590,25 +2594,35 @@ function formSesion(){
     .filter(e=>!(e.categorias||[]).length || (e.categorias||[]).includes(d.categoria))
     .sort((a,b)=>FASES.findIndex(f=>f.id===a.fase)-FASES.findIndex(f=>f.id===b.fase))
     .map(e=>({ id:e.id, nombre:e.nombre, resumen:e.objetivo?esc(e.objetivo):esc(fase(e.fase).nombre)+(e.duracion?` · ${e.duracion}'`:''),
-      color:fase(e.fase).color, letra:fase(e.fase).nombre.slice(0,3).toUpperCase(), verHref:`data-ejercicio="${e.id}"` }));
+      color:fase(e.fase).color, letra:fase(e.fase).nombre.slice(0,3).toUpperCase(), verHref:`data-ejercicio="${e.id}"`, grupo:grupoDeFase(e.fase) }));
   const disponiblesPizarra = [...db.pizarra]
     .sort((a,b)=>(b.creado||'').localeCompare(a.creado||''))
     .map(p=>{ const cat = pizCat(p.categoria);
       return { id:p.id, nombre:p.nombre||'Sin nombre',
         resumen: p.explicacion?esc(p.explicacion):esc(cat?cat.nombre:'Ejercicio de pizarra')+(p.duracion?` · ${esc(p.duracion)}`:''),
         color: p.categoria==='fisico'?fase('fisico').color:fase('tecnica').color,
-        letra:(cat?cat.nombre:'Ejercicio').slice(0,3).toUpperCase(), verHref:`data-piz="abrir" data-id="${p.id}"`, origen:'pizarra' };
+        letra:(cat?cat.nombre:'Ejercicio').slice(0,3).toUpperCase(), verHref:`data-piz="abrir" data-id="${p.id}"`, origen:'pizarra',
+        grupo: p.categoria==='fisico'?'fisico':'pelota' };
     });
   const disponibles = [...disponiblesTexto, ...disponiblesPizarra];
-  h += `<div class="block"><div class="block-title">Agregar de la biblioteca</div>`;
-  h += disponibles.length ? `<div class="roster">`+disponibles.map(e=>`<div class="row">
+  const filaEj = e => `<div class="row">
       <span class="dorsal" style="background:${e.color};color:#fff;font-size:10px">${esc(e.letra)}</span>
       <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
       <span class="row-meta">${e.resumen}</span></span>
       <button class="linkish" ${e.verHref} style="font-size:12px;white-space:nowrap">Saber más</button>
       <button data-addEj="${e.id}" style="background:none;border:0;color:var(--naranja);font-size:22px;cursor:pointer;padding:0 2px;line-height:1">+</button>
-    </div>`).join('')+`</div>`
-    : `<div class="empty"><p>Todavía no hay ejercicios creados. Andá a la base de ejercicios o a Ejercicios para cargar el primero.</p></div>`;
+    </div>`;
+  if (!disponibles.length){
+    h += `<div class="block"><div class="block-title">Agregar de la biblioteca</div>
+      <div class="empty"><p>Todavía no hay ejercicios creados. Andá a la base de ejercicios o a Ejercicios para cargar el primero.</p></div></div>`;
+  } else {
+    [['pelota','Ejercicios con pelota'], ['fisico','Ejercicios físicos']].forEach(([g,titulo])=>{
+      const grupo = disponibles.filter(e=>e.grupo===g);
+      if (!grupo.length) return;
+      h += `<div class="block"><div class="block-title">${titulo}</div>
+        <div class="roster">${grupo.map(filaEj).join('')}</div></div>`;
+    });
+  }
   h += `</div>
     <div class="block"><div class="block-title">Fútbol</div>
       <div class="two">
