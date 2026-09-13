@@ -1826,6 +1826,22 @@ function barraFases(m){
     <div style="display:flex;flex-wrap:wrap;gap:10px">${leyenda}</div>`;
 }
 
+/* un ítem de sesión puede venir de la biblioteca de texto (db.ejercicios)
+   o de un ejercicio dibujado en la pizarra (db.pizarra) — se resuelve acá
+   para no repetir esa rama en cada lugar que muestra los ítems */
+function resolverItemSesion(i){
+  if (i.origen==='pizarra'){
+    const p = db.pizarra.find(x=>x.id===i.ejercicioId);
+    if (!p) return null;
+    const cat = pizCat(p.categoria);
+    const color = p.categoria==='fisico' ? fase('fisico').color : fase('tecnica').color;
+    return { nombre:p.nombre||'Sin nombre', color, letra:(cat?cat.nombre:'Ejercicio').slice(0,3).toUpperCase(), origen:'pizarra' };
+  }
+  const e = db.ejercicios.find(x=>x.id===i.ejercicioId);
+  if (!e) return null;
+  return { nombre:e.nombre, color:fase(e.fase).color, letra:fase(e.fase).nombre.slice(0,3).toUpperCase(), origen:'ejercicios' };
+}
+
 
 /* =========================================================
    PIZARRA TÁCTICA — editor visual de ejercicios sobre una cancha.
@@ -2334,13 +2350,16 @@ let pizTeclado = null;   // handler de teclado activo; se reemplaza en cada rend
 function pantallaEntrenos(){
   /* la pizarra es solo de coordinación y DT; un jugador nunca la ve */
   if (view.sub==='pizarra' && !puedeEditar()) view.sub='sesiones';
-  if (view.sesionId) return detalleSesion();
+  /* "Saber más" de un ejercicio de pizarra se puede abrir desde el
+     detalle de una sesión o desde Armar sesión sin perder lo que había
+     debajo: por eso se chequea primero que nada */
+  if (view.pizId && view.pizSub==='ver') return pizarraVer();
   if (view.ejercicioId) return detalleEjercicio();
+  if (view.sesionId) return detalleSesion();
   if (view.draft) return formSesion();
   if (view.form==='nuevoEjercicio') return formEjercicio();
   if (view.sub==='pizarra' && view.pizSub==='categoria') return pizarraCategoria();
   if (view.sub==='pizarra' && view.pizSub==='editor') return pizarraEditor();
-  if (view.sub==='pizarra' && view.pizSub==='ver')    return pizarraVer();
   if (view.sub==='biblioteca') return pantallaBiblioteca();
 
   const cats = catsPermitidas();
@@ -2437,11 +2456,12 @@ function detalleSesion(){
   if ((s.items||[]).length){
     h += `<div class="block"><div class="block-title">Ejercicios</div><div class="roster">`;
     (s.items||[]).forEach(i=>{
-      const e = db.ejercicios.find(x=>x.id===i.ejercicioId);
-      h += `<button class="row" data-ejercicio="${i.ejercicioId}">
-        <span class="dorsal" style="background:${e?fase(e.fase).color:'#999'};color:#fff;font-size:11px">${i.minutos}'</span>
-        <span class="row-main"><span class="row-name">${esc(e?e.nombre:'Ejercicio borrado')}</span>
-        <span class="row-meta"><span>${esc(e?fase(e.fase).nombre:'')}</span></span></span>
+      const r = resolverItemSesion(i);
+      const verHref = !r ? '' : r.origen==='pizarra' ? `data-piz="abrir" data-id="${i.ejercicioId}"` : `data-ejercicio="${i.ejercicioId}"`;
+      h += `<button class="row" ${verHref}>
+        <span class="dorsal" style="background:${r?r.color:'#999'};color:#fff;font-size:11px">${i.minutos}'</span>
+        <span class="row-main"><span class="row-name">${esc(r?r.nombre:'Ejercicio borrado')}</span>
+        <span class="row-meta"><span>${esc(r?r.letra:'')}</span></span></span>
         <span style="color:var(--ink-2)">›</span></button>`;
     });
     h += `</div></div>`;
@@ -2544,10 +2564,10 @@ function formSesion(){
 
   if (d.items.length){
     h += `<div class="roster">`+d.items.map((i,k)=>{
-      const e = db.ejercicios.find(x=>x.id===i.ejercicioId);
+      const r = resolverItemSesion(i);
       return `<div class="row">
-        <span class="dorsal" style="background:${e?fase(e.fase).color:'#999'};color:#fff;font-size:10px">${esc(e?fase(e.fase).nombre.slice(0,3).toUpperCase():'?')}</span>
-        <span class="row-main"><span class="row-name">${esc(e?e.nombre:'—')}</span>
+        <span class="dorsal" style="background:${r?r.color:'#999'};color:#fff;font-size:10px">${esc(r?r.letra:'?')}</span>
+        <span class="row-main"><span class="row-name">${esc(r?r.nombre:'—')}</span>
           <span class="row-meta" style="margin-top:5px;gap:6px">
             <button class="chip" data-min="${k}|-5" style="padding:3px 10px">−5</button>
             <span style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink)">${i.minutos}'</span>
@@ -2561,19 +2581,34 @@ function formSesion(){
   }
   h += `</div>`;
 
-  const disponibles = db.ejercicios
+  /* la biblioteca de texto y los ejercicios dibujados en la pizarra son
+     dos colecciones separadas, pero acá se ofrecen juntos: cualquier
+     ejercicio que un técnico haya creado, sea como sea, sirve para armar
+     la sesión */
+  const disponiblesTexto = db.ejercicios
     .filter(e=>e.autor!=='Base del club')
     .filter(e=>!(e.categorias||[]).length || (e.categorias||[]).includes(d.categoria))
-    .sort((a,b)=>FASES.findIndex(f=>f.id===a.fase)-FASES.findIndex(f=>f.id===b.fase));
+    .sort((a,b)=>FASES.findIndex(f=>f.id===a.fase)-FASES.findIndex(f=>f.id===b.fase))
+    .map(e=>({ id:e.id, nombre:e.nombre, resumen:e.objetivo?esc(e.objetivo):esc(fase(e.fase).nombre)+(e.duracion?` · ${e.duracion}'`:''),
+      color:fase(e.fase).color, letra:fase(e.fase).nombre.slice(0,3).toUpperCase(), verHref:`data-ejercicio="${e.id}"` }));
+  const disponiblesPizarra = [...db.pizarra]
+    .sort((a,b)=>(b.creado||'').localeCompare(a.creado||''))
+    .map(p=>{ const cat = pizCat(p.categoria);
+      return { id:p.id, nombre:p.nombre||'Sin nombre',
+        resumen: p.explicacion?esc(p.explicacion):esc(cat?cat.nombre:'Ejercicio de pizarra')+(p.duracion?` · ${esc(p.duracion)}`:''),
+        color: p.categoria==='fisico'?fase('fisico').color:fase('tecnica').color,
+        letra:(cat?cat.nombre:'Ejercicio').slice(0,3).toUpperCase(), verHref:`data-piz="abrir" data-id="${p.id}"`, origen:'pizarra' };
+    });
+  const disponibles = [...disponiblesTexto, ...disponiblesPizarra];
   h += `<div class="block"><div class="block-title">Agregar de la biblioteca</div>`;
   h += disponibles.length ? `<div class="roster">`+disponibles.map(e=>`<div class="row">
-      <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
+      <span class="dorsal" style="background:${e.color};color:#fff;font-size:10px">${esc(e.letra)}</span>
       <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
-      <span class="row-meta">${e.objetivo?esc(e.objetivo):esc(fase(e.fase).nombre)+(e.duracion?` · ${e.duracion}'`:'')}</span></span>
-      <button class="linkish" data-ejercicio="${e.id}" style="font-size:12px;white-space:nowrap">Saber más</button>
+      <span class="row-meta">${e.resumen}</span></span>
+      <button class="linkish" ${e.verHref} style="font-size:12px;white-space:nowrap">Saber más</button>
       <button data-addEj="${e.id}" style="background:none;border:0;color:var(--naranja);font-size:22px;cursor:pointer;padding:0 2px;line-height:1">+</button>
     </div>`).join('')+`</div>`
-    : `<div class="empty"><p>${db.ejercicios.filter(x=>x.autor!=='Base del club').length?'No hay ejercicios para esta categoría.':'Todavía no hay ejercicios creados. Andá a la base de ejercicios para cargar el primero.'}</p></div>`;
+    : `<div class="empty"><p>Todavía no hay ejercicios creados. Andá a la base de ejercicios o a Ejercicios para cargar el primero.</p></div>`;
   h += `</div>
     <div class="block"><div class="block-title">Fútbol</div>
       <div class="two">
@@ -2992,9 +3027,15 @@ app.addEventListener('click', async e=>{
 
   const addEj = t.closest('[data-addEj]');
   if (addEj){
-    const e = db.ejercicios.find(x=>x.id===addEj.dataset.addej);
+    const id = addEj.dataset.addej;
+    const enPizarra = db.pizarra.find(x=>x.id===id);
+    const e = enPizarra || db.ejercicios.find(x=>x.id===id);
+    if (!e) return;
     guardarBorrador();
-    view.draft.items.push({ ejercicioId:e.id, minutos:e.duracion||15 });
+    /* la duración de un ejercicio de pizarra es texto libre ("4 series de
+       4 minutos"), no se puede convertir a minutos: arranca en 15 y se
+       ajusta con los botones +5/−5, igual que cualquier otro ítem */
+    view.draft.items.push({ ejercicioId:id, minutos: enPizarra?15:(e.duracion||15), origen: enPizarra?'pizarra':undefined });
     return render();
   }
   const minBtn = t.closest('[data-min]');
@@ -3025,8 +3066,8 @@ app.addEventListener('click', async e=>{
 
   if (t.closest('[data-back]')){
     if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; }
-    else if (view.sesionId) view.sesionId=null;
     else if (view.ejercicioId) view.ejercicioId=null;
+    else if (view.sesionId) view.sesionId=null;
     else if (view.draft) view.draft=null;
     else view.form=null;
     window.scrollTo(0,0); return render();
