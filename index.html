@@ -2392,7 +2392,8 @@ function pantallaEntrenos(){
    no como pestaña, desde el enlace en Día a día */
 function pantallaBiblioteca(){
   const fs = ['Todas',...FASES.map(f=>f.id)];
-  const lista = db.ejercicios
+  const creados = db.ejercicios.filter(e=>e.autor!=='Base del club');
+  const lista = creados
     .filter(e=>view.faseFiltro==='Todas'||e.fase===view.faseFiltro)
     .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   let h = `<button class="back" data-volverDia="1">← Día a día</button>
@@ -2403,10 +2404,9 @@ function pantallaBiblioteca(){
       return `<button class="chip" data-fase="${esc(f)}" aria-pressed="${view.faseFiltro===f}">${esc(n)}</button>`;
     }).join('')}</div>`;
 
-  if (!db.ejercicios.length){
-    h += `<div class="empty"><p>La biblioteca está vacía. Podés arrancar con una base de ejercicios estándar y después editarla, o cargar directamente los tuyos.</p>
-      <button class="btn" id="seedEjercicios">Cargar base inicial</button><div class="gap"></div>
-      ${puedeEditar()?`<button class="btn btn-ghost" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
+  if (!creados.length){
+    h += `<div class="empty"><p>Todavía no hay ejercicios cargados por ningún técnico.</p>
+      ${puedeEditar()?`<button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
   } else if (!lista.length){
     h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
   } else {
@@ -2562,15 +2562,18 @@ function formSesion(){
   h += `</div>`;
 
   const disponibles = db.ejercicios
+    .filter(e=>e.autor!=='Base del club')
     .filter(e=>!(e.categorias||[]).length || (e.categorias||[]).includes(d.categoria))
     .sort((a,b)=>FASES.findIndex(f=>f.id===a.fase)-FASES.findIndex(f=>f.id===b.fase));
   h += `<div class="block"><div class="block-title">Agregar de la biblioteca</div>`;
-  h += disponibles.length ? `<div class="roster">`+disponibles.map(e=>`<button class="row" data-addEj="${e.id}">
+  h += disponibles.length ? `<div class="roster">`+disponibles.map(e=>`<div class="row">
       <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
       <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
-      <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>${e.duracion?`<span>${e.duracion}'</span>`:''}</span></span>
-      <span style="color:var(--naranja);font-size:20px">+</span></button>`).join('')+`</div>`
-    : `<div class="empty"><p>No hay ejercicios para esta categoría.</p></div>`;
+      <span class="row-meta">${e.objetivo?esc(e.objetivo):esc(fase(e.fase).nombre)+(e.duracion?` · ${e.duracion}'`:'')}</span></span>
+      <button class="linkish" data-ejercicio="${e.id}" style="font-size:12px;white-space:nowrap">Saber más</button>
+      <button data-addEj="${e.id}" style="background:none;border:0;color:var(--naranja);font-size:22px;cursor:pointer;padding:0 2px;line-height:1">+</button>
+    </div>`).join('')+`</div>`
+    : `<div class="empty"><p>${db.ejercicios.filter(x=>x.autor!=='Base del club').length?'No hay ejercicios para esta categoría.':'Todavía no hay ejercicios creados. Andá a la base de ejercicios para cargar el primero.'}</p></div>`;
   h += `</div>
     <div class="block"><div class="block-title">Fútbol</div>
       <div class="two">
@@ -2648,27 +2651,6 @@ async function guardarEjercicio(){
     categorias: [...document.querySelectorAll('[data-multi="ejcats"] .chip[aria-pressed="true"]')].map(b=>b.dataset.v) });
   await Store.save(db);
   toast('Ejercicio guardado'); view.form=null; view.sub='biblioteca'; render();
-}
-
-async function sembrarEjercicios(){
-  const base = [
-    ['Movilidad articular y activación','activacion','Preparar el cuerpo antes de la carga',12,'todos','Media cancha','Ninguno','Circuito de movilidad de cadera, tobillo y hombro, más activación de glúteo y core.'],
-    ['Rondo 5v2 a dos toques','tecnica','Circulación rápida y perfil de recepción',12,'7','12x12 m','Pelotas, conos','Cinco por fuera, dos adentro. El que pierde la pelota entra al medio. Progresión: a un toque.'],
-    ['Circuito de pase y control orientado','tecnica','Calidad de pase y primer control',15,'8 a 12','25x20 m','Conos, pelotas','Series de pase y movimiento en rombo. Se cambia de sentido cada 3 minutos.'],
-    ['Salida desde el fondo 7v5','tactica','Construcción desde el arquero',20,'12 a 14','Medio campo','Arcos, pecheras','Arquero más línea de fondo y volantes buscan superar la primera presión. Punto al pasar la línea de mitad con control.'],
-    ['Basculación defensiva por zonas','tactica','Movimiento coordinado de la línea',15,'10','Ancho completo','Conos','La línea se desplaza según dónde está la pelota. Sin oposición primero, con oposición después.'],
-    ['Repeticiones de sprint (RSA)','fisico','Capacidad de repetir esfuerzos máximos',12,'todos','40 m','Conos, cronómetro','6 series de 30 m a máxima intensidad con 25 segundos de pausa.'],
-    ['Fuerza excéntrica de isquiotibiales','fisico','Prevención de lesiones musculares',10,'de a dos','Cualquiera','Colchoneta','Nordic hamstring en parejas. 3 series de 5 repeticiones, bajada lenta.'],
-    ['4v4 con arqueros en espacio reducido','reducido','Intensidad, transiciones y toma de decisión',18,'10','30x25 m','Arcos chicos, pecheras','Cuatro contra cuatro, cambios cada 3 minutos. Sin límite de toques.'],
-    ['Posesión 6v6+3 comodines','reducido','Mantener la pelota con superioridad',18,'15','35x30 m','Pecheras','Tres comodines juegan siempre con quien tiene la pelota. Diez pases seguidos suman punto.'],
-    ['Córners ofensivos: dos variantes','abp','Automatizar movimientos de pelota parada',12,'11','Área','Pelotas','Se repiten dos variantes acordadas, primero sin defensa y después con defensa completa.'],
-    ['Fútbol formal 9v9','juego','Trasladar lo trabajado al juego real',25,'18 a 20','Cancha completa','Arcos, pecheras','Partido con las consignas de la semana. El técnico corta solo para corregir lo trabajado.'],
-    ['Elongación y descarga','vuelta','Bajar pulsaciones y recuperar',8,'todos','Cualquiera','Colchonetas','Elongación de cadena posterior y cuádriceps, más respiración.']
-  ].map(([nombre,f,objetivo,duracion,jugadores,espacio,material,descripcion])=>
-    ({id:uid(), nombre, fase:f, objetivo, duracion, jugadores, espacio, material, descripcion, categorias:[], autor:'Base del club'}));
-  db.ejercicios.push(...base);
-  await Store.save(db);
-  toast(`${base.length} ejercicios cargados`); render();
 }
 
 /* ---------- DATOS ---------- */
@@ -3005,7 +2987,6 @@ app.addEventListener('click', async e=>{
                    dt:'', jugadores:null, asistentes:[], futbol:'', futbolMin:0, otros:'', items:[] };
     window.scrollTo(0,0); return render();
   }
-  if (t.id==='seedEjercicios'){ return sembrarEjercicios(); }
   if (t.id==='guardarSesion'){ return guardarSesion(); }
   if (t.id==='guardarEjercicio'){ return guardarEjercicio(); }
 
