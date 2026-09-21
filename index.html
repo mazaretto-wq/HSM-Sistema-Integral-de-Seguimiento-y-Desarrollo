@@ -1872,11 +1872,14 @@ const PIZ_HERRAMIENTAS = [
   {id:'flecha',    nombre:'Flecha'},
   {id:'linea',     nombre:'Línea'},
   {id:'punteada',  nombre:'Línea punteada'},
+  {id:'cuadrado',         nombre:'Cuadrado'},
+  {id:'cuadradoPunteado', nombre:'Cuadrado punteado'},
   {id:'pechera',   nombre:'Pechera'},
   {id:'lapiz',     nombre:'Lápiz'}
 ];
 const PIZ_PUNTO = ['cono','pelota','pechera'];      // elementos de punto: {x,y}
 const PIZ_SEGMENTO = ['flecha','linea','punteada']; // elementos de segmento: {x1,y1,x2,y2}
+const PIZ_RECT = ['cuadrado','cuadradoPunteado'];   // elementos de rectángulo: {x1,y1,x2,y2} (dos esquinas opuestas)
 const PIZ_NS = 'http://www.w3.org/2000/svg';
 const PIZ_W = 100, PIZ_H = 68;   // cancha horizontal; proporción real de campo (ancho x alto)
 
@@ -1966,6 +1969,18 @@ function pizSegmentoSVG(el, sel){
            <circle data-piz-handle="2" data-piz-id="${el.id}" cx="${el.x2}" cy="${el.y2}" r="1.3" fill="#fff" stroke="var(--naranja)" stroke-width=".4" style="cursor:grab"/>`:''}
   </g>`;
 }
+function pizCuadradoSVG(el, sel){
+  const hex=pizHex(el.color);
+  const x=Math.min(el.x1,el.x2), y=Math.min(el.y1,el.y2);
+  const w=Math.abs(el.x2-el.x1), h=Math.abs(el.y2-el.y1);
+  const dash = el.tipo==='cuadradoPunteado' ? ` stroke-dasharray="1.4,1.1"` : '';
+  return `<g data-piz-id="${el.id}" data-piz-tipo="${el.tipo}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="transparent" stroke-width="3" style="cursor:grab"/>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${hex}" stroke-width=".6"${dash}/>
+    ${sel?`<circle data-piz-handle="1" data-piz-id="${el.id}" cx="${el.x1}" cy="${el.y1}" r="1.3" fill="#fff" stroke="var(--naranja)" stroke-width=".4" style="cursor:grab"/>
+           <circle data-piz-handle="2" data-piz-id="${el.id}" cx="${el.x2}" cy="${el.y2}" r="1.3" fill="#fff" stroke="var(--naranja)" stroke-width=".4" style="cursor:grab"/>`:''}
+  </g>`;
+}
 function pizPelotaSVG(el, sel){
   const R=1.7, r=.55;
   const ang = i => (-90 + i*72) * Math.PI/180;
@@ -1995,6 +2010,7 @@ function pizRepintarElemento(svg, id){
   const html = el.tipo==='cono' ? pizConoSVG(el,sel)
     : el.tipo==='pechera' ? pizPecheraSVG(el,sel)
     : el.tipo==='pelota' ? pizPelotaSVG(el,sel)
+    : PIZ_RECT.includes(el.tipo) ? pizCuadradoSVG(el,sel)
     : pizSegmentoSVG(el,sel);
   nodo.outerHTML = html;
 }
@@ -2006,6 +2022,7 @@ function pizElementosSVG(draft, interactivo){
     if (el.tipo==='cono') h += pizConoSVG(el, el.id===sel);
     else if (el.tipo==='pechera') h += pizPecheraSVG(el, el.id===sel);
     else if (el.tipo==='pelota') h += pizPelotaSVG(el, el.id===sel);
+    else if (PIZ_RECT.includes(el.tipo)) h += pizCuadradoSVG(el, el.id===sel);
     else if (PIZ_SEGMENTO.includes(el.tipo)) h += pizSegmentoSVG(el, el.id===sel);
   });
   h += `</g>`;
@@ -2137,6 +2154,7 @@ function pizarraEditor(){
       ${view.pizHerr==='seleccion'?'Tocá un elemento para seleccionarlo y moverlo libremente. Con uno seleccionado, elegí un color para cambiárselo.'
       :view.pizHerr==='lapiz'?'Dibujá arrastrando sobre la cancha.'
       :PIZ_PUNTO.includes(view.pizHerr)?'Tocá la cancha para colocarlo.'
+      :PIZ_RECT.includes(view.pizHerr)?'Arrastrá sobre la cancha: el tamaño del cuadrado es la distancia entre donde tocás y donde soltás.'
       :'Arrastrá sobre la cancha para trazar '+(view.pizHerr==='flecha'?'el movimiento':view.pizHerr==='punteada'?'la línea punteada':'la línea')+'.'}</p>
     <div class="field"><label class="label" for="piz-explicacion">Explicación del ejercicio</label>
       <textarea id="piz-explicacion" placeholder="Describí cómo se desarrolla el ejercicio, las consignas, objetivos, cantidad de jugadores, espacio de juego, progresiones, etc.">${esc(d.explicacion)}</textarea></div>
@@ -2239,6 +2257,16 @@ function pizWire(){
       g = { tipo:'segmento', nodo:linea, inicio:p, herr:view.pizHerr };
       return;
     }
+    if (PIZ_RECT.includes(view.pizHerr)){
+      const rectNodo = document.createElementNS(PIZ_NS,'rect');
+      rectNodo.setAttribute('x',p.x); rectNodo.setAttribute('y',p.y);
+      rectNodo.setAttribute('width',0); rectNodo.setAttribute('height',0);
+      rectNodo.setAttribute('fill','none'); rectNodo.setAttribute('stroke', pizHex(view.pizColor)); rectNodo.setAttribute('stroke-width','.6');
+      if (view.pizHerr==='cuadradoPunteado') rectNodo.setAttribute('stroke-dasharray','1.4,1.1');
+      gEl().appendChild(rectNodo);
+      g = { tipo:'rect', nodo:rectNodo, inicio:p, herr:view.pizHerr };
+      return;
+    }
     if (view.pizHerr==='lapiz'){
       const path = document.createElementNS(PIZ_NS,'path');
       path.setAttribute('stroke', pizHex(view.pizColor)); path.setAttribute('stroke-width','.7');
@@ -2266,6 +2294,12 @@ function pizWire(){
         nodo.setAttribute('transform', `translate(${g.base.x+dx},${g.base.y+dy}) rotate(${g.base.rot||0})`);
       } else if (el.tipo==='pelota'){
         nodo.setAttribute('transform', `translate(${g.base.x+dx},${g.base.y+dy})`);
+      } else if (PIZ_RECT.includes(el.tipo)){
+        const nx1=g.base.x1+dx, ny1=g.base.y1+dy, nx2=g.base.x2+dx, ny2=g.base.y2+dy;
+        const rx=Math.min(nx1,nx2), ry=Math.min(ny1,ny2), rw=Math.abs(nx2-nx1), rh=Math.abs(ny2-ny1);
+        nodo.querySelectorAll('rect').forEach(r=>{ r.setAttribute('x',rx); r.setAttribute('y',ry); r.setAttribute('width',rw); r.setAttribute('height',rh); });
+        const h1 = nodo.querySelector('[data-piz-handle="1"]'); if (h1){ h1.setAttribute('cx',nx1); h1.setAttribute('cy',ny1); }
+        const h2 = nodo.querySelector('[data-piz-handle="2"]'); if (h2){ h2.setAttribute('cx',nx2); h2.setAttribute('cy',ny2); }
       } else if (PIZ_SEGMENTO.includes(el.tipo)){
         const nx1=g.base.x1+dx, ny1=g.base.y1+dy, nx2=g.base.x2+dx, ny2=g.base.y2+dy;
         nodo.querySelectorAll('line').forEach(l=>{ l.setAttribute('x1',nx1); l.setAttribute('y1',ny1); l.setAttribute('x2',nx2); l.setAttribute('y2',ny2); });
@@ -2274,12 +2308,21 @@ function pizWire(){
       }
       g._dx=dx; g._dy=dy;
     } else if (g.tipo==='handle'){
-      const nodo = svg.querySelector(`[data-piz-id="${g.id}"]`); if (!nodo) return;
-      const lineas = nodo.querySelectorAll('line');
-      if (g.handle==='1'){ lineas.forEach(l=>{ l.setAttribute('x1',p.x); l.setAttribute('y1',p.y); });
-        const h = nodo.querySelector('[data-piz-handle="1"]'); if(h){h.setAttribute('cx',p.x); h.setAttribute('cy',p.y);} }
-      else { lineas.forEach(l=>{ l.setAttribute('x2',p.x); l.setAttribute('y2',p.y); });
-        const h = nodo.querySelector('[data-piz-handle="2"]'); if(h){h.setAttribute('cx',p.x); h.setAttribute('cy',p.y);} }
+      const el = buscar(g.id);
+      const nodo = svg.querySelector(`[data-piz-id="${g.id}"]`); if (!nodo || !el) return;
+      if (PIZ_RECT.includes(el.tipo)){
+        const otroX = g.handle==='1' ? g.base.x2 : g.base.x1;
+        const otroY = g.handle==='1' ? g.base.y2 : g.base.y1;
+        const rx=Math.min(p.x,otroX), ry=Math.min(p.y,otroY), rw=Math.abs(p.x-otroX), rh=Math.abs(p.y-otroY);
+        nodo.querySelectorAll('rect').forEach(r=>{ r.setAttribute('x',rx); r.setAttribute('y',ry); r.setAttribute('width',rw); r.setAttribute('height',rh); });
+        const hh = nodo.querySelector(`[data-piz-handle="${g.handle}"]`); if (hh){ hh.setAttribute('cx',p.x); hh.setAttribute('cy',p.y); }
+      } else {
+        const lineas = nodo.querySelectorAll('line');
+        if (g.handle==='1'){ lineas.forEach(l=>{ l.setAttribute('x1',p.x); l.setAttribute('y1',p.y); });
+          const h = nodo.querySelector('[data-piz-handle="1"]'); if(h){h.setAttribute('cx',p.x); h.setAttribute('cy',p.y);} }
+        else { lineas.forEach(l=>{ l.setAttribute('x2',p.x); l.setAttribute('y2',p.y); });
+          const h = nodo.querySelector('[data-piz-handle="2"]'); if(h){h.setAttribute('cx',p.x); h.setAttribute('cy',p.y);} }
+      }
       g._p = p;
     } else if (g.tipo==='rotar'){
       const ang = Math.atan2(p.y-g.base.y, p.x-g.base.x)*180/Math.PI + 90;
@@ -2287,6 +2330,10 @@ function pizWire(){
       g._ang = ang;
     } else if (g.tipo==='segmento'){
       g.nodo.setAttribute('x2',p.x); g.nodo.setAttribute('y2',p.y); g._fin=p;
+    } else if (g.tipo==='rect'){
+      const x=Math.min(p.x,g.inicio.x), y=Math.min(p.y,g.inicio.y), w=Math.abs(p.x-g.inicio.x), h=Math.abs(p.y-g.inicio.y);
+      g.nodo.setAttribute('x',x); g.nodo.setAttribute('y',y); g.nodo.setAttribute('width',w); g.nodo.setAttribute('height',h);
+      g._fin=p;
     } else if (g.tipo==='trazo'){
       g.d += ` L${p.x.toFixed(2)},${p.y.toFixed(2)}`; g.nodo.setAttribute('d', g.d);
     }
@@ -2298,7 +2345,7 @@ function pizWire(){
       const el = buscar(g.id);
       if (el && (g._dx||g._dy)){
         pizPushUndo();
-        if (PIZ_SEGMENTO.includes(el.tipo)){
+        if (PIZ_SEGMENTO.includes(el.tipo) || PIZ_RECT.includes(el.tipo)){
           el.x1 = g.base.x1+(g._dx||0); el.y1 = g.base.y1+(g._dy||0);
           el.x2 = g.base.x2+(g._dx||0); el.y2 = g.base.y2+(g._dy||0);
         } else {
@@ -2319,6 +2366,14 @@ function pizWire(){
       const fin = g._fin || g.inicio;
       let x2=fin.x, y2=fin.y;
       if (Math.hypot(x2-g.inicio.x, y2-g.inicio.y) < 1) { x2 = g.inicio.x+6; y2=g.inicio.y; } // toque simple: largo por defecto
+      const el = { id:uid(), tipo:g.herr, x1:g.inicio.x, y1:g.inicio.y, x2, y2, color:view.pizColor };
+      pizPushUndo(); view.pizDraft.elementos.push(el);
+      view.pizSelId = el.id; view.pizHerr='seleccion'; render();
+    } else if (g.tipo==='rect'){
+      g.nodo.remove();
+      const fin = g._fin || g.inicio;
+      let x2=fin.x, y2=fin.y;
+      if (Math.hypot(x2-g.inicio.x, y2-g.inicio.y) < 1) { x2 = g.inicio.x+8; y2 = g.inicio.y+8; } // toque simple: tamaño por defecto
       const el = { id:uid(), tipo:g.herr, x1:g.inicio.x, y1:g.inicio.y, x2, y2, color:view.pizColor };
       pizPushUndo(); view.pizDraft.elementos.push(el);
       view.pizSelId = el.id; view.pizHerr='seleccion'; render();
