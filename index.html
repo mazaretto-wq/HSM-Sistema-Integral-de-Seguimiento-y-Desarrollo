@@ -106,6 +106,10 @@ h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter
 /* ---- chips ---- */
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
+/* las herramientas del editor de pizarra ya no entran todas en una fila
+   sin desplazarse (y el desplazamiento no siempre es evidente ahí): que
+   se acomoden en varias líneas en vez de esconderse fuera de la vista */
+.chips.piz-herramientas{flex-wrap:wrap;overflow-x:visible}
 .chip{flex:0 0 auto;padding:7px 13px;border-radius:99px;border:1px solid var(--linea);color:var(--ink-2);font-family:var(--display);font-size:14px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;white-space:nowrap;background:var(--paper)}
 .chip[aria-pressed="true"]{background:var(--naranja);color:#fff;border-color:var(--naranja)}
 
@@ -2136,7 +2140,7 @@ function pizarraEditor(){
         <button class="btn btn-naranja" id="piz-guardar" style="width:100%">Guardar ejercicio</button>
       </div>
     </div>
-    <div class="chips">${PIZ_HERRAMIENTAS.map(h=>
+    <div class="chips piz-herramientas">${PIZ_HERRAMIENTAS.map(h=>
       `<button class="chip" data-piz="herr" data-v="${h.id}" aria-pressed="${view.pizHerr===h.id}">${esc(h.nombre)}</button>`).join('')}</div>
     <div class="chips piz-paleta">${PIZ_COLORES.map(c=>
       `<button class="piz-swatch" data-piz="color" data-v="${c.id}" aria-pressed="${view.pizColor===c.id}"
