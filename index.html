@@ -142,6 +142,11 @@ h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter
   font-family:var(--display);font-size:26px;font-weight:700;color:var(--ink-2)}
 .ficha-foto img{width:100%;height:100%;object-fit:cover}
 .ficha-foto-acciones{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+/* versión grande del mismo bloque foto+acciones, para el costado
+   izquierdo del tablero de la solapa General (apilada, no en fila) */
+.ficha-foto-wrap.grande{flex-direction:column;align-items:stretch;gap:10px;margin-top:0}
+.ficha-foto.grande{width:100%;height:auto;aspect-ratio:3/4;flex:none;border-radius:var(--r);font-size:48px}
+.ficha-foto-wrap.grande .ficha-foto-acciones{flex-direction:row;flex-wrap:wrap;gap:4px 14px}
 .crop-box{position:relative;width:100%;max-width:360px;margin:0 auto;aspect-ratio:1;background:var(--wash);
   border:2px solid var(--ink);border-radius:var(--r);overflow:hidden;touch-action:none;cursor:grab}
 .crop-box img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;pointer-events:none}
@@ -1572,23 +1577,32 @@ function fichaJugador(){
   const tab = view.fichaTab || 'general';
   const SOLAPAS = [['general','General'],['detalle','Detalle'],['historial','Historial']];
 
+  const fotoAcciones = () => esCoord()?`<div class="ficha-foto-acciones">
+    <button class="linkish" data-foto-jugador="${j.id}">${fotoDe(j)?'Cambiar foto':'Agregar foto'}</button>
+    ${fotoDe(j)?`<button class="linkish" style="color:var(--rojo)" data-eliminar-foto="${j.id}">Eliminar foto</button>`:''}
+  </div>`:(!fotoDe(j)?`<p class="screen-note" style="margin:0">Sin foto todavía</p>`:'');
+  const nombreYTags = () => `${j.carnet?`<div class="ficha-carnet">CARNET ${esc(j.carnet)}</div>`:''}
+    <div class="ficha-tags">
+      ${cats.map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
+      ${e!==null?`<span class="tag">${e} años</span>`:''}
+    </div>`;
+
   let h = `<button class="back" data-back="1">← Plantel</button>
-   ${esCoord()?`<input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">`:''}
-   <div class="ficha-head">
+   ${esCoord()?`<input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">`:''}`;
+
+  /* en General la foto y el nombre se agrandan y se mudan a la columna
+     izquierda del tablero (ver más abajo); en Detalle/Historial se quedan
+     en el encabezado chico de siempre */
+  if (tab!=='general'){
+    h += `<div class="ficha-head">
      <div class="ficha-foto-wrap">
        <div class="ficha-foto">${fotoDe(j)?`<img src="${esc(fotoDe(j))}" alt="">`:`<span>${esc(inic(j))}</span>`}</div>
-       ${esCoord()?`<div class="ficha-foto-acciones">
-         <button class="linkish" data-foto-jugador="${j.id}">${fotoDe(j)?'Cambiar foto':'Agregar foto'}</button>
-         ${fotoDe(j)?`<button class="linkish" style="color:var(--rojo)" data-eliminar-foto="${j.id}">Eliminar foto</button>`:''}
-       </div>`:(!fotoDe(j)?`<p class="screen-note" style="margin:0">Sin foto todavía</p>`:'')}
+       ${fotoAcciones()}
      </div>
      <div class="ficha-name">${esc(nomb(j))}</div>
-     ${j.carnet?`<div class="ficha-carnet">CARNET ${esc(j.carnet)}</div>`:''}
-     <div class="ficha-tags">
-       ${cats.map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
-       ${e!==null?`<span class="tag">${e} años</span>`:''}
-     </div></div>
-   <div class="chips">${SOLAPAS.map(([k,n])=>
+     ${nombreYTags()}</div>`;
+  }
+  h += `<div class="chips">${SOLAPAS.map(([k,n])=>
      `<button class="chip" data-ficha="${k}" aria-pressed="${tab===k}">${n}</button>`).join('')}</div>`;
 
   /* ===================== GENERAL: tablero de estadísticas ===================== */
@@ -1602,7 +1616,16 @@ function fichaJugador(){
 
     h += `<div class="perfil-grid">`;
 
-    /* ---- columna izquierda: perfil ---- */
+    /* ---- columna izquierda: foto grande + nombre, y debajo el perfil ---- */
+    h += `<div>`;
+    h += `<div style="margin-bottom:18px">
+      <div class="ficha-foto-wrap grande">
+        <div class="ficha-foto grande">${fotoDe(j)?`<img src="${esc(fotoDe(j))}" alt="">`:`<span>${esc(inic(j))}</span>`}</div>
+        ${fotoAcciones()}
+      </div>
+      <div class="ficha-name" style="margin-top:12px">${esc(nomb(j))}</div>
+      ${nombreYTags()}
+    </div>`;
     h += `<div class="block"><div class="block-title">👤 Perfil</div>
       <div class="scroll-x"><table class="cmp"><tbody>
       ${[
@@ -1613,11 +1636,12 @@ function fichaJugador(){
         ['Altura', j.altura ? `${j.altura} cm` : '—'],
       ].map(([k,v])=>`<tr><td>${esc(k)}</td><td class="val">${esc(v)}</td></tr>`).join('')}
       </tbody></table></div></div>`;
+    h += `</div>`;
 
     /* ---- columna derecha ---- */
     h += `<div>`;
 
-    h += `<div class="block"><div class="block-title">📊 Estadísticas generales</div>
+    h += `<div class="block" style="margin-top:0"><div class="block-title">📊 Estadísticas generales</div>
       <div class="stat-grid">
         <div class="stat"><div class="stat-label">Partidos</div><div class="stat-value">${T.pj}</div></div>
         <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${miles(T.minutos)}<small>'</small></div></div>
