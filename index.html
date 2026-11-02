@@ -226,14 +226,13 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
    de punta a punta de la ventana, para que no quede un recuadro de otro
    color encima de la página blanca ---------- */
 .inicio-dash{position:relative;overflow:hidden;width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
-  background:linear-gradient(145deg,#0e2117 0%,#1c3c27 55%,#14301f 100%);color:#fff;padding-bottom:28px}
+  background-color:#14301f;background-size:cover;background-position:center top;background-repeat:no-repeat;
+  background-attachment:fixed;color:#fff;padding-bottom:28px}
 .inicio-dash::after{content:"";position:absolute;right:-40px;bottom:-40px;width:160px;height:160px;
   background:repeating-linear-gradient(135deg,var(--naranja) 0 10px,transparent 10px 22px);opacity:.14;
   transform:rotate(8deg);pointer-events:none}
-.dash-hero{position:relative;background-size:cover;background-position:center;padding:22px 0 26px}
-.inicio-dash .dash-hero .screen-title{color:#fff;margin-top:0;text-shadow:0 1px 10px rgba(0,0,0,.4)}
-.inicio-dash .dash-hero .screen-note{margin-bottom:0}
-.dash-cuerpo{padding-top:22px}
+.inicio-dash .screen-title{color:#fff;margin-top:0;padding-top:22px;text-shadow:0 1px 10px rgba(0,0,0,.4)}
+.dash-cuerpo{padding-bottom:4px}
 .dash-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#ffcc99;opacity:.9}
 .dash-title{position:relative;font-family:var(--display);font-weight:700;font-size:19px;text-transform:uppercase;
   letter-spacing:.02em;margin:3px 0 13px;display:flex;align-items:center;gap:10px;color:#fff}
@@ -996,14 +995,10 @@ function pantallaInicio(){
 
   if (!view.fondoInicio) view.fondoInicio = FONDOS_HOME[Math.floor(Math.random()*FONDOS_HOME.length)];
 
-  let h = `<div class="inicio-dash">
-    <div class="dash-hero" style="background-image:linear-gradient(180deg,rgba(10,18,13,.55),rgba(14,33,23,.93)),url('${encodeURI(view.fondoInicio)}')">
-      <div class="wrap">
-        <h2 class="screen-title">Inicio</h2>
-        <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>
-      </div>
-    </div>
+  let h = `<div class="inicio-dash" style="background-image:linear-gradient(180deg,rgba(9,16,11,.72),rgba(10,20,14,.88)),url('${encodeURI(view.fondoInicio)}')">
     <div class="wrap dash-cuerpo">
+    <h2 class="screen-title">Inicio</h2>
+    <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>
     <div class="dash-eyebrow">Top de la temporada</div>
     <div class="dash-title">Destacados</div>
     <div class="dash-strip">`;
@@ -1046,7 +1041,6 @@ function pantallaInicio(){
   });
   h += `</div>`;
 
-  h += `</div>`;
   h += `</div>`;
 
   app.innerHTML = h;
