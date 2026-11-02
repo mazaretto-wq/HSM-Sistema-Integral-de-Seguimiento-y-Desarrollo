@@ -554,7 +554,7 @@ function catsPermitidas(){
 function navVisiblesActual(){
   return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas']
        : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','cargar']
-                   : ['plantel','rutinas'];
+                   : ['inicio','plantel','rutinas'];
 }
 function puedeVer(j){
   const p = catsPermitidas();
@@ -814,7 +814,7 @@ async function entrar(rol){
   if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
   else { db.config.rol = 'Coordinador'; db.config.categoriaDT = ''; }
   view.categoria = 'Todas'; view.partidoCat = null;
-  view.tab = rol==='jugador' ? 'plantel' : 'inicio'; marcarTab(view.tab);
+  view.tab = 'inicio'; marcarTab(view.tab);
   await Store.save(db); render();
 }
 
@@ -834,12 +834,12 @@ function render(){
      de la barra para coordinación, Categorías ya lleva a un plantel filtrado */
   const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','cargar','datos']
                  : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','cargar']
-                             : ['plantel','rutinas'];
+                             : ['inicio','plantel','rutinas'];
   const navVisibles = navVisiblesActual();
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = navVisibles.includes(b.dataset.tab) ? '' : 'none';
   });
-  const tabPorDefecto = (esCoord()||esDT()) ? 'inicio' : 'plantel';
+  const tabPorDefecto = 'inicio';
   if (!permitidas.includes(view.tab)){ view.tab=tabPorDefecto; marcarTab(tabPorDefecto); }
   const sinNube = fbEstado !== 'listo';
   document.getElementById('rolebox').innerHTML = (esCoord()
@@ -891,7 +891,7 @@ function bloqueRankingInicio(titulo, filasHtml){
 }
 function pantallaInicio(){
   const jugadores = jugadoresParaInicio();
-  const conCategoria = esCoord();
+  const conCategoria = !esDT();
   const totales = new Map(jugadores.map(j=>[j.id, totalesGlobalesInicio(j)]));
   const top = (campo, n) => jugadores
     .map(j=>({ j, v: totales.get(j.id)[campo] }))
@@ -900,7 +900,7 @@ function pantallaInicio(){
     .slice(0,n);
 
   let h = `<h2 class="screen-title">Inicio</h2>
-    <p class="screen-note">${esCoord()?'Los mejores de todas las categorías.':'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.'}</p>`;
+    <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>`;
 
   h += bloqueRankingInicio('Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
   h += bloqueRankingInicio('Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
@@ -3304,6 +3304,7 @@ app.addEventListener('click', async e=>{
     if (fb && fbEstado==='sinPermiso'){ view.puerta='jugador'; view.claveMal=false; return render(); }
     if (fb && fbUser){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
     db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT='';
+    view.tab='inicio'; marcarTab('inicio');
     await Store.save(db); return render();
   }
   if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
@@ -3311,6 +3312,7 @@ app.addEventListener('click', async e=>{
   if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
   if (t.id==='ac-local'){          /* mirar lo que hay en este dispositivo */
     db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT='';
+    view.tab='inicio'; marcarTab('inicio');
     view.puerta=null; view.claveMal=false;
     await Store.save(db); return render();
   }
