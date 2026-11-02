@@ -579,6 +579,10 @@ const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const hoy = () => new Date().toISOString().slice(0,10);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* separador de miles para números grandes (minutos, metros de los tests
+   físicos, etc.); los decimales (p. ej. velocidad 30m) quedan intactos */
+const miles = n => typeof n==='number' ? n.toLocaleString('es-AR') : n;
+const milesFix = (n, dec) => typeof n==='number' ? n.toLocaleString('es-AR', {minimumFractionDigits:dec||0, maximumFractionDigits:dec||0}) : n;
 
 function edad(f){ if(!f) return null; const n=new Date(f),h=new Date(); let a=h.getFullYear()-n.getFullYear();
   const m=h.getMonth()-n.getMonth(); if(m<0||(m===0&&h.getDate()<n.getDate()))a--; return a>=0&&a<100?a:null; }
@@ -977,7 +981,7 @@ function pantallaInicio(){
       valorFn:j=>totales.get(j.id).goles },
     { icon:'🎯', titulo:'Máximo asistidor', unidad:'asistencias',
       valorFn:j=>totales.get(j.id).asistencias },
-    { icon:'🏆', titulo:'Máximo contribuidor', unidad:'puntos',
+    { icon:'🏆', titulo:'Máximo contribuidor', unidad:'G+A',
       valorFn:j=>totales.get(j.id).goles+totales.get(j.id).asistencias },
     { icon:'👥', titulo:'Mayor participación', unidad:'partidos',
       valorFn:j=>totales.get(j.id).pj },
@@ -1012,7 +1016,7 @@ function pantallaInicio(){
       </div>`;
       return;
     }
-    const valorTexto = d.dec ? d.mejor.v.toFixed(d.dec) : d.mejor.v;
+    const valorTexto = d.dec ? d.mejor.v.toFixed(d.dec) : miles(d.mejor.v);
     h += `<button class="dash-card" data-jugador="${d.mejor.j.id}">
       <div class="dash-card-icon">${d.icon}</div>
       <div class="dash-card-label">${esc(d.titulo)}</div>
@@ -1025,9 +1029,9 @@ function pantallaInicio(){
   h += `</div>`;
 
   h += `<div class="dash-title">Rankings detallados</div><div class="dash-rankings">`;
-  h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
-  h += bloqueRankingInicio('🎯 Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
-  h += bloqueRankingInicio('⏱ Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,x.v+"'",conCategoria)));
+  h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
+  h += bloqueRankingInicio('🎯 Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
+  h += bloqueRankingInicio('⏱ Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v)+"'",conCategoria)));
 
   FISICO.forEach(item=>{
     const filas = jugadores
@@ -1037,7 +1041,7 @@ function pantallaInicio(){
       .slice(0,3);
     const emoji = item.id==='cooper'?'⏱':item.id==='yoyo'?'🏃':'⚡';
     h += bloqueRankingInicio(`${emoji} Mejores · ${esc(item.nombre)}`,
-      filas.map((x,i)=>filaRankingInicio(x.j,i,(item.dec?x.v.toFixed(item.dec):x.v)+' '+item.unidad, conCategoria)));
+      filas.map((x,i)=>filaRankingInicio(x.j,i,(item.dec?x.v.toFixed(item.dec):miles(x.v))+' '+item.unidad, conCategoria)));
   });
   h += `</div>`;
 
@@ -1258,7 +1262,7 @@ function pantallaTestFisicoDetalle(){
       h += `<button class="row" data-testToma="${t.id}">
         <span class="row-main"><span class="row-name">${esc(nombreToma(t.id))}</span>
         <span class="row-meta"><span>${vals.length} de ${plantel.length} jugadores</span></span></span>
-        ${prom!==null?`<span class="score">${prom.toFixed(item.dec||0)}</span>`:''}
+        ${prom!==null?`<span class="score">${milesFix(prom, item.dec)}</span>`:''}
         <span style="color:var(--ink-2)">›</span>
       </button>`;
     });
@@ -1287,13 +1291,13 @@ function pantallaTestTomaDetalle(){
 
   let h = `<button class="back" data-back="1">← ${esc(item.nombre)}</button>
     <h2 class="screen-title">${esc(nombreToma(toma.id))}</h2>
-    <p class="screen-note">${esc(item.nombre)} · ${esc(cat)}${prom!==null?` · promedio ${prom.toFixed(item.dec||0)} ${esc(item.unidad)}`:''}</p>`;
+    <p class="screen-note">${esc(item.nombre)} · ${esc(cat)}${prom!==null?` · promedio ${milesFix(prom, item.dec)} ${esc(item.unidad)}`:''}</p>`;
 
   if (!plantel.length){
     h += `<div class="empty"><p>No hay jugadores en ${esc(cat)}.</p></div>`;
   } else {
     h += `<div class="roster">` + filas.map((x,i)=>{
-      const valorTexto = x.v!==null ? (item.dec?x.v.toFixed(item.dec):x.v)+' '+item.unidad : '—';
+      const valorTexto = x.v!==null ? milesFix(x.v, item.dec)+' '+item.unidad : '—';
       return `<button class="row" data-jugador="${x.j.id}">
         ${avatarJugador(x.j)}
         <span class="row-main"><span class="row-name">${esc(nomb(x.j))}</span>
@@ -1389,7 +1393,7 @@ function bloqueEstadoActual(j, titulo, items){
       d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(f.dec)}</span>`;
     }
     h += `<tr><td>${etiqueta}</td>
-      <td class="val" style="color:${col}">${f.actual.toFixed(f.dec)}${d}</td></tr>`;
+      <td class="val" style="color:${col}">${f.escala?f.actual.toFixed(f.dec):milesFix(f.actual,f.dec)}${d}</td></tr>`;
   });
   return h + `</tbody></table></div></div>`;
 }
@@ -1533,7 +1537,7 @@ function fichaJugador(){
       ['Pierna hábil', j.pierna || '—'],
       ['Pierna inhábil', j.piernaMala ? `${j.piernaMala}/5` : '—'],
       ['Altura', j.altura ? `${j.altura} cm` : '—'],
-      ...FISICO.map(f=>[f.nombre, fis[f.id]!==undefined ? `${fis[f.id].toFixed(f.dec||0)} ${f.unidad}` : '—'])
+      ...FISICO.map(f=>[f.nombre, fis[f.id]!==undefined ? `${milesFix(fis[f.id], f.dec)} ${f.unidad}` : '—'])
     ];
     h += `<div class="block"><div class="block-title">Perfil</div>
       <div class="scroll-x"><table class="cmp"><tbody>
@@ -1569,17 +1573,17 @@ function fichaJugador(){
         <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
       cats.forEach(c=>{ const t=totalesTemporada(j.id,c);
         h += `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
-          <td class="val">${t.minutos}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
+          <td class="val">${miles(t.minutos)}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
       const T = totalesTemporada(j.id);
       h += `<tr><td><strong>Total</strong></td><td class="val">${T.pj}</td><td class="val">${T.goles}</td>
-        <td class="val">${T.minutos}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
+        <td class="val">${miles(T.minutos)}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
     } else {
       const t = totalesTemporada(j.id);
       h += `<div class="stat-grid">
         <div class="stat"><div class="stat-label">PJ</div><div class="stat-value">${t.pj}</div></div>
         <div class="stat"><div class="stat-label">Goles</div><div class="stat-value">${t.goles}</div></div>
         <div class="stat"><div class="stat-label">Asist.</div><div class="stat-value">${t.asistencias}</div></div>
-        <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${t.minutos}<small>'</small></div></div>
+        <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${miles(t.minutos)}<small>'</small></div></div>
         <div class="stat"><div class="stat-label">Amarillas</div><div class="stat-value">${t.amarillas}</div></div>
         <div class="stat"><div class="stat-label">Rojas</div><div class="stat-value">${t.rojas}</div></div></div>`;
     }
@@ -1596,11 +1600,11 @@ function fichaJugador(){
           <th>Año</th><th>PJ</th><th>Goles</th><th>Asist.</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
       hist.forEach(x=>{
         h += `<tr><td>${esc(x.anio)}</td><td class="val">${x.pj||0}</td><td class="val">${x.goles||0}</td>
-          <td class="val">${x.asis||0}</td><td class="val">${x.min||0}</td><td class="val">${x.ta||0}</td>
+          <td class="val">${x.asis||0}</td><td class="val">${miles(x.min||0)}</td><td class="val">${x.ta||0}</td>
           <td class="val">${x.tr||0}</td></tr>`;
       });
       h += `<tr><td><strong>Carrera</strong></td><td class="val">${H.pj+P.pj}</td><td class="val">${H.goles+P.goles}</td>
-        <td class="val">${H.asistencias+P.asistencias}</td><td class="val">${H.minutos+P.minutos}</td>
+        <td class="val">${H.asistencias+P.asistencias}</td><td class="val">${miles(H.minutos+P.minutos)}</td>
         <td class="val">${H.amarillas+P.amarillas}</td><td class="val">${H.rojas+P.rojas}</td></tr></tbody></table></div>
         <p class="screen-note" style="margin-top:8px">Totales anuales importados; de esos años no hay partido a partido.
         "Carrera" los suma con la temporada ${ANIO_ACTUAL} de arriba.</p></div>`;
@@ -1686,7 +1690,7 @@ function fichaJugador(){
               const mejora = i.mejor==='alto' ? dif>0 : dif<0;
               d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(i.dec)}</span>`;
             }
-            h += `<td class="val" style="color:${col}">${v.toFixed(i.dec)}${d}</td>`;
+            h += `<td class="val" style="color:${col}">${i.escala?v.toFixed(i.dec):milesFix(v,i.dec)}${d}</td>`;
           });
           h += `</tr>`;
         });
