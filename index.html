@@ -222,12 +222,18 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .toast{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;background:var(--ink);color:#fff;padding:13px 16px;border-radius:var(--r);font-weight:600;max-width:628px;margin:0 auto;transform:translateY(160%);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
 .toast.show{transform:translateY(0);opacity:1}
 
-/* ---------- INICIO: panel de destacados con los colores del club ---------- */
-.inicio-dash{position:relative;overflow:hidden;margin-top:4px;padding:18px 14px 20px;border-radius:14px;
-  background:linear-gradient(145deg,#0e2117 0%,#1c3c27 55%,#14301f 100%);color:#fff}
+/* ---------- INICIO: página completa con los colores (y fotos) del club,
+   de punta a punta de la ventana, para que no quede un recuadro de otro
+   color encima de la página blanca ---------- */
+.inicio-dash{position:relative;overflow:hidden;width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
+  background:linear-gradient(145deg,#0e2117 0%,#1c3c27 55%,#14301f 100%);color:#fff;padding-bottom:28px}
 .inicio-dash::after{content:"";position:absolute;right:-40px;bottom:-40px;width:160px;height:160px;
   background:repeating-linear-gradient(135deg,var(--naranja) 0 10px,transparent 10px 22px);opacity:.14;
   transform:rotate(8deg);pointer-events:none}
+.dash-hero{position:relative;background-size:cover;background-position:center;padding:22px 0 26px}
+.inicio-dash .dash-hero .screen-title{color:#fff;margin-top:0;text-shadow:0 1px 10px rgba(0,0,0,.4)}
+.inicio-dash .dash-hero .screen-note{margin-bottom:0}
+.dash-cuerpo{padding-top:22px}
 .dash-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#ffcc99;opacity:.9}
 .dash-title{position:relative;font-family:var(--display);font-weight:700;font-size:19px;text-transform:uppercase;
   letter-spacing:.02em;margin:3px 0 13px;display:flex;align-items:center;gap:10px;color:#fff}
@@ -988,9 +994,16 @@ function pantallaInicio(){
     return { ...m, mejor };
   });
 
-  let h = `<h2 class="screen-title">Inicio</h2>
-    <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>
-    <div class="inicio-dash">
+  if (!view.fondoInicio) view.fondoInicio = FONDOS_HOME[Math.floor(Math.random()*FONDOS_HOME.length)];
+
+  let h = `<div class="inicio-dash">
+    <div class="dash-hero" style="background-image:linear-gradient(180deg,rgba(10,18,13,.55),rgba(14,33,23,.93)),url('${encodeURI(view.fondoInicio)}')">
+      <div class="wrap">
+        <h2 class="screen-title">Inicio</h2>
+        <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>
+      </div>
+    </div>
+    <div class="wrap dash-cuerpo">
     <div class="dash-eyebrow">Top de la temporada</div>
     <div class="dash-title">Destacados</div>
     <div class="dash-strip">`;
@@ -1033,6 +1046,7 @@ function pantallaInicio(){
   });
   h += `</div>`;
 
+  h += `</div>`;
   h += `</div>`;
 
   app.innerHTML = h;
