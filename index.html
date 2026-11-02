@@ -266,18 +266,22 @@ button.dash-card{cursor:pointer}
    de más en vez de dejar una columna angosta con la barra de abajo
    estirada ---------- */
 @media (min-width:860px){
-  .wrap{max-width:960px}
+  .wrap{max-width:none;padding:0 32px}
   .puerta{max-width:460px}
   .tabs{justify-content:center;gap:4px}
   .tabs button{flex:0 0 auto;min-width:118px;padding:10px 20px 12px}
   .dash-strip{flex-wrap:wrap;overflow-x:visible}
-  .dash-card{flex:0 0 150px}
-  .dash-rankings{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 20px}
+  .dash-card{flex:1 1 160px;max-width:220px}
+  .dash-rankings{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 24px}
   .dash-rankings .block{margin:0 0 18px}
 }
 @media (min-width:1240px){
-  .wrap{max-width:1140px}
   .dash-rankings{grid-template-columns:repeat(3,1fr)}
+}
+/* por arriba de esto, seguir estirando ya no suma: ancho de línea /
+   tablas demasiado largos para leer cómodamente */
+@media (min-width:1800px){
+  .wrap{max-width:1760px;margin:0 auto}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
