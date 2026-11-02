@@ -569,7 +569,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
-             categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, rutinaCategoria:null, rutinaSubiendo:false,
+             categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
@@ -1203,6 +1203,7 @@ function tomasConTest(cat, itemId){
 function pantallaTestFisicos(){
   if (esCoord() && !view.testFisicoCategoria) return pantallaTestFisicosCategorias();
   if (view.testRegistrando) return pantallaRegistrarTest();
+  if (view.testToma) return pantallaTestTomaDetalle();
   if (view.testFisico) return pantallaTestFisicoDetalle();
   return pantallaTestFisicosLista();
 }
@@ -1254,13 +1255,52 @@ function pantallaTestFisicoDetalle(){
         return reg && typeof reg[item.id]==='number' ? reg[item.id] : null;
       }).filter(v=>v!==null);
       const prom = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length) : null;
-      h += `<div class="row">
+      h += `<button class="row" data-testToma="${t.id}">
         <span class="row-main"><span class="row-name">${esc(nombreToma(t.id))}</span>
         <span class="row-meta"><span>${vals.length} de ${plantel.length} jugadores</span></span></span>
         ${prom!==null?`<span class="score">${prom.toFixed(item.dec||0)}</span>`:''}
-      </div>`;
+        <span style="color:var(--ink-2)">›</span>
+      </button>`;
     });
     h += `</div></div>`;
+  }
+  app.innerHTML = h;
+}
+function pantallaTestTomaDetalle(){
+  const cat = categoriaActivaTest();
+  const item = FISICO.find(f=>f.id===view.testFisico);
+  if (!item){ view.testFisico=null; view.testToma=null; return render(); }
+  const toma = db.tomas.find(t=>t.id===view.testToma);
+  if (!toma){ view.testToma=null; return render(); }
+  const plantel = planteldeCategoria(cat);
+  const filas = plantel.map(j=>{
+    const reg = db.evaluaciones.find(e=>e.jugadorId===j.id && e.tomaId===toma.id);
+    return { j, v: reg && typeof reg[item.id]==='number' ? reg[item.id] : null };
+  }).sort((a,b)=>{
+    if (a.v===null && b.v===null) return (a.j.apellido||'').localeCompare(b.j.apellido||'');
+    if (a.v===null) return 1;
+    if (b.v===null) return -1;
+    return item.mejor==='alto' ? b.v-a.v : a.v-b.v;
+  });
+  const conValor = filas.filter(x=>x.v!==null);
+  const prom = conValor.length ? conValor.reduce((a,x)=>a+x.v,0)/conValor.length : null;
+
+  let h = `<button class="back" data-back="1">← ${esc(item.nombre)}</button>
+    <h2 class="screen-title">${esc(nombreToma(toma.id))}</h2>
+    <p class="screen-note">${esc(item.nombre)} · ${esc(cat)}${prom!==null?` · promedio ${prom.toFixed(item.dec||0)} ${esc(item.unidad)}`:''}</p>`;
+
+  if (!plantel.length){
+    h += `<div class="empty"><p>No hay jugadores en ${esc(cat)}.</p></div>`;
+  } else {
+    h += `<div class="roster">` + filas.map((x,i)=>{
+      const valorTexto = x.v!==null ? (item.dec?x.v.toFixed(item.dec):x.v)+' '+item.unidad : '—';
+      return `<button class="row" data-jugador="${x.j.id}">
+        ${avatarJugador(x.j)}
+        <span class="row-main"><span class="row-name">${esc(nomb(x.j))}</span>
+        <span class="row-meta"><span>${x.v!==null?`${i+1}º de ${conValor.length}`:'Sin resultado'}</span></span></span>
+        <span class="score">${esc(valorTexto)}</span>
+      </button>`;
+    }).join('') + `</div>`;
   }
   app.innerHTML = h;
 }
@@ -3339,7 +3379,7 @@ document.getElementById('rolebox').addEventListener('click', async e=>{
 function cambiarTab(tab){
   view.tab=tab; view.jugadorId=null; view.form=null; view.slotAbierto=null; view.editJugador=null;
   view.sesionId=null; view.ejercicioId=null; view.draft=null;
-  view.categoriaAjena=null; view.testFisico=null; view.testRegistrando=false; view.testValores={}; view.testFisicoCategoria=null;
+  view.categoriaAjena=null; view.testFisico=null; view.testRegistrando=false; view.testValores={}; view.testFisicoCategoria=null; view.testToma=null;
   marcarTab(tab); window.scrollTo(0,0); render();
 }
 document.querySelector('.tabs').addEventListener('click', e=>{
@@ -3665,6 +3705,7 @@ app.addEventListener('click', async e=>{
     if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; }
     else if (view.categoriaAjena) view.categoriaAjena=null;
     else if (view.testRegistrando){ view.testRegistrando=false; view.testValores={}; }
+    else if (view.testToma) view.testToma=null;
     else if (view.testFisico) view.testFisico=null;
     else if (view.testFisicoCategoria && esCoord()) view.testFisicoCategoria=null;
     else if (view.ejercicioId) view.ejercicioId=null;
@@ -3762,6 +3803,8 @@ app.addEventListener('click', async e=>{
   if (chipTestCat){ view.testFisicoCategoria = chipTestCat.dataset.testcat; window.scrollTo(0,0); return render(); }
   const filaTestTipo = t.closest('[data-testTipo]');
   if (filaTestTipo){ view.testFisico = filaTestTipo.dataset.testtipo; window.scrollTo(0,0); return render(); }
+  const filaTestToma = t.closest('[data-testToma]');
+  if (filaTestToma){ view.testToma = filaTestToma.dataset.testtoma; window.scrollTo(0,0); return render(); }
   if (t.closest('[data-registrarTest]')){
     view.testRegistrando = true; view.testValores = {}; view.testFecha = view.testFecha || hoy();
     window.scrollTo(0,0); return render();
