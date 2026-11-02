@@ -260,6 +260,25 @@ button.dash-card{cursor:pointer}
 .inicio-dash .dorsal{border-radius:50%;background:rgba(255,255,255,.14);color:#fff}
 .inicio-dash .score{background:rgba(255,255,255,.1);color:var(--naranja)}
 .inicio-dash .screen-note{color:rgba(255,255,255,.7)}
+
+/* ---------- pantallas más anchas (tablet/PC): el layout mobile se
+   mantiene intacto hasta acá; de 860px para arriba se usa el espacio
+   de más en vez de dejar una columna angosta con la barra de abajo
+   estirada ---------- */
+@media (min-width:860px){
+  .wrap{max-width:960px}
+  .puerta{max-width:460px}
+  .tabs{justify-content:center;gap:4px}
+  .tabs button{flex:0 0 auto;min-width:118px;padding:10px 20px 12px}
+  .dash-strip{flex-wrap:wrap;overflow-x:visible}
+  .dash-card{flex:0 0 150px}
+  .dash-rankings{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 20px}
+  .dash-rankings .block{margin:0 0 18px}
+}
+@media (min-width:1240px){
+  .wrap{max-width:1140px}
+  .dash-rankings{grid-template-columns:repeat(3,1fr)}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -993,7 +1012,7 @@ function pantallaInicio(){
   });
   h += `</div>`;
 
-  h += `<div class="dash-title">Rankings detallados</div>`;
+  h += `<div class="dash-title">Rankings detallados</div><div class="dash-rankings">`;
   h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
   h += bloqueRankingInicio('🎯 Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
   h += bloqueRankingInicio('⏱ Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,x.v+"'",conCategoria)));
@@ -1008,6 +1027,7 @@ function pantallaInicio(){
     h += bloqueRankingInicio(`${emoji} Mejores · ${esc(item.nombre)}`,
       filas.map((x,i)=>filaRankingInicio(x.j,i,(item.dec?x.v.toFixed(item.dec):x.v)+' '+item.unidad, conCategoria)));
   });
+  h += `</div>`;
 
   h += `</div>`;
 
