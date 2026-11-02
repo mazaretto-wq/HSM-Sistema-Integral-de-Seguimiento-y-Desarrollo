@@ -221,6 +221,45 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .pl-tabla tr.jugo td:first-child{color:var(--naranja)}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:50;background:var(--ink);color:#fff;padding:13px 16px;border-radius:var(--r);font-weight:600;max-width:628px;margin:0 auto;transform:translateY(160%);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
 .toast.show{transform:translateY(0);opacity:1}
+
+/* ---------- INICIO: panel de destacados con los colores del club ---------- */
+.inicio-dash{position:relative;overflow:hidden;margin-top:4px;padding:18px 14px 20px;border-radius:14px;
+  background:linear-gradient(145deg,#0e2117 0%,#1c3c27 55%,#14301f 100%);color:#fff}
+.inicio-dash::after{content:"";position:absolute;right:-40px;bottom:-40px;width:160px;height:160px;
+  background:repeating-linear-gradient(135deg,var(--naranja) 0 10px,transparent 10px 22px);opacity:.14;
+  transform:rotate(8deg);pointer-events:none}
+.dash-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#ffcc99;opacity:.9}
+.dash-title{position:relative;font-family:var(--display);font-weight:700;font-size:19px;text-transform:uppercase;
+  letter-spacing:.02em;margin:3px 0 13px;display:flex;align-items:center;gap:10px;color:#fff}
+.dash-title::after{content:"";flex:1;height:2px;background:linear-gradient(90deg,var(--naranja),transparent)}
+.dash-strip{position:relative;display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;margin-bottom:22px}
+.dash-strip::-webkit-scrollbar{display:none}
+.dash-card{flex:0 0 122px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:12px;
+  padding:12px 9px 13px;text-align:center;color:#fff;font:inherit}
+button.dash-card{cursor:pointer}
+.dash-card-icon{font-size:17px;line-height:1}
+.dash-card-label{font-family:var(--mono);font-size:8.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:#ffcc99;min-height:22px;display:flex;align-items:center;justify-content:center;margin-top:4px;line-height:1.25}
+.dash-card-avatar{width:52px;height:52px;border-radius:50%;object-fit:cover;margin:8px auto 7px;display:block;
+  border:2px solid var(--naranja);background:rgba(255,255,255,.14)}
+.dash-ini{display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:15px}
+.dash-card-name{font-size:11.5px;font-weight:600;line-height:1.25;color:#fff}
+.dash-card-value{font-family:var(--display);font-weight:700;font-size:21px;color:var(--naranja);margin-top:3px}
+.dash-card-unit{font-family:var(--mono);font-size:8.5px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.06em}
+.dash-card-empty{color:rgba(255,255,255,.5);font-size:10.5px;padding:18px 0 4px}
+/* dentro del panel oscuro, los bloques de ranking (mismas clases que en el
+   resto de la app) se reskinan solo acá, sin tocar Plantel/Entrenos/etc. */
+.inicio-dash .block{margin:0 0 14px}
+.inicio-dash .block-title{color:#fff}
+.inicio-dash .block-title::after{background:rgba(255,255,255,.18)}
+.inicio-dash .roster{border-color:rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.04)}
+.inicio-dash .row{background:transparent;border-bottom-color:rgba(255,255,255,.1)}
+.inicio-dash .row:active{background:rgba(255,255,255,.06)}
+.inicio-dash .row-name{color:#fff}
+.inicio-dash .row-meta{color:rgba(255,255,255,.55)}
+.inicio-dash .dorsal{border-radius:50%;background:rgba(255,255,255,.14);color:#fff}
+.inicio-dash .score{background:rgba(255,255,255,.1);color:var(--naranja)}
+.inicio-dash .screen-note{color:rgba(255,255,255,.7)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -872,8 +911,14 @@ function totalesGlobalesInicio(j){
   const cats = esDT() ? [db.config.categoriaDT] : (j.categorias&&j.categorias.length ? j.categorias : []);
   return cats.reduce((acc,c)=>{
     const t = totalesTemporada(j.id, c);
-    return { goles:acc.goles+t.goles, asistencias:acc.asistencias+t.asistencias, minutos:acc.minutos+t.minutos };
-  }, {goles:0, asistencias:0, minutos:0});
+    return { goles:acc.goles+t.goles, asistencias:acc.asistencias+t.asistencias, minutos:acc.minutos+t.minutos, pj:acc.pj+t.pj };
+  }, {goles:0, asistencias:0, minutos:0, pj:0});
+}
+function avatarDash(j, cls){
+  const foto = fotoDe(j);
+  return foto
+    ? `<img class="${cls}" src="${esc(foto)}" alt="" loading="lazy">`
+    : `<span class="${cls} dash-ini">${esc(inic(j))}</span>`;
 }
 function filaRankingInicio(j, i, valorTexto, conCategoria){
   return `<button class="row" data-jugador="${j.id}">
@@ -899,12 +944,59 @@ function pantallaInicio(){
     .sort((a,b)=>b.v-a.v)
     .slice(0,n);
 
-  let h = `<h2 class="screen-title">Inicio</h2>
-    <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>`;
+  const destacados = [
+    { icon:'⚽', titulo:'Máximo goleador', unidad:'goles',
+      valorFn:j=>totales.get(j.id).goles },
+    { icon:'🎯', titulo:'Máximo asistidor', unidad:'asistencias',
+      valorFn:j=>totales.get(j.id).asistencias },
+    { icon:'🏆', titulo:'Máximo contribuidor', unidad:'puntos',
+      valorFn:j=>totales.get(j.id).goles+totales.get(j.id).asistencias },
+    { icon:'👥', titulo:'Mayor participación', unidad:'partidos',
+      valorFn:j=>totales.get(j.id).pj },
+  ].concat(FISICO.map(item=>({
+    icon: item.id==='cooper'?'⏱':item.id==='yoyo'?'🏃':'⚡',
+    titulo: `Mejores · ${item.nombre}`, unidad:item.unidad, dec:item.dec, mejorBajo:item.mejor==='bajo',
+    valorFn: j=>ultimoParItem(j.id, item.id).actual,
+  }))).map(m=>{
+    const mejor = jugadores
+      .map(j=>({ j, v: m.valorFn(j) }))
+      .filter(x=>x.v!==null && x.v>0)
+      .sort((a,b)=> m.mejorBajo ? a.v-b.v : b.v-a.v)[0];
+    return { ...m, mejor };
+  });
 
-  h += bloqueRankingInicio('Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
-  h += bloqueRankingInicio('Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
-  h += bloqueRankingInicio('Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,x.v+"'",conCategoria)));
+  let h = `<h2 class="screen-title">Inicio</h2>
+    <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>
+    <div class="inicio-dash">
+    <div class="dash-eyebrow">Top de la temporada</div>
+    <div class="dash-title">Destacados</div>
+    <div class="dash-strip">`;
+
+  destacados.forEach(d=>{
+    if (!d.mejor){
+      h += `<div class="dash-card">
+        <div class="dash-card-icon">${d.icon}</div>
+        <div class="dash-card-label">${esc(d.titulo)}</div>
+        <p class="dash-card-empty">Sin datos</p>
+      </div>`;
+      return;
+    }
+    const valorTexto = d.dec ? d.mejor.v.toFixed(d.dec) : d.mejor.v;
+    h += `<button class="dash-card" data-jugador="${d.mejor.j.id}">
+      <div class="dash-card-icon">${d.icon}</div>
+      <div class="dash-card-label">${esc(d.titulo)}</div>
+      ${avatarDash(d.mejor.j, 'dash-card-avatar')}
+      <div class="dash-card-name">${esc(nomb(d.mejor.j))}</div>
+      <div class="dash-card-value">${esc(String(valorTexto))}</div>
+      <div class="dash-card-unit">${esc(d.unidad)}</div>
+    </button>`;
+  });
+  h += `</div>`;
+
+  h += `<div class="dash-title">Rankings detallados</div>`;
+  h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
+  h += bloqueRankingInicio('🎯 Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
+  h += bloqueRankingInicio('⏱ Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,x.v+"'",conCategoria)));
 
   FISICO.forEach(item=>{
     const filas = jugadores
@@ -912,9 +1004,12 @@ function pantallaInicio(){
       .filter(x=>x.v!==null)
       .sort((a,b)=> item.mejor==='alto' ? b.v-a.v : a.v-b.v)
       .slice(0,3);
-    h += bloqueRankingInicio(`Mejores · ${esc(item.nombre)}`,
+    const emoji = item.id==='cooper'?'⏱':item.id==='yoyo'?'🏃':'⚡';
+    h += bloqueRankingInicio(`${emoji} Mejores · ${esc(item.nombre)}`,
       filas.map((x,i)=>filaRankingInicio(x.j,i,(item.dec?x.v.toFixed(item.dec):x.v)+' '+item.unidad, conCategoria)));
   });
+
+  h += `</div>`;
 
   app.innerHTML = h;
 }
