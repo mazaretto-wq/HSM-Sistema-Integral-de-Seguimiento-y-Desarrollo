@@ -288,6 +288,31 @@ button.dash-card{cursor:pointer}
 @media (min-width:1800px){
   .wrap{max-width:1760px;margin:0 auto}
 }
+
+/* ---------- ficha del jugador: solapa General en formato tablero ---------- */
+.perfil-grid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:16px}
+.perfil-2col{display:grid;grid-template-columns:1fr;gap:16px}
+/* los ítems de grid no se achican por debajo del contenido (una tabla
+   ancha) salvo que se lo digamos: sin esto, una tabla desborda la página
+   entera en vez de scrollear solo adentro de su .scroll-x */
+.perfil-grid>*, .perfil-2col>*{min-width:0}
+@media (min-width:860px){
+  .perfil-grid{grid-template-columns:280px 1fr;align-items:start}
+  .perfil-2col{grid-template-columns:1fr 1fr}
+}
+.fisico-tests{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.fisico-test{border:1px solid var(--linea);border-radius:var(--r);padding:12px}
+.fisico-test-label{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2)}
+.fisico-test-value{font-family:var(--display);font-weight:700;font-size:22px;margin:6px 0 8px}
+.chart-leyenda{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+.chart-leyenda span{display:inline-flex;align-items:center;gap:5px}
+.chart-leyenda i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.chart-bars{display:flex;align-items:flex-end;gap:8px;height:120px;padding-top:8px}
+.chart-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.chart-bar-val{font-family:var(--mono);font-size:10.5px;font-weight:600;margin-bottom:4px;white-space:nowrap}
+.chart-bar{width:100%;max-width:28px;background:var(--naranja);border-radius:4px 4px 0 0;min-height:3px}
+.chart-bar-label{font-family:var(--mono);font-size:9px;color:var(--ink-2);margin-top:6px;white-space:nowrap}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -568,7 +593,7 @@ const puedeEditar = () => esCoord() || esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
@@ -779,6 +804,62 @@ function fisicoUltimo(id){
   FISICO.forEach(f=>{ for (let i=evs.length-1;i>=0;i--){
     if (typeof evs[i][f.id]==='number'){ out[f.id]=evs[i][f.id]; break; } } });
   return out;
+}
+/* goles+asistencias de toda la temporada, sumando todas las categorías del
+   jugador: mismo criterio que "Máximo contribuidor" en Inicio, reusado acá
+   para el ranking de posición en el plantel */
+function contribucionClub(j){
+  const cats = j.categorias && j.categorias.length ? j.categorias : [];
+  return cats.reduce((acc,c)=>{ const t=totalesTemporada(j.id,c); return acc+t.goles+t.asistencias; }, 0);
+}
+/* puesto del jugador por goles+asistencias: general (todo el club) y
+   dentro de su propia categoría (la primera, si juega en varias) */
+function posicionPlantel(j){
+  const tabla = db.jugadores.map(x=>({id:x.id, v:contribucionClub(x)})).sort((a,b)=>b.v-a.v);
+  const general = tabla.findIndex(x=>x.id===j.id)+1;
+  const propia = (j.categorias||[])[0] || null;
+  let enCategoria = null, totalCategoria = 0;
+  if (propia){
+    const idsCat = new Set(db.jugadores.filter(x=>(x.categorias||[]).includes(propia)).map(x=>x.id));
+    const tablaCat = tabla.filter(x=>idsCat.has(x.id));
+    enCategoria = tablaCat.findIndex(x=>x.id===j.id)+1;
+    totalCategoria = tablaCat.length;
+  }
+  return { general, totalGeneral: tabla.length, enCategoria, totalCategoria, categoria: propia };
+}
+/* qué tan bien está ese valor de test físico frente al resto de su
+   categoría: 100% = el mejor de la categoría en ese test */
+function pctFisicoCategoria(item, valor, roster){
+  if (valor===null || valor===undefined) return 0;
+  const vals = roster.map(p=>ultimoParItem(p.id, item.id).actual).filter(v=>v!==null && v>0);
+  if (!vals.length) return 0;
+  if (item.mejor==='alto'){ const max=Math.max(...vals); return max>0?Math.min(100,Math.round(valor/max*100)):0; }
+  const min=Math.min(...vals); return valor>0?Math.min(100,Math.round(min/valor*100)):0;
+}
+/* gráfico de líneas (SVG, sin librerías) para minutos/goles/asistencias
+   año a año; puntos ya vienen ordenados cronológicamente */
+function svgEvolucion(puntos){
+  const W=600, H=210, mL=34, mR=10, mT=10, mB=26;
+  const max = Math.max(1, ...puntos.map(p=>Math.max(p.minutos,p.goles,p.asistencias)));
+  const x = i => puntos.length>1 ? mL + i/(puntos.length-1)*(W-mL-mR) : (W-mL-mR)/2+mL;
+  const y = v => H-mB - (v/max)*(H-mT-mB);
+  const linea = (campo,color) => {
+    const pts = puntos.map((p,i)=>`${x(i)},${y(p[campo])}`).join(' ');
+    const circs = puntos.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p[campo])}" r="3.5" fill="${color}"/>`).join('');
+    return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${circs}`;
+  };
+  const grillas = [0,.25,.5,.75,1].map(f=>{
+    const v = Math.round(max*f), yy = y(v);
+    return `<line x1="${mL}" y1="${yy}" x2="${W-mR}" y2="${yy}" stroke="var(--linea)" stroke-width="1"/>
+      <text x="${mL-6}" y="${yy+3}" font-size="9" fill="var(--ink-2)" text-anchor="end" font-family="var(--mono)">${miles(v)}</text>`;
+  }).join('');
+  const ejeX = puntos.map((p,i)=>`<text x="${x(i)}" y="${H-8}" font-size="10" fill="var(--ink-2)" text-anchor="middle" font-family="var(--mono)">${esc(p.anio)}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${grillas}${ejeX}
+    ${linea('minutos','var(--ink-2)')}
+    ${linea('goles','var(--naranja)')}
+    ${linea('asistencias','var(--verde)')}
+  </svg>`;
 }
 
 const claseSem = v => v==null?'s-vacio':(v>=7?'s-alto':v>=5?'s-medio':'s-bajo');
@@ -1510,49 +1591,146 @@ function fichaJugador(){
    <div class="chips">${SOLAPAS.map(([k,n])=>
      `<button class="chip" data-ficha="${k}" aria-pressed="${tab===k}">${n}</button>`).join('')}</div>`;
 
-  /* ===================== GENERAL ===================== */
+  /* ===================== GENERAL: tablero de estadísticas ===================== */
   if (tab==='general'){
-    const g = puntuacion(j.id), tec = promedioTecnico(j.id), con = promedioDe(j.id, CONDUCTA);
-    h += `<div class="block"><div class="block-title">Puntuación</div>`;
-    if (g===null){
-      h += `<div class="empty"><p>Sin calificaciones todavía. Cargá una evaluación y acá vas a ver la nota.</p></div>`;
-    } else {
-      h += `<div class="stat-grid">
-        <div class="stat"><div class="stat-label">General</div>
-          <div class="stat-value" style="color:${colorSem(g)}">${g.toFixed(1)}</div></div>
-        <div class="stat"><div class="stat-label">Técnico-táctico</div>
-          <div class="stat-value" style="color:${tec!==null?colorSem(tec):'var(--ink-2)'}">${tec!==null?tec.toFixed(1):'—'}</div></div>
-        <div class="stat"><div class="stat-label">Comportamiento</div>
-          <div class="stat-value" style="color:${con!==null?colorSem(con):'var(--ink-2)'}">${con!==null?con.toFixed(1):'—'}</div></div>
-      </div>
-      <p class="screen-note" style="margin-top:8px">Promedio de la última toma con datos, sobre 10.</p>`;
-    }
-    h += `</div>`;
-
-    /* perfil: puesto, pierna y físico */
+    const T = totalesTemporada(j.id);   /* temporada en curso, todas sus categorías */
     const fis = fisicoUltimo(j.id);
-    const filas = [
-      ['Puesto principal', posPrincipal(j) || '—'],
-      ['También juega de', posiciones(j).slice(1).join(' · ') || '—'],
-      ['Pierna hábil', j.pierna || '—'],
-      ['Pierna inhábil', j.piernaMala ? `${j.piernaMala}/5` : '—'],
-      ['Altura', j.altura ? `${j.altura} cm` : '—'],
-      ...FISICO.map(f=>[f.nombre, fis[f.id]!==undefined ? `${milesFix(fis[f.id], f.dec)} ${f.unidad}` : '—'])
-    ];
-    h += `<div class="block"><div class="block-title">Perfil</div>
-      <div class="scroll-x"><table class="cmp"><tbody>
-      ${filas.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="val">${esc(v)}</td></tr>`).join('')}
-      </tbody></table></div>
-      <p class="screen-note" style="margin-top:8px">Los tests físicos son el último valor cargado de cada uno.</p></div>`;
+    const propiaCat = (j.categorias||[])[0] || null;
+    const roster = propiaCat ? planteldeCategoria(propiaCat) : [];
+    const pos = posicionPlantel(j);
+    const hist = historialDe(j).filter(x=>!String(x.anio).startsWith(ANIO_ACTUAL));
 
-    /* qué tiene que mejorar */
-    const mej = aMejorar(j);
-    h += `<div class="block"><div class="block-title">Lo que más tiene que mejorar</div>`;
-    if (!mej.length){
-      h += evs.length
-        ? `<p class="screen-note" style="margin:0">Sin puntos flojos: todo lo evaluado da 7 o más.</p>`
-        : `<div class="empty"><p>Hace falta al menos una evaluación para saberlo.</p></div>`;
+    h += `<div class="perfil-grid">`;
+
+    /* ---- columna izquierda: perfil ---- */
+    h += `<div class="block"><div class="block-title">👤 Perfil</div>
+      <div class="scroll-x"><table class="cmp"><tbody>
+      ${[
+        ['Puesto principal', posPrincipal(j) || '—'],
+        ['También juega de', posiciones(j).slice(1).join(' · ') || '—'],
+        ['Pierna hábil', j.pierna || '—'],
+        ['Pierna inhábil', j.piernaMala ? `${j.piernaMala}/5` : '—'],
+        ['Altura', j.altura ? `${j.altura} cm` : '—'],
+      ].map(([k,v])=>`<tr><td>${esc(k)}</td><td class="val">${esc(v)}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+
+    /* ---- columna derecha ---- */
+    h += `<div>`;
+
+    h += `<div class="block"><div class="block-title">📊 Estadísticas generales</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="stat-label">Partidos</div><div class="stat-value">${T.pj}</div></div>
+        <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${miles(T.minutos)}<small>'</small></div></div>
+        <div class="stat"><div class="stat-label">Goles</div><div class="stat-value" style="color:var(--naranja)">${T.goles}</div></div>
+        <div class="stat"><div class="stat-label">Asistencias</div><div class="stat-value">${T.asistencias}</div></div>
+        <div class="stat"><div class="stat-label">Tarjetas</div><div class="stat-value">${T.amarillas}<small>A</small> / ${T.rojas}<small>R</small></div></div>
+      </div></div>`;
+
+    const filasHist = [
+      { anio: ANIO_ACTUAL, categoria: cats.join(' · ') || '—', pj:T.pj, goles:T.goles, asistencias:T.asistencias, minutos:T.minutos, amarillas:T.amarillas, rojas:T.rojas },
+      ...hist.slice().reverse().map(x=>({ anio:x.anio, categoria:x.categoria || cats.join(' · ') || '—',
+        pj:x.pj||0, goles:x.goles||0, asistencias:x.asis||0, minutos:x.min||0, amarillas:x.ta||0, rojas:x.tr||0 }))
+    ];
+    h += `<div class="perfil-2col">
+      <div class="block"><div class="block-title">🏆 Historial de temporadas</div>
+        <div class="scroll-x"><table class="cmp"><thead><tr>
+          <th>Temp.</th><th>Categoría</th><th>PJ</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarj.</th></tr></thead><tbody>
+        ${filasHist.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>
+          <td class="val">${f.pj}</td><td class="val">${miles(f.minutos)}</td>
+          <td class="val" style="color:var(--naranja)">${f.goles}</td><td class="val">${f.asistencias}</td>
+          <td class="val">${f.amarillas}A/${f.rojas}R</td></tr>`).join('')}
+        </tbody></table></div>
+        ${historialAnio(j, ANIO_ACTUAL).pj ? `<p class="screen-note" style="margin-top:8px">La temporada ${ANIO_ACTUAL} incluye partidos cargados como total del torneo, sin detalle partido a partido.</p>` : ''}
+      </div>
+      <div class="block"><div class="block-title">📈 Evolución de rendimiento</div>
+        ${hist.length ? `
+          <div class="chart-leyenda">
+            <span><i style="background:var(--ink-2)"></i>Minutos</span>
+            <span><i style="background:var(--naranja)"></i>Goles</span>
+            <span><i style="background:var(--verde)"></i>Asistencias</span>
+          </div>
+          ${svgEvolucion([...hist.map(x=>({anio:x.anio, minutos:x.min||0, goles:x.goles||0, asistencias:x.asis||0})),
+            {anio:ANIO_ACTUAL, minutos:T.minutos, goles:T.goles, asistencias:T.asistencias}])}
+        ` : `<div class="empty"><p>Hace falta cargar alguna temporada anterior para poder comparar.</p></div>`}
+      </div>
+    </div>`;
+
+    h += `<div class="perfil-2col">
+      <div class="block"><div class="block-title">🏋️ Tests físicos (último registro)</div>
+        <div class="fisico-tests">
+        ${FISICO.map(f=>{
+          const v = fis[f.id];
+          const pct = v!==undefined ? pctFisicoCategoria(f, v, roster) : 0;
+          const emoji = f.id==='cooper'?'⏱️':f.id==='yoyo'?'🏃':'⚡';
+          return `<div class="fisico-test">
+            <div class="fisico-test-label">${emoji} ${esc(f.nombre)}</div>
+            <div class="fisico-test-value">${v!==undefined?milesFix(v,f.dec)+' '+esc(f.unidad):'—'}</div>
+            <div style="height:7px;background:var(--wash);border-radius:99px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:var(--naranja);border-radius:99px"></div></div>
+          </div>`;
+        }).join('')}
+        </div>
+        <p class="screen-note" style="margin-top:8px">La barra compara contra el mejor de ${esc(propiaCat||'su categoría')} en ese test.</p>
+      </div>
+      <div class="block"><div class="block-title">👥 Posición en el plantel</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Ranking general</div><div class="stat-value">#${pos.general}</div></div>
+          <div class="stat"><div class="stat-label">${pos.categoria?'En '+esc(pos.categoria):'En su categoría'}</div>
+            <div class="stat-value">${pos.enCategoria?'#'+pos.enCategoria:'—'}</div></div>
+        </div>
+        <p class="screen-note" style="margin-top:8px">Por goles + asistencias de la temporada, sobre ${pos.totalGeneral} jugadores del club${pos.categoria?` (${pos.totalCategoria} en ${esc(pos.categoria)})`:''}.</p>
+      </div>
+    </div>`;
+
+    const METRICAS_DETALLE = [
+      { id:'pj', nombre:'Partidos' }, { id:'goles', nombre:'Goles' }, { id:'asistencias', nombre:'Asistencias' },
+      { id:'tarjetas', nombre:'Tarjetas' }, { id:'minutos', nombre:'Minutos' },
+    ];
+    const metricaActiva = METRICAS_DETALLE.find(m=>m.id===view.fichaDetalleMetric) || METRICAS_DETALLE[0];
+    const partidosRecientes = partidosDe(j.id).slice().sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).slice(-8);
+    const valorMetrica = p => metricaActiva.id==='pj' ? (p.jugo?1:0)
+      : metricaActiva.id==='tarjetas' ? (p.amarillas||0)+(p.rojas||0)
+      : (p[metricaActiva.id]||0);
+    h += `<div class="block"><div class="block-title">⭐ Detalle de rendimiento</div>
+      <div class="chips">${METRICAS_DETALLE.map(m=>`<button class="chip" data-fichaMetric="${m.id}" aria-pressed="${metricaActiva.id===m.id}">${esc(m.nombre)}</button>`).join('')}</div>`;
+    if (!partidosRecientes.length){
+      h += `<div class="empty"><p>Todavía no hay partidos cargados para mostrar.</p></div>`;
     } else {
+      const max = Math.max(1, ...partidosRecientes.map(valorMetrica));
+      h += `<div class="chart-bars">${partidosRecientes.map(p=>{
+        const v = valorMetrica(p);
+        const pct = Math.max(4, Math.round(v/max*100));
+        const fecha = p.fecha ? p.fecha.slice(5).split('-').reverse().join('/') : '—';
+        return `<div class="chart-bar-col">
+          <span class="chart-bar-val">${metricaActiva.id==='pj'?(v?'Jugó':'—'):miles(v)}</span>
+          <div class="chart-bar" style="height:${pct}%${metricaActiva.id==='pj'&&!v?';background:var(--linea)':''}"></div>
+          <span class="chart-bar-label">${esc(fecha)}</span>
+        </div>`;
+      }).join('')}</div>`;
+    }
+    h += `<div class="gap"></div><button class="btn btn-ghost" data-irFichaTab="historial">Ver historial completo →</button></div>`;
+
+    h += `</div>`;  /* cierra columna derecha */
+    h += `</div>`;  /* cierra perfil-grid */
+
+    /* ---- se mantienen, fuera de la grilla: notas de calidad y datos de origen ---- */
+    const g = puntuacion(j.id), tec = promedioTecnico(j.id), con = promedioDe(j.id, CONDUCTA);
+    if (g!==null){
+      h += `<div class="block"><div class="block-title">⚖️ Puntuación</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">General</div>
+            <div class="stat-value" style="color:${colorSem(g)}">${g.toFixed(1)}</div></div>
+          <div class="stat"><div class="stat-label">Técnico-táctico</div>
+            <div class="stat-value" style="color:${tec!==null?colorSem(tec):'var(--ink-2)'}">${tec!==null?tec.toFixed(1):'—'}</div></div>
+          <div class="stat"><div class="stat-label">Comportamiento</div>
+            <div class="stat-value" style="color:${con!==null?colorSem(con):'var(--ink-2)'}">${con!==null?con.toFixed(1):'—'}</div></div>
+        </div>
+        <p class="screen-note" style="margin-top:8px">Promedio de la última toma con datos, sobre 10.</p></div>`;
+    }
+
+    const mej = aMejorar(j);
+    if (mej.length){
+      h += `<div class="block"><div class="block-title">📉 Lo que más tiene que mejorar</div>`;
       mej.forEach(m=>{
         const pct = Math.round(m.valor/10*100);
         h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -1562,52 +1740,17 @@ function fichaJugador(){
             <span style="display:block;height:100%;width:${pct}%;background:${colorSem(m.valor)};border-radius:99px"></span></span>
           <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${colorSem(m.valor)};width:34px;text-align:right">${esc(m.crudo||m.valor)}</span></div>`;
       });
-      h += `<p class="screen-note" style="margin-top:10px">Lo más bajo de la última toma. El detalle completo está en la solapa Detalle.</p>`;
+      h += `<p class="screen-note" style="margin-top:10px">Lo más bajo de la última toma. El detalle completo está en la solapa Detalle.</p></div>`;
     }
-    h += `</div>`;
 
-    /* partidos, desglosado por categoría si juega en más de una */
-    h += `<div class="block"><div class="block-title">Temporada ${ANIO_ACTUAL}</div>`;
     if (cats.length>1){
-      h += `<div class="scroll-x"><table class="cmp"><thead><tr>
-        <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
-      cats.forEach(c=>{ const t=totalesTemporada(j.id,c);
-        h += `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
-          <td class="val">${miles(t.minutos)}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; });
-      const T = totalesTemporada(j.id);
-      h += `<tr><td><strong>Total</strong></td><td class="val">${T.pj}</td><td class="val">${T.goles}</td>
-        <td class="val">${miles(T.minutos)}</td><td class="val">${T.amarillas}</td><td class="val">${T.rojas}</td></tr></tbody></table></div>`;
-    } else {
-      const t = totalesTemporada(j.id);
-      h += `<div class="stat-grid">
-        <div class="stat"><div class="stat-label">PJ</div><div class="stat-value">${t.pj}</div></div>
-        <div class="stat"><div class="stat-label">Goles</div><div class="stat-value">${t.goles}</div></div>
-        <div class="stat"><div class="stat-label">Asist.</div><div class="stat-value">${t.asistencias}</div></div>
-        <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${miles(t.minutos)}<small>'</small></div></div>
-        <div class="stat"><div class="stat-label">Amarillas</div><div class="stat-value">${t.amarillas}</div></div>
-        <div class="stat"><div class="stat-label">Rojas</div><div class="stat-value">${t.rojas}</div></div></div>`;
-    }
-    const agg = historialAnio(j, ANIO_ACTUAL);   /* sin categoría: el total del año */
-    if (agg.pj) h += `<p class="screen-note" style="margin-top:8px">Incluye ${agg.pj} partido${agg.pj>1?'s':''}
-      que vinieron como total del torneo, sin detalle partido a partido.</p>`;
-    h += `</div>`;
-
-    const hist = historialDe(j).filter(x=>!String(x.anio).startsWith(ANIO_ACTUAL));
-    if (hist.length){
-      const H = hist.reduce((a,x)=>({pj:a.pj+(x.pj||0),goles:a.goles+(x.goles||0),asistencias:a.asistencias+(x.asis||0),minutos:a.minutos+(x.min||0),amarillas:a.amarillas+(x.ta||0),rojas:a.rojas+(x.tr||0)}),{pj:0,goles:0,asistencias:0,minutos:0,amarillas:0,rojas:0}), P = totalesTemporada(j.id);
-      h += `<div class="block"><div class="block-title">Temporadas anteriores <span>${hist.length} año${hist.length>1?'s':''}</span></div>
+      h += `<div class="block"><div class="block-title">Temporada ${ANIO_ACTUAL} por categoría</div>
         <div class="scroll-x"><table class="cmp"><thead><tr>
-          <th>Año</th><th>PJ</th><th>Goles</th><th>Asist.</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>`;
-      hist.forEach(x=>{
-        h += `<tr><td>${esc(x.anio)}</td><td class="val">${x.pj||0}</td><td class="val">${x.goles||0}</td>
-          <td class="val">${x.asis||0}</td><td class="val">${miles(x.min||0)}</td><td class="val">${x.ta||0}</td>
-          <td class="val">${x.tr||0}</td></tr>`;
-      });
-      h += `<tr><td><strong>Carrera</strong></td><td class="val">${H.pj+P.pj}</td><td class="val">${H.goles+P.goles}</td>
-        <td class="val">${H.asistencias+P.asistencias}</td><td class="val">${miles(H.minutos+P.minutos)}</td>
-        <td class="val">${H.amarillas+P.amarillas}</td><td class="val">${H.rojas+P.rojas}</td></tr></tbody></table></div>
-        <p class="screen-note" style="margin-top:8px">Totales anuales importados; de esos años no hay partido a partido.
-        "Carrera" los suma con la temporada ${ANIO_ACTUAL} de arriba.</p></div>`;
+          <th>Categoría</th><th>PJ</th><th>Goles</th><th>Min</th><th>Amar.</th><th>Rojas</th></tr></thead><tbody>
+        ${cats.map(c=>{ const t=totalesTemporada(j.id,c);
+          return `<tr><td>${esc(c)}</td><td class="val">${t.pj}</td><td class="val">${t.goles}</td>
+            <td class="val">${miles(t.minutos)}</td><td class="val">${t.amarillas}</td><td class="val">${t.rojas}</td></tr>`; }).join('')}
+        </tbody></table></div></div>`;
     }
 
     if ((j.base||[]).length){
@@ -3596,6 +3739,10 @@ app.addEventListener('click', async e=>{
 
   const chipFicha = t.closest('.chip[data-ficha]');
   if (chipFicha){ view.fichaTab=chipFicha.dataset.ficha; window.scrollTo(0,0); return render(); }
+  const irFichaTab = t.closest('[data-irFichaTab]');
+  if (irFichaTab){ view.fichaTab=irFichaTab.dataset.irfichatab; window.scrollTo(0,0); return render(); }
+  const chipMetrica = t.closest('[data-fichaMetric]');
+  if (chipMetrica){ view.fichaDetalleMetric=chipMetrica.dataset.fichametric; return render(); }
 
   const chipForm = t.closest('.chip[data-form]');
   if (chipForm){ view.formacion=chipForm.dataset.form; view.slotAbierto=null; return render(); }
@@ -3703,7 +3850,7 @@ app.addEventListener('click', async e=>{
   }
 
   const row = t.closest('[data-jugador]');
-  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; window.scrollTo(0,0); return render(); }
+  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; view.fichaDetalleMetric='pj'; window.scrollTo(0,0); return render(); }
 
   if (t.closest('[data-back]')){
     if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; }
