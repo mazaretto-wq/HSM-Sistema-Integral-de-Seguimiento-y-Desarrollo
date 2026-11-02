@@ -237,7 +237,8 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 <main class="wrap" id="app"></main>
 
 <nav class="tabs">
-  <button data-tab="plantel" aria-current="true">Plantel</button>
+  <button data-tab="inicio" aria-current="true">Inicio</button>
+  <button data-tab="plantel">Plantel</button>
   <button data-tab="categorias">Categorías</button>
   <button data-tab="entrenos">Entrenos</button>
   <button data-tab="testfisicos">Test físicos</button>
@@ -546,6 +547,15 @@ function afinidad(j,pos){
 function catsPermitidas(){
   return db.config.rol === 'DT' && db.config.categoriaDT ? [db.config.categoriaDT] : CATEGORIAS;
 }
+/* qué solapas se ven como botón en la barra de abajo, por rol; Plantel,
+   Cargar y Datos siguen siendo destinos válidos para coordinación (los
+   usan "Agregar jugador" y "Cargar datos de X" desde dentro de una
+   ficha) aunque ya no tengan un botón propio en la barra */
+function navVisiblesActual(){
+  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas']
+       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','cargar']
+                   : ['plantel','rutinas'];
+}
 function puedeVer(j){
   const p = catsPermitidas();
   const cats = j.categorias || [];
@@ -804,6 +814,7 @@ async function entrar(rol){
   if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
   else { db.config.rol = 'Coordinador'; db.config.categoriaDT = ''; }
   view.categoria = 'Todas'; view.partidoCat = null;
+  view.tab = rol==='jugador' ? 'plantel' : 'inicio'; marcarTab(view.tab);
   await Store.save(db); render();
 }
 
@@ -816,14 +827,20 @@ function render(){
     return pantallaAcceso();
   }
   nav.style.display = '';
-  const permitidas = esCoord() ? ['plantel','categorias','entrenos','testfisicos','rutinas','cargar','datos']
-                 : esDT()    ? ['plantel','categorias','entrenos','testfisicos','rutinas','cargar']
+  /* "permitidas": todo lo que sigue siendo un destino válido (algunos solo
+     por accesos indirectos, como "Agregar jugador" o "Cargar datos de X"
+     desde dentro de una ficha). "navVisibles": lo que de verdad se ve como
+     botón en la barra; Plantel/Cargar/Datos quedan accesibles pero fuera
+     de la barra para coordinación, Categorías ya lleva a un plantel filtrado */
+  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','cargar','datos']
+                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','cargar']
                              : ['plantel','rutinas'];
+  const navVisibles = navVisiblesActual();
   nav.querySelectorAll('button').forEach(b=>{
-    b.style.display = permitidas.includes(b.dataset.tab) ? '' : 'none';
-    if (b.dataset.tab==='plantel') b.textContent = esDT() ? 'Inicio' : 'Plantel';
+    b.style.display = navVisibles.includes(b.dataset.tab) ? '' : 'none';
   });
-  if (!permitidas.includes(view.tab)){ view.tab='plantel'; marcarTab('plantel'); }
+  const tabPorDefecto = (esCoord()||esDT()) ? 'inicio' : 'plantel';
+  if (!permitidas.includes(view.tab)){ view.tab=tabPorDefecto; marcarTab(tabPorDefecto); }
   const sinNube = fbEstado !== 'listo';
   document.getElementById('rolebox').innerHTML = (esCoord()
     ? `Coordinación · todas`
@@ -834,6 +851,7 @@ function render(){
   if (view.fotoEditor) return pantallaRecorteFoto();
   if (view.jugadorId) return fichaJugador();
   if (view.categoriaAjena) return pantallaCategoriaAjena();
+  if (view.tab==='inicio') return pantallaInicio();
   if (view.tab==='plantel') return pantallaPlantel();
   if (view.tab==='categorias') return pantallaCategorias();
   if (view.tab==='cancha')  return pantallaCancha();
@@ -842,6 +860,63 @@ function render(){
   if (view.tab==='rutinas') return pantallaRutinas();
   if (view.tab==='cargar')  return pantallaCargar();
   if (view.tab==='datos')   return pantallaDatos();
+}
+
+/* ---------- INICIO: ranking del club (coordinación) o del propio
+   plantel (DT) — reusa los mismos totales que ya se ven en cada ficha,
+   no recalcula nada aparte ---------- */
+function jugadoresParaInicio(){
+  return esDT() ? planteldeCategoria(db.config.categoriaDT) : jugadoresVisibles();
+}
+function totalesGlobalesInicio(j){
+  const cats = esDT() ? [db.config.categoriaDT] : (j.categorias&&j.categorias.length ? j.categorias : []);
+  return cats.reduce((acc,c)=>{
+    const t = totalesTemporada(j.id, c);
+    return { goles:acc.goles+t.goles, asistencias:acc.asistencias+t.asistencias, minutos:acc.minutos+t.minutos };
+  }, {goles:0, asistencias:0, minutos:0});
+}
+function filaRankingInicio(j, i, valorTexto, conCategoria){
+  return `<button class="row" data-jugador="${j.id}">
+    ${avatarJugador(j)}
+    <span class="row-main"><span class="row-name">${i+1}. ${esc(nomb(j))}</span>
+    ${conCategoria?`<span class="row-meta"><span>${esc((j.categorias||[]).join(' · ')||'sin categoría')}</span></span>`:''}</span>
+    <span class="score">${esc(valorTexto)}</span>
+  </button>`;
+}
+function bloqueRankingInicio(titulo, filasHtml){
+  return `<div class="block"><div class="block-title">${titulo}</div>`
+    + (filasHtml.length ? `<div class="roster">${filasHtml.join('')}</div>`
+       : `<p class="screen-note" style="margin:0">Todavía no hay datos cargados.</p>`)
+    + `</div>`;
+}
+function pantallaInicio(){
+  const jugadores = jugadoresParaInicio();
+  const conCategoria = esCoord();
+  const totales = new Map(jugadores.map(j=>[j.id, totalesGlobalesInicio(j)]));
+  const top = (campo, n) => jugadores
+    .map(j=>({ j, v: totales.get(j.id)[campo] }))
+    .filter(x=>x.v>0)
+    .sort((a,b)=>b.v-a.v)
+    .slice(0,n);
+
+  let h = `<h2 class="screen-title">Inicio</h2>
+    <p class="screen-note">${esCoord()?'Los mejores de todas las categorías.':'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.'}</p>`;
+
+  h += bloqueRankingInicio('Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
+  h += bloqueRankingInicio('Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,String(x.v),conCategoria)));
+  h += bloqueRankingInicio('Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,x.v+"'",conCategoria)));
+
+  FISICO.forEach(item=>{
+    const filas = jugadores
+      .map(j=>({ j, v: ultimoParItem(j.id, item.id).actual }))
+      .filter(x=>x.v!==null)
+      .sort((a,b)=> item.mejor==='alto' ? b.v-a.v : a.v-b.v)
+      .slice(0,3);
+    h += bloqueRankingInicio(`Mejores · ${esc(item.nombre)}`,
+      filas.map((x,i)=>filaRankingInicio(x.j,i,(item.dec?x.v.toFixed(item.dec):x.v)+' '+item.unidad, conCategoria)));
+  });
+
+  app.innerHTML = h;
 }
 
 /* ---------- PLANTEL ---------- */
@@ -1896,7 +1971,8 @@ function pantallaCancha(){
 /* ---------- CARGAR ---------- */
 function pantallaCargar(){
   if (!view.form){
-    app.innerHTML = `<h2 class="screen-title">Cargar</h2><p class="screen-note">¿Qué vas a registrar?</p>
+    app.innerHTML = `${navVisiblesActual().includes('cargar')?'':'<button class="back" data-irTab="inicio">← Inicio</button>'}
+      <h2 class="screen-title">Cargar</h2><p class="screen-note">¿Qué vas a registrar?</p>
       <div class="roster">${[
         ['evaluacion','Evaluación de la toma','Físico, técnico-táctico y comportamiento'],
         ['partido','Partido','Todo el plantel en una lista'],
@@ -3133,12 +3209,15 @@ document.getElementById('rolebox').addEventListener('click', async e=>{
   await Store.save(db); render();
 });
 
-document.querySelector('.tabs').addEventListener('click', e=>{
-  const b = e.target.closest('button[data-tab]'); if(!b) return;
-  view.tab=b.dataset.tab; view.jugadorId=null; view.form=null; view.slotAbierto=null; view.editJugador=null;
+function cambiarTab(tab){
+  view.tab=tab; view.jugadorId=null; view.form=null; view.slotAbierto=null; view.editJugador=null;
   view.sesionId=null; view.ejercicioId=null; view.draft=null;
   view.categoriaAjena=null; view.testFisico=null; view.testRegistrando=false; view.testValores={}; view.testFisicoCategoria=null;
-  marcarTab(view.tab); window.scrollTo(0,0); render();
+  marcarTab(tab); window.scrollTo(0,0); render();
+}
+document.querySelector('.tabs').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-tab]'); if(!b) return;
+  cambiarTab(b.dataset.tab);
 });
 
 app.addEventListener('keydown', e=>{
@@ -3224,13 +3303,15 @@ app.addEventListener('click', async e=>{
   if (puerta && puerta.id==='ac-jugador'){
     if (fb && fbEstado==='sinPermiso'){ view.puerta='jugador'; view.claveMal=false; return render(); }
     if (fb && fbUser){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
-    db.config.acceso='jugador'; await Store.save(db); return render();
+    db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT='';
+    await Store.save(db); return render();
   }
   if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
   if (puerta && puerta.id==='ac-dt'){ view.puerta='dt'; view.claveMal=false; return render(); }
   if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
   if (t.id==='ac-local'){          /* mirar lo que hay en este dispositivo */
-    db.config.acceso='jugador'; view.puerta=null; view.claveMal=false;
+    db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT='';
+    view.puerta=null; view.claveMal=false;
     await Store.save(db); return render();
   }
   if (t.id==='ac-entrar'){
@@ -3463,6 +3544,8 @@ app.addEventListener('click', async e=>{
     else view.form=null;
     window.scrollTo(0,0); return render();
   }
+  const irTab = t.closest('[data-irTab]');
+  if (irTab){ return cambiarTab(irTab.dataset.irtab); }
 
   const entrarCat = t.closest('[data-entrarCat]');
   if (entrarCat){
