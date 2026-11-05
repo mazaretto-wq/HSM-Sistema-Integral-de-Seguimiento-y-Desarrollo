@@ -442,6 +442,13 @@ async function fbEscribir(d){
 }
 /* no escribimos en cada tecla: se junta y se sube una vez */
 let subidaPend = null, subidaUlt = null;
+/* Firestore no deja que un documento pase 1 MiB; avisamos ANTES de llegar
+   ahí (no solo cuando ya falló) para que coordinación tenga tiempo de
+   achicar la base. Un solo aviso por sesión, para no repetirlo en cada
+   guardado una vez que ya se sabe. */
+const LIMITE_DOC_BYTES = 1048576;
+let avisoTamanoDado = false;
+function tamanoBytesDb(d){ return new TextEncoder().encode(JSON.stringify(d)).length; }
 function programarSubida(d){
   subidaUlt = d;
   clearTimeout(subidaPend);
@@ -452,6 +459,12 @@ function programarSubida(d){
       const detalle = grande ? ' (la base de datos quedó muy grande para la nube)'
                      : r.motivo==='permission-denied' ? ' (sin permiso en Firestore)' : '';
       toast('No se pudo guardar en la nube; quedó en este dispositivo'+detalle);
+    } else if (r.ok && !avisoTamanoDado && esCoord()){
+      const bytes = tamanoBytesDb(subidaUlt);
+      if (bytes > LIMITE_DOC_BYTES*0.8){
+        avisoTamanoDado = true;
+        toast(`Atención: la base del club ya usa ${Math.round(bytes/1024)} KB de los ${Math.round(LIMITE_DOC_BYTES/1024)} KB que admite la nube por archivo. Conviene ir pensando en achicarla (fotos/rutinas viejas, partidos muy antiguos) antes de que deje de sincronizar entre dispositivos.`);
+      }
     }
   }, 1200);
 }
