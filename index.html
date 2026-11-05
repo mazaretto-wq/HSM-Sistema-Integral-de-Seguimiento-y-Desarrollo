@@ -817,9 +817,13 @@ function totales(id, cat){
 function asistenciaDe(id){
   const j = db.jugadores.find(x=>x.id===id); if(!j) return null;
   const relevantes = db.sesiones.filter(s=>(s.asistentes||[]).length && (j.categorias||[]).includes(s.categoria));
-  if (!relevantes.length) return null;
-  const fue = relevantes.filter(s=>s.asistentes.includes(id)).length;
-  return { fue, total: relevantes.length, pct: Math.round(fue/relevantes.length*100) };
+  let fue = relevantes.filter(s=>s.asistentes.includes(id)).length;
+  let total = relevantes.length;
+  (j.historial||[]).forEach(h=>{
+    if (typeof h.entrenosTotal === 'number'){ fue += h.entrenosFue||0; total += h.entrenosTotal; }
+  });
+  if (!total) return null;
+  return { fue, total, pct: Math.round(fue/total*100) };
 }
 function pjPorPosicion(id){
   const m = {};
@@ -3587,6 +3591,18 @@ function pantallaDatos(){
       <button class="btn btn-ghost" data-csv="evaluaciones">CSV de evaluaciones</button><div class="gap"></div>
       <button class="btn btn-ghost" data-csv="partidos">CSV de partidos</button>
     </div>
+    <div class="block"><div class="block-title">Archivar temporada</div>
+      <p class="screen-note">Resume en un total anual los partidos, tests físicos y entrenamientos de
+      una temporada vieja, para que la base no siga creciendo para siempre. Los números que ya ves en
+      la app (goles, asistencias, minutos, rankings) no cambian: solo se borra el detalle partido a
+      partido y toma a toma de esa temporada puntual (primero se baja un CSV con todo, por las dudas).</p>
+      ${aniosArchivables().length ? `
+        <div class="field"><label class="label" for="archivar-anio">Temporada a archivar</label>
+          <select id="archivar-anio">${aniosArchivables().map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select></div>
+        <div class="gap"></div>
+        <button class="btn btn-naranja" id="archivarTemporada">Descargar CSV y archivar</button>
+      ` : `<p class="screen-note" style="margin:0">No hay temporadas viejas para archivar todavía.</p>`}
+    </div>
     <div class="block"><div class="block-title">Borrar</div>
       <button class="btn btn-danger" id="borrarTodo">Borrar todos los datos</button></div>
     <div style="height:26px"></div>`;
@@ -4090,6 +4106,11 @@ app.addEventListener('click', async e=>{
   }
   const csv = t.closest('[data-csv]');
   if (csv) return exportarCSV(csv.dataset.csv);
+  if (t.id==='archivarTemporada'){
+    const sel = document.getElementById('archivar-anio');
+    if (!sel || !sel.value) return;
+    return archivarTemporada(sel.value);
+  }
 });
 
 /* ---------- guardar ---------- */
@@ -4177,6 +4198,115 @@ function exportarCSV(tabla){
   a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   a.download = `hsm-${tabla}-${hoy()}.csv`; a.click(); URL.revokeObjectURL(a.href);
   toast('CSV descargado');
+}
+
+/* ---------- archivar temporada: resume partidos/tests/entrenamientos
+   de una temporada vieja en un total anual (mismo lugar donde ya viven
+   los años anteriores del club), para que la base no crezca para
+   siempre. Antes de borrar nada se baja un CSV con el detalle completo
+   de esa temporada. ---------- */
+function aniosArchivables(){
+  const anios = new Set();
+  db.partidos.forEach(p=>{ if (p.fecha) anios.add(p.fecha.slice(0,4)); });
+  db.evaluaciones.forEach(e=>{ if (e.fecha) anios.add(e.fecha.slice(0,4)); });
+  db.sesiones.forEach(s=>{ if (s.fecha) anios.add(s.fecha.slice(0,4)); });
+  anios.delete(ANIO_ACTUAL);
+  return [...anios].sort();
+}
+function lineaCSV(valores){
+  return valores.map(v=>{ const s=(v==null)?'':(Array.isArray(v)?v.join(' / '):String(v));
+    return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(';');
+}
+function tablaCSV(titulo, filas, cols){
+  if (!filas.length) return titulo+'\n(sin datos)';
+  return titulo+'\n'+[lineaCSV(cols), ...filas.map(f=>lineaCSV(cols.map(c=>f[c])))].join('\n');
+}
+function descargarCSVTemporada(anio, partidos, evaluaciones, sesiones){
+  const nombreDe = id => { const j=db.jugadores.find(x=>x.id===id); return j?nomb(j):id; };
+  const tomaDe = id => { const t=db.tomas.find(x=>x.id===id); return t?t.nombre:id; };
+
+  const partidosFilas = partidos.map(p=>({ fecha:p.fecha, categoria:p.categoria, jugador:nombreDe(p.jugadorId),
+    jugo:p.jugo?'si':'no', goles:p.goles||0, asistencias:p.asistencias||0, minutos:p.minutos||0, amarillas:p.amarillas||0, rojas:p.rojas||0 }));
+  const partidosCols = ['fecha','categoria','jugador','jugo','goles','asistencias','minutos','amarillas','rojas'];
+
+  const camposEval = [...new Set(evaluaciones.flatMap(e=>Object.keys(e)))].filter(c=>!['id','jugadorId','tomaId'].includes(c));
+  const evalFilas = evaluaciones.map(e=>({ jugador:nombreDe(e.jugadorId), toma:tomaDe(e.tomaId), ...Object.fromEntries(camposEval.map(c=>[c,e[c]])) }));
+  const evalCols = ['jugador','toma',...camposEval];
+
+  const sesionesFilas = sesiones.map(s=>({ fecha:s.fecha, categoria:s.categoria, dt:s.dt||'',
+    presentes:(s.asistentes||[]).length, lista:(s.asistentes||[]).map(nombreDe).join(' / ') }));
+  const sesionesCols = ['fecha','categoria','dt','presentes','lista'];
+
+  const texto = '﻿'+[
+    tablaCSV(`PARTIDOS ${anio}`, partidosFilas, partidosCols),
+    tablaCSV(`TESTS FÍSICOS / EVALUACIONES ${anio}`, evalFilas, evalCols),
+    tablaCSV(`ENTRENAMIENTOS ${anio}`, sesionesFilas, sesionesCols),
+  ].join('\n\n');
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([texto],{type:'text/csv;charset=utf-8'}));
+  a.download = `hsm-temporada-${anio}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+async function archivarTemporada(anio){
+  if (!anio || anio===ANIO_ACTUAL) return toast('No se puede archivar la temporada en curso');
+
+  const partidosAnio = db.partidos.filter(p=>p.fecha && p.fecha.startsWith(anio));
+  const tomasAnio = db.tomas.filter(t=>t.fecha && t.fecha.startsWith(anio));
+  const tomaIdsAnio = new Set(tomasAnio.map(t=>t.id));
+  const evaluacionesAnio = db.evaluaciones.filter(e=>tomaIdsAnio.has(e.tomaId));
+  const sesionesAnio = db.sesiones.filter(s=>s.fecha && s.fecha.startsWith(anio));
+
+  if (!partidosAnio.length && !evaluacionesAnio.length && !sesionesAnio.length){
+    return toast(`No hay datos de ${anio} para archivar`);
+  }
+
+  descargarCSVTemporada(anio, partidosAnio, evaluacionesAnio, sesionesAnio);
+
+  if (!confirm(`Se descargó el detalle de ${anio} en un CSV. ¿Confirmás archivar la temporada?\n\nSe resumen los números (quedan iguales en la app) y se borra el detalle partido a partido / toma a toma de ese año de la base: va a quedar solo en el CSV que se acaba de bajar.`)) return;
+
+  /* 1) un total por jugador+categoría, combinando partidos y asistencia a entrenos */
+  const resumen = {};
+  const filaDe = (jid,cat) => { const k=jid+'|'+(cat||''); return resumen[k] || (resumen[k] = { jugadorId:jid, categoria:cat||'' }); };
+
+  partidosAnio.forEach(p=>{
+    const f = filaDe(p.jugadorId, p.categoria);
+    f.pj=(f.pj||0)+(p.jugo?1:0); f.goles=(f.goles||0)+(p.goles||0); f.asis=(f.asis||0)+(p.asistencias||0);
+    f.min=(f.min||0)+(p.minutos||0); f.ta=(f.ta||0)+(p.amarillas||0); f.tr=(f.tr||0)+(p.rojas||0);
+  });
+
+  /* mismo criterio que asistenciaDe(): el plantel ACTUAL de esa categoría, porque
+     la app tampoco guarda en qué categoría estaba cada jugador en cada momento */
+  const sesionesConLista = sesionesAnio.filter(s=>(s.asistentes||[]).length);
+  [...new Set(sesionesConLista.map(s=>s.categoria))].forEach(cat=>{
+    const relevantes = sesionesConLista.filter(s=>s.categoria===cat);
+    planteldeCategoria(cat).forEach(j=>{
+      const f = filaDe(j.id, cat);
+      f.entrenosTotal = relevantes.length;
+      f.entrenosFue = relevantes.filter(s=>s.asistentes.includes(j.id)).length;
+    });
+  });
+
+  Object.values(resumen).forEach(f=>{
+    const j = db.jugadores.find(x=>x.id===f.jugadorId);
+    if (!j) return;
+    if (!j.historial) j.historial = [];
+    j.historial.push({ anio, categoria:f.categoria, pj:f.pj||0, goles:f.goles||0, asis:f.asis||0,
+      min:f.min||0, ta:f.ta||0, tr:f.tr||0,
+      ...(f.entrenosTotal!==undefined ? {entrenosFue:f.entrenosFue, entrenosTotal:f.entrenosTotal} : {}) });
+  });
+
+  /* 2) tests físicos: se conserva solo la ÚLTIMA toma del año (con sus evaluaciones) */
+  const ultimaToma = tomasAnio.length ? tomasAnio.slice().sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).pop() : null;
+  db.evaluaciones = db.evaluaciones.filter(e => !tomaIdsAnio.has(e.tomaId) || (ultimaToma && e.tomaId===ultimaToma.id));
+  db.tomas = db.tomas.filter(t => !tomaIdsAnio.has(t.id) || (ultimaToma && t.id===ultimaToma.id));
+
+  /* 3) ya está resumido arriba: se borran los partidos y entrenamientos sueltos de ese año */
+  db.partidos = db.partidos.filter(p => !(p.fecha && p.fecha.startsWith(anio)));
+  db.sesiones = db.sesiones.filter(s => !(s.fecha && s.fecha.startsWith(anio)));
+
+  await Store.save(db);
+  toast(`Temporada ${anio} archivada: quedó resumida en la ficha de cada jugador.`);
+  render();
 }
 
 const SEED_HSM = {"jugadores":[{"apellido":"SAR","nombre":"Benjamin","carnet":"","fechaNac":"2009-01-01","categorias":["Juveniles","Selección"],"posiciones":["Volante Derecho","Lateral Izquierdo","Central Derecho"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"SARBENJAMIN"},{"apellido":"MUSSO","nombre":"Francisco","carnet":"","fechaNac":"2000-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MUSSOFRANCISCO"},{"apellido":"CODNER","nombre":"Felipe","carnet":"","fechaNac":"2004-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CODNERFELIPE"},{"apellido":"QUIROGA","nombre":"Nazareno Rafael","carnet":"","fechaNac":"2004-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"QUIROGANAZARENORAFAEL"},{"apellido":"RETAMAR","nombre":"Bautista","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes","Juveniles"],"posiciones":["Extremo Izquierdo","Extremo Derecho","Delantero Centro"],"pierna":"Derecha","piernaMala":4,"altura":172,"key":"RETAMARBAUTISTA"},{"apellido":"MIRAVÉ","nombre":"Facundo","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles","Selección"],"posiciones":["Mediocampista Interior","Lateral Derecho","Central Derecho","Lateral Izquierdo","Mediocampista Defensivo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"MIRAVEFACUNDO"},{"apellido":"FIORE","nombre":"Francisco Jose","carnet":"","fechaNac":"2003-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FIOREFRANCISCOJOSE"},{"apellido":"PEREYRA","nombre":"Ramiro","carnet":"","fechaNac":"2009-01-01","categorias":["Juveniles"],"posiciones":["Mediocampista Defensivo","Mediocampista Interior"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"PEREYRARAMIRO"},{"apellido":"BESZE","nombre":"Santiago","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BESZESANTIAGO"},{"apellido":"BARRABIN","nombre":"Facundo","carnet":"","fechaNac":"2003-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BARRABINFACUNDO"},{"apellido":"BULACIO","nombre":"Santino","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Mediocampista Defensivo","Central Derecho","Mediocampista Interior"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"BULACIOSANTINO"},{"apellido":"MARTIN","nombre":"Nahuel Nicolas","carnet":"","fechaNac":"2006-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MARTINNAHUELNICOLAS"},{"apellido":"BIBBO","nombre":"Mateo","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Central Derecho","Central Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"BIBBOMATEO"},{"apellido":"SAR","nombre":"Santiago","carnet":"","fechaNac":"2006-01-01","categorias":["Selección"],"posiciones":["Lateral Izquierdo","Central Izquierdo"],"pierna":"Izquierda","piernaMala":3,"altura":186,"key":"SARSANTIAGO"},{"apellido":"FERNANDEZ VITTAR","nombre":"Joaquin","carnet":"","fechaNac":"2005-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FERNANDEZVITTARJOAQUIN"},{"apellido":"AVENA","nombre":"Ignacio","carnet":"","fechaNac":"1997-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"AVENAIGNACIO"},{"apellido":"QUIROGA","nombre":"Diego Facundo","carnet":"","fechaNac":"2000-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"QUIROGADIEGOFACUNDO"},{"apellido":"MOCETTI","nombre":"Pedro","carnet":"","fechaNac":"2002-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MOCETTIPEDRO"},{"apellido":"ARANGUREN","nombre":"Javier","carnet":"","fechaNac":"2000-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ARANGURENJAVIER"},{"apellido":"ZMBIMBAKIS","nombre":"Facundo","carnet":"","fechaNac":"2000-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ZMBIMBAKISFACUNDO"},{"apellido":"CANNONE","nombre":"Matias","carnet":"","fechaNac":"1999-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CANNONEMATIAS"},{"apellido":"GALINDEZ","nombre":"Santiago","carnet":"","fechaNac":"2004-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GALINDEZSANTIAGO"},{"apellido":"COLOMBO","nombre":"Santiago","carnet":"","fechaNac":"2001-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"COLOMBOSANTIAGO"},{"apellido":"CODNER","nombre":"Tomas","carnet":"","fechaNac":"2000-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CODNERTOMAS"},{"apellido":"ANGANUZZI","nombre":"Lucas Ezequiel","carnet":"","fechaNac":"2004-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ANGANUZZILUCASEZEQUIEL"},{"apellido":"PATON URICH","nombre":"Andreas Martin","carnet":"","fechaNac":"1975-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PATONURICHANDREASMARTIN"},{"apellido":"CLARK","nombre":"Ignacio Martin","carnet":"","fechaNac":"2002-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CLARKIGNACIOMARTIN"},{"apellido":"VINZON","nombre":"Pablo Horacio","carnet":"","fechaNac":"1982-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VINZONPABLOHORACIO"},{"apellido":"TOLEDO","nombre":"Gonzalo","carnet":"","fechaNac":"2004-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"TOLEDOGONZALO"},{"apellido":"MAZZONI","nombre":"Santino","carnet":"","fechaNac":"2005-01-01","categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MAZZONISANTINO"},{"apellido":"VINZON","nombre":"Mateo","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VINZONMATEO"},{"apellido":"FERNANDEZ VITTAR","nombre":"Juan","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Lateral Derecho","Central Derecho"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"FERNANDEZVITTARJUAN"},{"apellido":"SANES","nombre":"Felipe","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Delantero Centro","Extremo Derecho","Extremo Izquierdo"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"SANESFELIPE"},{"apellido":"FIORI","nombre":"Juan Ignacio","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FIORIJUANIGNACIO"},{"apellido":"RECALDE","nombre":"Facundo","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Central Izquierdo","Lateral Derecho","Central Derecho","Lateral Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"RECALDEFACUNDO"},{"apellido":"BESZE","nombre":"Facundo","carnet":"","fechaNac":"2007-01-01","categorias":["Juveniles"],"posiciones":["Extremo Izquierdo","Enganche","Extremo Derecho","Delantero Centro"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"BESZEFACUNDO"},{"apellido":"TONSO","nombre":"Ignacio","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Extremo Izquierdo","Enganche","Extremo Derecho"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"TONSOIGNACIO"},{"apellido":"BERARDOCCO","nombre":"Valentino","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BERARDOCCOVALENTINO"},{"apellido":"SCHIANGO","nombre":"Lorenzo","carnet":"","fechaNac":"2009-01-01","categorias":["Juveniles"],"posiciones":["Central Derecho","Lateral Derecho","Central Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"SCHIANGOLORENZO"},{"apellido":"VERDES","nombre":"Santiago Pablo","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Lateral Derecho","Lateral Izquierdo"],"pierna":"Derecha","piernaMala":2,"altura":null,"key":"VERDESSANTIAGOPABLO"},{"apellido":"MONCALVO","nombre":"Pedro","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes"],"posiciones":["Delantero Centro","Enganche","Extremo Derecho","Extremo Izquierdo"],"pierna":"Derecha","piernaMala":5,"altura":null,"key":"MONCALVOPEDRO"},{"apellido":"DE CICCO","nombre":"Tomas","carnet":"","fechaNac":"2008-01-01","categorias":["Juveniles"],"posiciones":["Mediocampista Interior","Lateral Derecho","Volante Derecho","Volante Izquierdo"],"pierna":"Derecha","piernaMala":3,"altura":null,"key":"DECICCOTOMAS"},{"apellido":"CACERES","nombre":"Bautista Ezequiel","carnet":"","fechaNac":"2006-01-01","categorias":["Selección"],"posiciones":["Extremo Izquierdo","Lateral Izquierdo","Volante Izquierdo"],"pierna":"Izquierda","piernaMala":2,"altura":null,"key":"CACERESBAUTISTAEZEQUIEL"},{"apellido":"AWADA","nombre":"Felipe","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes"],"posiciones":["Delantero Centro","Extremo Derecho","Extremo Izquierdo"],"pierna":"Derecha","piernaMala":4,"altura":null,"key":"AWADAFELIPE"},{"apellido":"MITAGSTEIN","nombre":"Santiago","carnet":"","fechaNac":"2010-01-01","categorias":["Cadetes"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MITAGSTEINSANTIAGO"},{"apellido":"MENENDEZ","nombre":"Felix","carnet":"","fechaNac":null,"categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MENENDEZFELIX"},{"apellido":"CAVALLERO","nombre":"Fabricio","carnet":"","fechaNac":null,"categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CAVALLEROFABRICIO"},{"apellido":"ARES","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ARESBAUTISTA"},{"apellido":"FERNANDEZ","nombre":"Rafael","carnet":"","fechaNac":null,"categorias":["Selección"],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FERNANDEZRAFAEL"},{"apellido":"PEREYRA","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PEREYRABAUTISTA"},{"apellido":"TANFERNA","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"TANFERNABAUTISTA"},{"apellido":"FRANZOLINI","nombre":"Lorenzo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FRANZOLINILORENZO"},{"apellido":"GARCIA MOSQ","nombre":"Ignacio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GARCIAMOSQIGNACIO"},{"apellido":"MIRAVE","nombre":"Lucas","carnet":"","fechaNac":"2011-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MIRAVELUCAS"},{"apellido":"RIZZO","nombre":"Lucas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"RIZZOLUCAS"},{"apellido":"FREAN","nombre":"Facundo","carnet":"","fechaNac":"2011-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FREANFACUNDO"},{"apellido":"GALLAGHER","nombre":"Mateo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GALLAGHERMATEO"},{"apellido":"ALBO ROBLES","nombre":"Santiago","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ALBOROBLESSANTIAGO"},{"apellido":"BRITOS","nombre":"Juan Ignacio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BRITOSJUANIGNACIO"},{"apellido":"LOPEZ TODARO","nombre":"Julian","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"LOPEZTODAROJULIAN"},{"apellido":"VINCENT","nombre":"Santiago","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VINCENTSANTIAGO"},{"apellido":"SOMMA","nombre":"Valentino","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"SOMMAVALENTINO"},{"apellido":"JACOME","nombre":"Pedro","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"JACOMEPEDRO"},{"apellido":"CAVALLERO","nombre":"Tiziano","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CAVALLEROTIZIANO"},{"apellido":"MENENDEZ","nombre":"Manuel","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MENENDEZMANUEL"},{"apellido":"GARZON","nombre":"Franco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GARZONFRANCO"},{"apellido":"DE CICCO","nombre":"Benjamin","carnet":"","fechaNac":"2011-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"DECICCOBENJAMIN"},{"apellido":"SABA","nombre":"Nicolas","carnet":"","fechaNac":"2010-01-01","categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"SABANICOLAS"},{"apellido":"POZZONI","nombre":"Lucas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"POZZONILUCAS"},{"apellido":"PIRES MADEIRA","nombre":"Lucas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PIRESMADEIRALUCAS"},{"apellido":"FIRPO","nombre":"Maximo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FIRPOMAXIMO"},{"apellido":"STRACK","nombre":"Gonzalo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"STRACKGONZALO"},{"apellido":"ALMENARA","nombre":"Manuel","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"ALMENARAMANUEL"},{"apellido":"LEVY YEVATI","nombre":"Nicolas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"LEVYYEVATINICOLAS"},{"apellido":"FREAN","nombre":"Nicolas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"FREANNICOLAS"},{"apellido":"RUIZ DIAZ","nombre":"Mateo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"RUIZDIAZMATEO"},{"apellido":"CARREGA","nombre":"Bautista","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"CARREGABAUTISTA"},{"apellido":"VELASCO","nombre":"Facundo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VELASCOFACUNDO"},{"apellido":"AMATO","nombre":"Jano","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"AMATOJANO"},{"apellido":"BRITOS","nombre":"Santiago","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BRITOSSANTIAGO"},{"apellido":"MAURER","nombre":"Nicolas","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MAURERNICOLAS"},{"apellido":"GARBOVESKY","nombre":"Boris","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GARBOVESKYBORIS"},{"apellido":"PEÑALBA","nombre":"Theo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PENALBATHEO"},{"apellido":"VANZINI","nombre":"Francisco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VANZINIFRANCISCO"},{"apellido":"GAVIRIA","nombre":"Iker","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GAVIRIAIKER"},{"apellido":"VITULLO","nombre":"Ignacio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"VITULLOIGNACIO"},{"apellido":"MARTIN","nombre":"Salvador","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MARTINSALVADOR"},{"apellido":"BAUTISTA CAMPAÑO","nombre":"Francisco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"BAUTISTACAMPANOFRANCISCO"},{"apellido":"GONZALEZ","nombre":"Fabricio","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"GONZALEZFABRICIO"},{"apellido":"PIRES MADEIRA","nombre":"Mateo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"PIRESMADEIRAMATEO"},{"apellido":"LONGUET","nombre":"Francisco","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"LONGUETFRANCISCO"},{"apellido":"MATA","nombre":"Milo","carnet":"","fechaNac":null,"categorias":[],"posiciones":[],"pierna":"","piernaMala":null,"altura":null,"key":"MATAMILO"}],"evaluaciones":[{"jugadorKey":"SARBENJAMIN","fecha":"2026-04-14","control":6,"remate":5,"unoOf":7,"unoDef":7,"decision":5,"ubicacion":5,"cooper":1360.0,"yoyo":2440.0,"puntualidad":4,"entrenos":8},{"jugadorKey":"BIBBOMATEO","fecha":"2026-04-14","control":6,"remate":4,"unoOf":4,"unoDef":8,"decision":6,"ubicacion":8,"cooper":1168.0,"yoyo":1840.0,"puntualidad":9,"entrenos":9},{"jugadorKey":"RETAMARBAUTISTA","fecha":"2026-04-15","control":8,"remate":8,"unoOf":8,"unoDef":4,"decision":7,"ubicacion":7,"cooper":1076.0,"yoyo":1160.0,"puntualidad":8,"entrenos":6},{"jugadorKey":"FERNANDEZVITTARJUAN","fecha":"2026-04-28","control":8,"remate":6,"unoOf":5,"unoDef":8,"decision":8,"ubicacion":8,"cooper":1203.0,"yoyo":1360.0,"puntualidad":8,"entrenos":8},{"jugadorKey":"SANESFELIPE","fecha":"2026-04-28","control":6,"remate":7,"unoOf":7,"unoDef":6,"decision":6,"ubicacion":7,"cooper":1360.0,"yoyo":2400.0,"puntualidad":7,"entrenos":8},{"jugadorKey":"RECALDEFACUNDO","fecha":"2026-04-28","control":7,"remate":5,"unoOf":5,"unoDef":8,"decision":6,"ubicacion":7,"puntualidad":8,"entrenos":8},{"jugadorKey":"BESZEFACUNDO","fecha":"2026-04-28","control":8,"remate":8,"unoOf":7,"unoDef":5,"decision":5,"ubicacion":5,"puntualidad":4,"entrenos":4},{"jugadorKey":"SARSANTIAGO","fecha":"2026-04-28","control":6,"remate":6,"unoOf":6,"unoDef":7,"decision":6,"ubicacion":6,"puntualidad":6,"entrenos":7},{"jugadorKey":"PEREYRARAMIRO","fecha":"2026-04-28","control":8,"remate":6,"unoOf":6,"unoDef":6,"decision":7,"ubicacion":8,"puntualidad":8,"entrenos":8},{"jugadorKey":"TONSOIGNACIO","fecha":"2026-04-28","control":7,"remate":7,"unoOf":7,"unoDef":5,"decision":6,"ubicacion":6,"puntualidad":7,"entrenos":7},{"jugadorKey":"SCHIANGOLORENZO","fecha":"2026-04-28","control":7,"remate":5,"unoOf":5,"unoDef":8,"decision":7,"ubicacion":7,"cooper":1335.0,"puntualidad":4,"entrenos":7},{"jugadorKey":"MIRAVEFACUNDO","fecha":"2026-04-28","control":7,"remate":5,"unoOf":6,"unoDef":8,"decision":7,"ubicacion":8,"yoyo":1160.0,"puntualidad":8,"entrenos":8},{"jugadorKey":"VERDESSANTIAGOPABLO","fecha":"2026-04-28","control":6,"remate":5,"unoOf":5,"unoDef":6,"decision":6,"ubicacion":6,"cooper":1041.0,"yoyo":1440.0,"puntualidad":8,"entrenos":6},{"jugadorKey":"MONCALVOPEDRO","fecha":"2026-04-28","control":8,"remate":7,"unoOf":8,"unoDef":4,"decision":6,"ubicacion":7,"puntualidad":6,"entrenos":6},{"jugadorKey":"DECICCOTOMAS","fecha":"2026-04-28","control":7,"remate":6,"unoOf":6,"unoDef":6,"decision":6,"ubicacion":6,"cooper":1258.0,"yoyo":1160.0,"puntualidad":7,"entrenos":7},{"jugadorKey":"CACERESBAUTISTAEZEQUIEL","fecha":"2026-04-28","control":5,"remate":5,"unoOf":5,"unoDef":5,"decision":4,"ubicacion":5,"cooper":1193.0,"yoyo":1360.0,"puntualidad":8,"entrenos":8},{"jugadorKey":"AWADAFELIPE","fecha":"2026-04-28","control":8,"remate":8,"unoOf":6,"unoDef":5,"decision":6,"ubicacion":7,"yoyo":2440.0,"puntualidad":7,"entrenos":4},{"jugadorKey":"BULACIOSANTINO","fecha":"2026-04-28","control":8,"remate":7,"unoOf":5,"unoDef":7,"decision":8,"ubicacion":9,"puntualidad":8,"entrenos":8}]};

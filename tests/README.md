@@ -54,6 +54,7 @@ node roles-y-permisos.spec.js
 | `migracion-categorias.spec.js` | Migración de categorías duplicadas ("Selección Libre" → "Selección") en dispositivos con datos viejos |
 | `alarma-tamano-firestore.spec.js` | Aviso cuando la base se acerca al límite de tamaño de Firestore |
 | `sincronizacion-en-vivo.spec.js` | Que un cambio de otro dispositivo se aplique solo cuando no se está editando nada, quede pendiente (con aviso) si se está editando, y nunca pise el rol/sesión de este dispositivo |
+| `archivar-temporada.spec.js` | Pantalla de Datos: archivar una temporada vieja descarga el CSV, resume partidos/entrenamientos en el historial del jugador, conserva solo la última toma de test físico del año, y no cambia el % de asistencia histórico |
 
 ## Si agregás una función nueva a la app
 
