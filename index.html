@@ -890,6 +890,14 @@ const app = document.getElementById('app');
 
 const FONDOS_HOME = ['Portada y fondo 1.jpg','Portada y fondo 2.jpg','Portada y fondo 3.jpg'];
 
+/* Índice de esta sección (son ~2650 líneas; buscar por el título entre
+   comillas para ubicarse rápido):
+   "ACCESO" · "INICIO: ranking" · "PLANTEL" · "CATEGORÍAS" · "RUTINAS"
+   · "TEST FÍSICOS" · "FICHA DEL JUGADOR" · "RECORTE" · "CANCHA" ·
+   "CARGAR" · "PIZARRA TÁCTICA" · "ENTRENOS" · biblioteca de ejercicios
+   (sin cabecera propia, va justo después de Entrenos) · "DATOS" */
+
+/* ---------- ACCESO: portada de login (jugador/DT/coordinación) ---------- */
 function pantallaAcceso(){
   const conNube = !!fb;
   const pideLoginJugador = conNube && fbEstado === 'sinPermiso';
@@ -1582,6 +1590,9 @@ async function guardarValoresTestFisico(){
   toast(`${cambios} resultado${cambios===1?'':'s'} guardado${cambios===1?'':'s'}`);
   render();
 }
+
+/* ---------- FICHA DEL JUGADOR: General (tablero), Detalle (estado
+   actual) e Historial (toma a toma) ---------- */
 function fichaJugador(){
   const j = db.jugadores.find(x=>x.id===view.jugadorId);
   if (!j){ view.jugadorId=null; return render(); }
@@ -3141,6 +3152,7 @@ function pizWire(){
 }
 let pizTeclado = null;   // handler de teclado activo; se reemplaza en cada render del editor
 
+/* ---------- ENTRENOS: día a día (sesiones) + acceso a la biblioteca ---------- */
 function pantallaEntrenos(){
   /* la pizarra es solo de coordinación y DT; un jugador nunca la ve */
   if (view.sub==='pizarra' && !puedeEditar()) view.sub='sesiones';
