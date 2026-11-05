@@ -53,6 +53,7 @@ node roles-y-permisos.spec.js
 | `ficha-foto-grande.spec.js` | Que la foto grande de la solapa General siga permitiendo subir/cambiar foto, y que Detalle/Historial conserven el encabezado chico |
 | `migracion-categorias.spec.js` | Migración de categorías duplicadas ("Selección Libre" → "Selección") en dispositivos con datos viejos |
 | `alarma-tamano-firestore.spec.js` | Aviso cuando la base se acerca al límite de tamaño de Firestore |
+| `sincronizacion-en-vivo.spec.js` | Que un cambio de otro dispositivo se aplique solo cuando no se está editando nada, quede pendiente (con aviso) si se está editando, y nunca pise el rol/sesión de este dispositivo |
 
 ## Si agregás una función nueva a la app
 

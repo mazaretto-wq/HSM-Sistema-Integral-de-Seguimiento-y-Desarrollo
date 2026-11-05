@@ -469,6 +469,47 @@ function programarSubida(d){
   }, 1200);
 }
 
+/* true si hay algo sin guardar en pantalla (un formulario abierto, una
+   edición en curso, un ejercicio/sesión a medio armar, una foto a medio
+   recortar): mientras esto sea cierto, una actualización que llega de
+   otro dispositivo NO se aplica sola, para no borrar lo que se está
+   cargando en este mismo momento */
+function hayEdicionEnCurso(){
+  return !!(view.form || view.fichaEditando || view.testRegistrando ||
+            view.draft || view.pizDraft || view.fotoEditor || view.editJugador ||
+            view.rutinaSubiendo);
+}
+/* sincronización en vivo: si coordinación o un DT guardan algo mientras
+   otro dispositivo tiene la app abierta, ese otro lo ve reflejado solo,
+   sin salir y volver a entrar — así se reduce mucho la ventana en la que
+   dos ediciones se pueden llegar a pisar. El "config" (rol, categoría del
+   DT, sesión) de ESTE dispositivo nunca se toca: eso siempre es local. */
+let actualizacionRemotaPendiente = null;
+let avisoRemotoDado = false;
+function fbEscucharCambios(){
+  if (!fb) return;
+  let primero = true;
+  fb.ref.onSnapshot(snap=>{
+    if (primero){ primero = false; return; }           /* esto ya lo tenemos: es la carga inicial */
+    if (snap.metadata.hasPendingWrites || !snap.exists) return;  /* guardado nuestro, todavía sin confirmar */
+    const data = snap.data();
+    if (!data || !data.json) return;
+    if (data.por && fbUser && data.por === fbUser.email) return;  /* lo guardamos nosotros mismos */
+    let nuevo;
+    try{ nuevo = JSON.parse(data.json); }catch(e){ return; }
+    if (hayEdicionEnCurso()){
+      actualizacionRemotaPendiente = nuevo;
+      if (!avisoRemotoDado){
+        avisoRemotoDado = true;
+        toast('Alguien más guardó cambios; se van a ver apenas termines lo que estás cargando.');
+      }
+    } else {
+      db = { ...nuevo, config: db.config };
+      render();
+    }
+  }, err => console.warn('Firestore · escucha en vivo:', (err && err.code) || err));
+}
+
 /* fotos que no se pudieron subir a Storage (sin nube, o reglas sin
    configurar todavía): quedan SOLO en este dispositivo y AFUERA del
    documento único que se sincroniza con Firestore, para que una foto
@@ -997,6 +1038,12 @@ async function entrar(rol){
 }
 
 function render(){
+  /* si mientras se estaba editando algo llegó una actualización de otro
+     dispositivo, se aplica recién ahora que ya se dejó de editar */
+  if (actualizacionRemotaPendiente && !hayEdicionEnCurso()){
+    db = { ...actualizacionRemotaPendiente, config: db.config };
+    actualizacionRemotaPendiente = null; avisoRemotoDado = false;
+  }
   const c = db.config;
   const nav = document.querySelector('.tabs');
   if (!c.acceso){
@@ -4363,6 +4410,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
       await cargarPlanteles(true);
     } catch(e){ console.warn('No se pudo cargar la base inicial:', e); }
   }
+  fbEscucharCambios();
   render();
 })();
 </script>
