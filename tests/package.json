@@ -1,0 +1,12 @@
+{
+  "name": "hsm-tests",
+  "private": true,
+  "description": "Pruebas end-to-end (Playwright) de la app de Haras Santa María. No afecta el despliegue de index.html: vive aparte, en esta carpeta.",
+  "scripts": {
+    "install-browser": "npx playwright install --with-deps chromium",
+    "test": "node run-all.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}
