@@ -4032,12 +4032,20 @@ function pantallaDatos(){
       una temporada vieja, para que la base no siga creciendo para siempre. Los números que ya ves en
       la app (goles, asistencias, minutos, rankings) no cambian: solo se borra el detalle partido a
       partido y toma a toma de esa temporada puntual (primero se baja un CSV con todo, por las dudas).</p>
-      ${aniosArchivables().length ? `
+      ${(()=>{
+        const anios = aniosArchivables();
+        if (!anios.length) return `<p class="screen-note" style="margin:0">No hay temporadas viejas para archivar todavía.</p>`;
+        const anioSel = anios.includes(view.archivarAnio) ? view.archivarAnio : anios[0];
+        const ahorro = Math.round(estimarAhorroArchivar(anioSel)/1024);
+        return `
         <div class="field"><label class="label" for="archivar-anio">Temporada a archivar</label>
-          <select id="archivar-anio">${aniosArchivables().map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select></div>
+          <select id="archivar-anio">${anios.map(a=>`<option value="${esc(a)}" ${a===anioSel?'selected':''}>${esc(a)}</option>`).join('')}</select></div>
+        <p class="screen-note" style="margin-top:-10px">${ahorro
+          ? `Archivar ${esc(anioSel)} liberaría aproximadamente <strong>${ahorro} KB</strong> de la base.`
+          : `${esc(anioSel)} ya está casi todo resumido: archivarla no cambiaría casi nada el tamaño.`}</p>
         <div class="gap"></div>
-        <button class="btn btn-naranja" id="archivarTemporada">Descargar CSV y archivar</button>
-      ` : `<p class="screen-note" style="margin:0">No hay temporadas viejas para archivar todavía.</p>`}
+        <button class="btn btn-naranja" id="archivarTemporada">Descargar CSV y archivar</button>`;
+      })()}
     </div>
     <div class="block"><div class="block-title">Borrar</div>
       <button class="btn btn-danger" id="borrarTodo">Borrar todos los datos</button></div>
@@ -4130,6 +4138,7 @@ app.addEventListener('change', async e=>{
     if (file) subirRutina(file);
   }
   if (e.target.id==='test-fecha'){ view.testFecha = e.target.value; return render(); }
+  if (e.target.id==='archivar-anio'){ view.archivarAnio = e.target.value; return render(); }
   if (e.target.hasAttribute('data-vscat')){
     const lado = e.target.getAttribute('data-vscat');
     const clave = 'vs'+lado.toUpperCase();
@@ -4713,24 +4722,22 @@ function descargarCSVTemporada(anio, partidos, evaluaciones, sesiones){
   a.href = URL.createObjectURL(new Blob([texto],{type:'text/csv;charset=utf-8'}));
   a.download = `hsm-temporada-${anio}.csv`; a.click(); URL.revokeObjectURL(a.href);
 }
-async function archivarTemporada(anio){
-  if (!anio || anio===ANIO_ACTUAL) return toast('No se puede archivar la temporada en curso');
-
+/* junta lo que hay de un año puntual, separado en lo que se resume
+   (partidos+entrenos) y lo que se conserva tal cual (la última toma de
+   tests físicos). La usan tanto el archivado real como la estimación de
+   cuánto bajaría el tamaño, para no calcular cada cosa dos veces */
+function datosDelAnio(anio){
   const partidosAnio = db.partidos.filter(p=>p.fecha && p.fecha.startsWith(anio));
   const tomasAnio = db.tomas.filter(t=>t.fecha && t.fecha.startsWith(anio));
   const tomaIdsAnio = new Set(tomasAnio.map(t=>t.id));
   const evaluacionesAnio = db.evaluaciones.filter(e=>tomaIdsAnio.has(e.tomaId));
   const sesionesAnio = db.sesiones.filter(s=>s.fecha && s.fecha.startsWith(anio));
-
-  if (!partidosAnio.length && !evaluacionesAnio.length && !sesionesAnio.length){
-    return toast(`No hay datos de ${anio} para archivar`);
-  }
-
-  descargarCSVTemporada(anio, partidosAnio, evaluacionesAnio, sesionesAnio);
-
-  if (!confirm(`Se descargó el detalle de ${anio} en un CSV. ¿Confirmás archivar la temporada?\n\nSe resumen los números (quedan iguales en la app) y se borra el detalle partido a partido / toma a toma de ese año de la base: va a quedar solo en el CSV que se acaba de bajar.`)) return;
-
-  /* 1) un total por jugador+categoría, combinando partidos y asistencia a entrenos */
+  const ultimaToma = tomasAnio.length ? tomasAnio.slice().sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).pop() : null;
+  return { partidosAnio, tomasAnio, tomaIdsAnio, evaluacionesAnio, sesionesAnio, ultimaToma };
+}
+/* un total por jugador+categoría, combinando partidos y asistencia a
+   entrenos: son las filas que terminan en el historial de cada jugador */
+function resumenAnio(anio, partidosAnio, sesionesAnio){
   const resumen = {};
   const filaDe = (jid,cat) => { const k=jid+'|'+(cat||''); return resumen[k] || (resumen[k] = { jugadorId:jid, categoria:cat||'' }); };
 
@@ -4752,17 +4759,45 @@ async function archivarTemporada(anio){
     });
   });
 
-  Object.values(resumen).forEach(f=>{
+  return Object.values(resumen).map(f=>({ jugadorId:f.jugadorId, categoria:f.categoria,
+    anio, pj:f.pj||0, goles:f.goles||0, asis:f.asis||0, min:f.min||0, ta:f.ta||0, tr:f.tr||0,
+    ...(f.entrenosTotal!==undefined ? {entrenosFue:f.entrenosFue, entrenosTotal:f.entrenosTotal} : {}) }));
+}
+/* cuánto bajaría el tamaño de la base si se archiva esa temporada: lo que
+   se borra (partidos, entrenos y tomas/evaluaciones viejas) menos lo que
+   se agrega (las filas de historial). Nunca toca la base de verdad. */
+function estimarAhorroArchivar(anio){
+  const { partidosAnio, tomasAnio, evaluacionesAnio, sesionesAnio, ultimaToma } = datosDelAnio(anio);
+  const tomasBorradas = tomasAnio.filter(t => !ultimaToma || t.id!==ultimaToma.id);
+  const evalBorradas = evaluacionesAnio.filter(e => !ultimaToma || e.tomaId!==ultimaToma.id);
+  const bytesBorrados = tamanoBytesDb(partidosAnio) + tamanoBytesDb(tomasBorradas)
+    + tamanoBytesDb(evalBorradas) + tamanoBytesDb(sesionesAnio);
+  const bytesAgregados = tamanoBytesDb(resumenAnio(anio, partidosAnio, sesionesAnio));
+  return Math.max(0, bytesBorrados - bytesAgregados);
+}
+async function archivarTemporada(anio){
+  if (!anio || anio===ANIO_ACTUAL) return toast('No se puede archivar la temporada en curso');
+
+  const { partidosAnio, tomaIdsAnio, evaluacionesAnio, sesionesAnio, ultimaToma } = datosDelAnio(anio);
+
+  if (!partidosAnio.length && !evaluacionesAnio.length && !sesionesAnio.length){
+    return toast(`No hay datos de ${anio} para archivar`);
+  }
+
+  descargarCSVTemporada(anio, partidosAnio, evaluacionesAnio, sesionesAnio);
+
+  if (!confirm(`Se descargó el detalle de ${anio} en un CSV. ¿Confirmás archivar la temporada?\n\nSe resumen los números (quedan iguales en la app) y se borra el detalle partido a partido / toma a toma de ese año de la base: va a quedar solo en el CSV que se acaba de bajar.`)) return;
+
+  /* 1) el resumen por jugador+categoría pasa al historial */
+  resumenAnio(anio, partidosAnio, sesionesAnio).forEach(f=>{
     const j = db.jugadores.find(x=>x.id===f.jugadorId);
     if (!j) return;
     if (!j.historial) j.historial = [];
-    j.historial.push({ anio, categoria:f.categoria, pj:f.pj||0, goles:f.goles||0, asis:f.asis||0,
-      min:f.min||0, ta:f.ta||0, tr:f.tr||0,
-      ...(f.entrenosTotal!==undefined ? {entrenosFue:f.entrenosFue, entrenosTotal:f.entrenosTotal} : {}) });
+    const { jugadorId, ...fila } = f;
+    j.historial.push(fila);
   });
 
   /* 2) tests físicos: se conserva solo la ÚLTIMA toma del año (con sus evaluaciones) */
-  const ultimaToma = tomasAnio.length ? tomasAnio.slice().sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).pop() : null;
   db.evaluaciones = db.evaluaciones.filter(e => !tomaIdsAnio.has(e.tomaId) || (ultimaToma && e.tomaId===ultimaToma.id));
   db.tomas = db.tomas.filter(t => !tomaIdsAnio.has(t.id) || (ultimaToma && t.id===ultimaToma.id));
 
