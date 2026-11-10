@@ -1356,18 +1356,21 @@ function bloqueRankingInicio(titulo, filasHtml){
     + `</div>`;
 }
 /* jugadores para repasar: sin evaluarse hace rato, o con tarjetas
-   acumuladas en la temporada. Visible para los 3 roles, igual que el
-   resto de Inicio (rankings, destacados): nada de esto es más privado
-   que lo que ya se ve ahí. */
-/* tarjetas = algo puntual de esta semana/mes, más urgente de mirar que
-   "hace rato no se evalúa" (que es un pendiente de fondo, no una urgencia) */
+   acumuladas en la temporada. Las tarjetas las ve cualquier rol (no es
+   más privado que lo que ya se ve en el resto de Inicio); lo de "hace
+   rato no se evalúa" es un pendiente de trabajo interno del cuerpo
+   técnico, así que esa parte queda solo para coordinación/DT. */
+const esMotivoTarjeta = m => /roja|amarilla/.test(m);
 const TOPE_ALERTAS = 8;
 function bloqueAlertas(){
-  const conTarjeta = m => m.some(x=>/roja|amarilla/.test(x));
+  const puedeVerEval = esCoord()||esDT();
   const todas = jugadoresParaInicio()
-    .map(j=>({ j, motivos: alertasDe(j) }))
+    .map(j=>{
+      const motivos = alertasDe(j);
+      return { j, motivos: puedeVerEval ? motivos : motivos.filter(esMotivoTarjeta) };
+    })
     .filter(x=>x.motivos.length)
-    .sort((a,b)=> (conTarjeta(b.motivos)-conTarjeta(a.motivos)) || b.motivos.length-a.motivos.length);
+    .sort((a,b)=> (b.motivos.some(esMotivoTarjeta)-a.motivos.some(esMotivoTarjeta)) || b.motivos.length-a.motivos.length);
   const filas = todas.slice(0, TOPE_ALERTAS);
   const filasHtml = filas.map(({j,motivos})=>`<button class="row" data-jugador="${j.id}">
     ${avatarJugador(j)}

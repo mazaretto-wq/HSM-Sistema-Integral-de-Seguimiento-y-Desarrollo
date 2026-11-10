@@ -13,62 +13,75 @@ await pg.reload(); await pg.waitForTimeout(1500);
 await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 
-// datos fabricados y a mano para probar con certeza: uno sin evaluarse
-// nunca, uno con 3 amarillas, uno con 1 roja, uno sin ningún motivo
+// datos fabricados y a mano para probar con certeza: sano (sin motivos),
+// uno con tarjeta nada más, uno sin evaluarse nunca (nada más), y uno con
+// los dos motivos juntos (sin evaluarse Y con roja)
 const datos = await pg.evaluate(()=>{
-  const sano = uid(), conAmarillas = uid(), conRoja = uid(), evaluadoHaceNada = uid();
+  const sano = uid(), soloTarjeta = uid(), soloSinEvaluar = uid(), ambosMotivos = uid();
   db.jugadores.push(
     { id:sano, nombre:'Sano', apellido:'SinAlertas', categorias:['Juveniles'] },
-    { id:conAmarillas, nombre:'Tarjetero', apellido:'TresAmarillas', categorias:['Juveniles'] },
-    { id:conRoja, nombre:'Expulsado', apellido:'UnaRoja', categorias:['Juveniles'] },
-    { id:evaluadoHaceNada, nombre:'Reciente', apellido:'EvaluadoAyer', categorias:['Juveniles'] },
+    { id:soloTarjeta, nombre:'Tarjetero', apellido:'TresAmarillas', categorias:['Juveniles'] },
+    { id:soloSinEvaluar, nombre:'Atrasado', apellido:'SinEvaluar', categorias:['Juveniles'] },
+    { id:ambosMotivos, nombre:'Expulsado', apellido:'UnaRoja', categorias:['Juveniles'] },
   );
   db.partidos.push(
-    { id:uid(), jugadorId:conAmarillas, categoria:'Juveniles', fecha:ANIO_ACTUAL+'-02-01', jugo:true, minutos:90, amarillas:3, rojas:0 },
-    { id:uid(), jugadorId:conRoja, categoria:'Juveniles', fecha:ANIO_ACTUAL+'-02-01', jugo:true, minutos:90, amarillas:0, rojas:1 },
+    { id:uid(), jugadorId:soloTarjeta, categoria:'Juveniles', fecha:ANIO_ACTUAL+'-02-01', jugo:true, minutos:90, amarillas:3, rojas:0 },
+    { id:uid(), jugadorId:ambosMotivos, categoria:'Juveniles', fecha:ANIO_ACTUAL+'-02-01', jugo:true, minutos:90, amarillas:0, rojas:1 },
   );
+  // "sano" y "soloTarjeta" están evaluados hoy; "soloSinEvaluar" y
+  // "ambosMotivos" nunca se evaluaron (a propósito, para probar el motivo)
   const tomaReciente = { id:uid(), nombre:'Hoy', fecha:hoy() };
   db.tomas.push(tomaReciente);
-  [sano, conAmarillas, conRoja, evaluadoHaceNada].forEach(id=>{
+  [sano, soloTarjeta].forEach(id=>{
     db.evaluaciones.push({ id:uid(), jugadorId:id, tomaId:tomaReciente.id, fecha:hoy(), control:7, remate:5 });
   });
   render();
-  return { sano, conAmarillas, conRoja, evaluadoHaceNada };
+  return { sano, soloTarjeta, soloSinEvaluar, ambosMotivos };
 });
 
 const motivos = await pg.evaluate((d)=>({
   sano: alertasDe(db.jugadores.find(j=>j.id===d.sano)),
-  conAmarillas: alertasDe(db.jugadores.find(j=>j.id===d.conAmarillas)),
-  conRoja: alertasDe(db.jugadores.find(j=>j.id===d.conRoja)),
+  soloTarjeta: alertasDe(db.jugadores.find(j=>j.id===d.soloTarjeta)),
+  soloSinEvaluar: alertasDe(db.jugadores.find(j=>j.id===d.soloSinEvaluar)),
+  ambosMotivos: alertasDe(db.jugadores.find(j=>j.id===d.ambosMotivos)),
 }), datos);
 t('Evaluado hoy y sin tarjetas: sin motivos de alerta', motivos.sano.length===0, JSON.stringify(motivos.sano));
-t('3 amarillas en la temporada: alerta por tarjetas', motivos.conAmarillas.some(m=>/3 amarillas/.test(m)), JSON.stringify(motivos.conAmarillas));
-t('1 roja en la temporada: alerta por tarjetas (alcanza con una)', motivos.conRoja.some(m=>/1 roja/.test(m)), JSON.stringify(motivos.conRoja));
+t('3 amarillas en la temporada: alerta por tarjetas', motivos.soloTarjeta.some(m=>/3 amarillas/.test(m)), JSON.stringify(motivos.soloTarjeta));
+t('Nunca evaluado: alerta de evaluación', motivos.soloSinEvaluar.some(m=>/Nunca se evaluó/.test(m)), JSON.stringify(motivos.soloSinEvaluar));
+t('Con roja y sin evaluarse: alertasDe() trae los dos motivos juntos',
+  motivos.ambosMotivos.some(m=>/1 roja/.test(m)) && motivos.ambosMotivos.some(m=>/Nunca se evaluó/.test(m)), JSON.stringify(motivos.ambosMotivos));
 
-// ---- la alerta por tarjetas aparece en Inicio y es clickeable ----
+// ---- coordinación ve los dos tipos de alerta juntos ----
 // (la base ya trae ~100 jugadores de ejemplo con sus propias alertas; para
-// probar esto con certeza se aísla la base a solo los 2 que importan acá)
+// probar esto con certeza se aísla la base a solo los que importan acá)
 const jugadoresCompletos = await pg.evaluate((d)=>{
   const todos = db.jugadores;
-  db.jugadores = todos.filter(j=>j.id===d.conRoja || j.id===d.sano);
+  db.jugadores = todos.filter(j=>[d.ambosMotivos,d.soloSinEvaluar,d.sano].includes(j.id));
   render();
   return todos;
 }, datos);
 await pg.waitForTimeout(300);
-const textoAlertas = await pg.locator('.block:has-text("Para repasar")').innerText();
-t('El bloque "Para repasar" aparece en Inicio para coordinación', /para repasar/i.test(textoAlertas));
-t('Muestra al jugador con la roja fabricada, con el motivo (y no al que no tiene alertas)',
-  /UNAROJA, Expulsado/.test(textoAlertas) && /1 roja/.test(textoAlertas) && !/Sano/.test(textoAlertas), textoAlertas);
+const textoAlertasCoord = await pg.locator('.block:has-text("Para repasar")').innerText();
+t('El bloque "Para repasar" aparece en Inicio para coordinación', /para repasar/i.test(textoAlertasCoord));
+t('Coordinación ve ambos motivos del jugador con roja + sin evaluar (y no al que no tiene alertas)',
+  /UNAROJA, Expulsado/.test(textoAlertasCoord) && /1 roja/.test(textoAlertasCoord) && /Nunca se evaluó/.test(textoAlertasCoord) && !/Sano/.test(textoAlertasCoord), textoAlertasCoord);
+t('Coordinación también ve al que solo tiene "sin evaluarse" (sin ninguna tarjeta)',
+  /SINEVALUAR, Atrasado/.test(textoAlertasCoord), textoAlertasCoord);
 
 await pg.click('.row:has-text("Expulsado")'); await pg.waitForTimeout(300);
 t('Tocar una fila de alerta abre la ficha de ese jugador', (await pg.locator('.ficha-name').innerText()).includes('EXPULSADO'));
 await pg.evaluate(()=>{ view.jugadorId=null; render(); }); await pg.waitForTimeout(300);
 
 // ---- el bloque nunca lista más de 8 filas, aunque haya muchísimas alertas ----
-await pg.evaluate(()=>{
+// (jugadores y partidos se cambian temporalmente nada más que para esta
+// prueba puntual: se restauran los dos enseguida, para no arrastrar este
+// reemplazo a las pruebas de más abajo)
+const partidosCompletos = await pg.evaluate(()=>{
+  const previos = db.partidos;
   db.jugadores = Array.from({length:15}, (_,i)=>({ id:uid(), nombre:'Masivo'+i, apellido:'Prueba', categorias:['Juveniles'] }));
   db.partidos = db.jugadores.map(j=>({ id:uid(), jugadorId:j.id, categoria:'Juveniles', fecha:ANIO_ACTUAL+'-02-01', jugo:true, minutos:90, amarillas:3, rojas:0 }));
   render();
+  return previos;
 });
 await pg.waitForTimeout(300);
 const filasAlertas = await pg.locator('.block:has-text("Para repasar") .row').count();
@@ -76,13 +89,28 @@ const tituloConTotal = await pg.locator('.block:has-text("Para repasar") .block-
 t('El bloque de alertas nunca muestra más de 8 filas, aunque haya 15 con motivo', filasAlertas===8, String(filasAlertas));
 t('El título avisa el total real cuando hay más de las que se muestran', tituloConTotal.includes('15 en total'), tituloConTotal);
 
-await pg.evaluate((orig)=>{ db.jugadores = orig; render(); }, jugadoresCompletos);
+await pg.evaluate((args)=>{ db.jugadores = args.jugadores; db.partidos = args.partidos; render(); },
+  { jugadores: jugadoresCompletos, partidos: partidosCompletos });
 await pg.waitForTimeout(300);
 
-// ---- jugador (rol de solo lectura) también ve el bloque de alertas ----
+// ---- jugador (rol de solo lectura): ve las tarjetas, NO "sin evaluarse" ----
+await pg.evaluate((d)=>{
+  db.jugadores = db.jugadores.filter(j=>[d.ambosMotivos,d.soloSinEvaluar,d.soloTarjeta,d.sano].includes(j.id));
+  render();
+}, datos);
 await pg.click('#salir'); await pg.waitForTimeout(400);
 await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
-t('El jugador también ve el bloque de alertas (mismo criterio que el resto de Inicio)', await pg.locator('.block:has-text("Para repasar")').count()===1);
+const textoAlertasJugador = await pg.locator('.block:has-text("Para repasar")').count()
+  ? await pg.locator('.block:has-text("Para repasar")').innerText() : '';
+t('El jugador ve el bloque de alertas cuando hay alguna tarjeta para mostrar', textoAlertasJugador!=='');
+t('Al jugador le aparece el que tiene roja (motivo de tarjeta)', /UNAROJA, Expulsado/.test(textoAlertasJugador) && /1 roja/.test(textoAlertasJugador), textoAlertasJugador);
+t('Al jugador le aparece el que solo tiene amarillas', /TRESAMARILLAS, Tarjetero/.test(textoAlertasJugador), textoAlertasJugador);
+t('Al jugador NO le aparece "Nunca se evaluó", ni para el de roja ni para nadie más (eso es solo de coordinación/DT)',
+  !/[Ee]valu/.test(textoAlertasJugador), textoAlertasJugador);
+t('Al jugador NO le aparece el jugador que solo tiene "sin evaluarse" y ninguna tarjeta (no tiene nada que mostrarle)',
+  !/SINEVALUAR, Atrasado/.test(textoAlertasJugador), textoAlertasJugador);
+
+await pg.evaluate((orig)=>{ db.jugadores = orig; render(); }, jugadoresCompletos);
 
 // ---- radar técnico-táctico: visible en General, y con un valor bien a la
 // vista no se corta ningún texto (ancho/alto del chart == lo que entra) ----
