@@ -1417,7 +1417,7 @@ function pantallaInicio(){
 
   if (!view.fondoInicio) view.fondoInicio = FONDOS_HOME[Math.floor(Math.random()*FONDOS_HOME.length)];
 
-  let h = `<div class="inicio-dash" style="background-image:linear-gradient(180deg,rgba(9,16,11,.72),rgba(10,20,14,.88)),url('${encodeURI(view.fondoInicio)}')">
+  let h = `<div class="inicio-dash" style="background-image:linear-gradient(180deg,rgba(9,16,11,.5),rgba(10,20,14,.68)),url('${encodeURI(view.fondoInicio)}')">
     <div class="wrap dash-cuerpo">
     <h2 class="screen-title">Inicio</h2>
     <p class="screen-note">${esDT()?'Los mejores de '+esc(db.config.categoriaDT||'tu categoría')+'.':'Los mejores de todas las categorías.'}</p>
