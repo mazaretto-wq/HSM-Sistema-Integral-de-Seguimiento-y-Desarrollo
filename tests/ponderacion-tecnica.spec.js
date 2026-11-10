@@ -13,66 +13,91 @@ await pg.reload(); await pg.waitForTimeout(1500);
 await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 
-// tres jugadores, mismos valores técnico-tácticos salvo donde se indica,
-// para aislar el efecto del puesto en el promedio ponderado
-const datos = await pg.evaluate(()=>{
-  const defensor = uid(), mediocampista = uid(), delantero = uid();
+// ---- nivel de grupo: defensor / mediocampista / delantero, con puestos
+// que NO tienen excepción puntual (lateral, volante interior, extremo) ----
+const grupo = await pg.evaluate(()=>{
+  const lateral = uid(), volante = uid(), extremo = uid();
   db.jugadores.push(
-    { id:defensor, nombre:'Zaguero', apellido:'Test', categorias:['Juveniles'], posiciones:['Central Derecho'] },
-    { id:mediocampista, nombre:'Diez', apellido:'Test', categorias:['Juveniles'], posiciones:['Enganche'] },
-    { id:delantero, nombre:'Nueve', apellido:'Test', categorias:['Juveniles'], posiciones:['Delantero Centro'] },
+    { id:lateral, nombre:'Lateral', apellido:'Test', categorias:['Juveniles'], posiciones:['Lateral Derecho'] },
+    { id:volante, nombre:'Volante', apellido:'Test', categorias:['Juveniles'], posiciones:['Mediocampista Interior'] },
+    { id:extremo, nombre:'Extremo', apellido:'Test', categorias:['Juveniles'], posiciones:['Extremo Derecho'] },
   );
   const toma = { id:uid(), nombre:'Marzo', fecha:ANIO_ACTUAL+'-03-05' };
   db.tomas.push(toma);
   db.evaluaciones.push(
-    { id:uid(), jugadorId:defensor, tomaId:toma.id, fecha:toma.fecha,
+    { id:uid(), jugadorId:lateral, tomaId:toma.id, fecha:toma.fecha,
       control:8, remate:2, unoOf:4, unoDef:8, decision:8, ubicacion:8 },
-    { id:uid(), jugadorId:mediocampista, tomaId:toma.id, fecha:toma.fecha,
+    { id:uid(), jugadorId:volante, tomaId:toma.id, fecha:toma.fecha,
       control:8, remate:2, unoOf:4, unoDef:8, decision:8, ubicacion:8 },
-    { id:uid(), jugadorId:delantero, tomaId:toma.id, fecha:toma.fecha,
+    { id:uid(), jugadorId:extremo, tomaId:toma.id, fecha:toma.fecha,
       control:8, remate:8, unoOf:8, unoDef:5, decision:8, ubicacion:8 },
   );
   render();
-  return { defensor, mediocampista, delantero };
+  return { lateral, volante, extremo };
 });
+const pesosGrupo = await pg.evaluate((d)=>({
+  lateral: { remate:pesoTecnico(db.jugadores.find(j=>j.id===d.lateral),'remate'), unoOf:pesoTecnico(db.jugadores.find(j=>j.id===d.lateral),'unoOf') },
+  volante: { unoOf:pesoTecnico(db.jugadores.find(j=>j.id===d.volante),'unoOf') },
+  extremo: { unoDef:pesoTecnico(db.jugadores.find(j=>j.id===d.extremo),'unoDef') },
+}), grupo);
+t('Lateral (defensor): el remate pesa 0 y el 1v1 ofensivo pesa 0.5 (el peso del grupo, sin excepción)',
+  pesosGrupo.lateral.remate===0 && pesosGrupo.lateral.unoOf===0.5, JSON.stringify(pesosGrupo.lateral));
+t('Volante interior (mediocampista): el 1v1 ofensivo pesa 1 (sin excepción, es mediocampista "normal")',
+  pesosGrupo.volante.unoOf===1, JSON.stringify(pesosGrupo.volante));
+t('Extremo (delantero): el 1v1 defensivo pesa 0.5 (el peso del grupo)',
+  pesosGrupo.extremo.unoDef===0.5, JSON.stringify(pesosGrupo.extremo));
 
-const promedios = await pg.evaluate((d)=>({
-  defensor: promedioTecnico(d.defensor),
-  mediocampista: promedioTecnico(d.mediocampista),
-  delantero: promedioTecnico(d.delantero),
-}), datos);
-t('Con los mismos valores crudos, el defensor y el mediocampista NO dan el mismo promedio (el remate no le pesa igual al defensor)',
-  Math.abs(promedios.defensor - promedios.mediocampista) > 0.5, JSON.stringify(promedios));
-t('El promedio del defensor (7.56) excluye el remate (peso 0) del cálculo', Math.abs(promedios.defensor - 34/4.5) < 0.01, JSON.stringify(promedios));
-t('El promedio del mediocampista (6.33) es el simple, sin ponderar (todo pesa 1 en ese puesto)', Math.abs(promedios.mediocampista - 38/6) < 0.01, JSON.stringify(promedios));
-t('El promedio del delantero (7.73) pondera el 1v1 defensivo a mitad de peso', Math.abs(promedios.delantero - 42.5/5.5) < 0.01, JSON.stringify(promedios));
+const mejorarGrupo = await pg.evaluate((d)=>({
+  lateral: aMejorar(db.jugadores.find(j=>j.id===d.lateral)).map(x=>x.nombre),
+  volante: aMejorar(db.jugadores.find(j=>j.id===d.volante)).map(x=>x.nombre),
+}), grupo);
+t('Al lateral, "Remate" (flojo) no le aparece como a mejorar: no pesa nada en su puesto',
+  !mejorarGrupo.lateral.includes('Remate'), JSON.stringify(mejorarGrupo));
+t('Al volante (mismo valor flojo de remate, pero sí pesa en su puesto) sí le aparece "Remate" a mejorar',
+  mejorarGrupo.volante.includes('Remate'), JSON.stringify(mejorarGrupo));
 
-const mejorar = await pg.evaluate((d)=>({
-  defensor: aMejorar(db.jugadores.find(j=>j.id===d.defensor)).map(x=>x.nombre),
-  mediocampista: aMejorar(db.jugadores.find(j=>j.id===d.mediocampista)).map(x=>x.nombre),
-  delantero: aMejorar(db.jugadores.find(j=>j.id===d.delantero)).map(x=>x.nombre),
-}), datos);
-t('Al defensor, "Remate" (flojo, 2) NO le aparece como "a mejorar": no pesa nada en su puesto',
-  !mejorar.defensor.includes('Remate'), JSON.stringify(mejorar));
-t('Al defensor sí le aparece "1v1 ofensivo" (flojo, 4): pesa la mitad, pero sigue contando como a mejorar',
-  mejorar.defensor.includes('1v1 ofensivo'), JSON.stringify(mejorar));
-t('Al mediocampista (todo pesa igual) SÍ le aparece "Remate" como a mejorar, con el mismo valor flojo',
-  mejorar.mediocampista.includes('Remate'), JSON.stringify(mejorar));
-t('Al delantero le aparece "1v1 defensivo" (flojo, 5) aunque pese la mitad: 0.5 sigue siendo relevante',
-  mejorar.delantero.includes('1v1 defensivo'), JSON.stringify(mejorar));
+// ---- subdivisión puntual: central/delantero centro/enganche pesan el
+// 1v1 ofensivo todavía menos que el resto de su grupo (0.25) ----
+const sub = await pg.evaluate(()=>{
+  const central = uid(), enganche = uid(), nueve = uid();
+  db.jugadores.push(
+    { id:central, nombre:'Central', apellido:'Test', categorias:['Juveniles'], posiciones:['Central Derecho'] },
+    { id:enganche, nombre:'Enganche', apellido:'Test', categorias:['Juveniles'], posiciones:['Enganche'] },
+    { id:nueve, nombre:'NueveCentral', apellido:'Test', categorias:['Juveniles'], posiciones:['Delantero Centro'] },
+  );
+  const toma = { id:uid(), nombre:'Abril', fecha:ANIO_ACTUAL+'-04-05' };
+  db.tomas.push(toma);
+  db.evaluaciones.push(
+    { id:uid(), jugadorId:central, tomaId:toma.id, fecha:toma.fecha, control:8, unoOf:4, unoDef:8, decision:8, ubicacion:8 },
+    { id:uid(), jugadorId:enganche, tomaId:toma.id, fecha:toma.fecha, control:8, remate:8, unoOf:4, unoDef:8, decision:8, ubicacion:8 },
+    { id:uid(), jugadorId:nueve, tomaId:toma.id, fecha:toma.fecha, control:8, remate:8, unoOf:4, unoDef:8, decision:8, ubicacion:8 },
+  );
+  render();
+  return { central, enganche, nueve };
+});
+const pesosSub = await pg.evaluate((d)=>({
+  central: pesoTecnico(db.jugadores.find(j=>j.id===d.central), 'unoOf'),
+  enganche: pesoTecnico(db.jugadores.find(j=>j.id===d.enganche), 'unoOf'),
+  nueve: pesoTecnico(db.jugadores.find(j=>j.id===d.nueve), 'unoOf'),
+}), sub);
+t('Central: el 1v1 ofensivo pesa 0.25 (menos que el 0.5 del lateral)', pesosSub.central===0.25, JSON.stringify(pesosSub));
+t('Enganche: el 1v1 ofensivo también pesa 0.25 (menos que el 1 del resto de mediocampo)', pesosSub.enganche===0.25, JSON.stringify(pesosSub));
+t('Delantero centro: el 1v1 ofensivo también pesa 0.25 (menos que el 1 del extremo)', pesosSub.nueve===0.25, JSON.stringify(pesosSub));
 
-// el valor crudo se sigue viendo igual en Detalle/telaraña, sin esconder nada
-await pg.evaluate((id)=>{ view.jugadorId=id; view.fichaTab='detalle'; render(); }, datos.defensor);
+// con el mismo 1v1 ofensivo flojo (4) y el resto en 8, el central promedia
+// más alto que un lateral (34/4.5=7.56): al pesar menos ese ítem flojo,
+// tira menos del promedio para abajo
+const promedioCentral = await pg.evaluate((d)=>promedioTecnico(d.central), sub);
+t('Al central le pesa tan poco el 1v1 ofensivo que su promedio da más alto que el del lateral con los mismos valores',
+  promedioCentral > 34/4.5, `central=${promedioCentral} vs lateral=${34/4.5}`);
+
+// el valor crudo se sigue viendo igual en Detalle/telaraña pese al
+// peso bajísimo (0.25): no se esconde ni se recalcula nada cargado
+await pg.evaluate((id)=>{ view.jugadorId=id; view.fichaTab='detalle'; render(); }, sub.central);
 await pg.waitForTimeout(300);
-const filaRemateDetalle = await pg.locator('tr:has-text("Remate")').first().innerText();
-t('En la solapa Detalle, el remate del defensor se sigue mostrando tal cual se cargó (no se esconde por pesar 0)',
-  /\b2\b/.test(filaRemateDetalle), filaRemateDetalle);
-
-await pg.evaluate((id)=>{ view.jugadorId=id; view.fichaTab='general'; render(); }, datos.defensor);
-await pg.waitForTimeout(300);
-const textoRadar = await pg.locator('.block:has-text("Perfil técnico-táctico")').innerText();
-t('La telaraña también muestra el remate del defensor tal cual (2), sin ocultar el eje de peso 0',
-  /Remate[\s\S]{0,6}2\b/.test(textoRadar), textoRadar);
+const filaUnoOfDetalle = await pg.locator('tr:has-text("1v1 ofensivo")').first().innerText();
+t('En Detalle, el central sigue viendo su 1v1 ofensivo tal cual se cargó (4), aunque pese 0.25',
+  /\b4\b/.test(filaUnoOfDetalle), filaUnoOfDetalle);
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 

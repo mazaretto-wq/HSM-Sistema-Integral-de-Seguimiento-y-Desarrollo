@@ -655,10 +655,25 @@ const PESO_TECNICO = {
   mediocampista: {control:1, remate:1,  unoOf:1,  unoDef:1,  decision:1, ubicacion:1},
   delantero:     {control:1, remate:1,  unoOf:1,  unoDef:.5, decision:1, ubicacion:1},
 };
-/* peso del ítem para ESTE jugador según su puesto principal; sin grupo
+/* subdivisión dentro de un grupo: el central puro necesita todavía menos
+   1v1 ofensivo que el lateral (que sigue sumando por afuera), y el
+   delantero centro/enganche dependen menos del 1v1 ofensivo que el
+   extremo (esa gambeta es más tarea del extremo que del nueve o el 10,
+   que suelen definir o filtrar el pase antes de llegar al mano a mano) */
+const PESO_TECNICO_POSICION = {
+  'Central Derecho':  {unoOf:.25},
+  'Central Izquierdo': {unoOf:.25},
+  'Delantero Centro':  {unoOf:.25},
+  'Enganche':          {unoOf:.25},
+};
+/* peso del ítem para ESTE jugador según su puesto principal: primero la
+   excepción puntual del puesto (si hay), si no el de su grupo; sin grupo
    (arquero, o sin posición cargada todavía) pesa 1 como siempre */
 function pesoTecnico(j, itemId){
-  const grupo = GRUPO_POSICION[posPrincipal(j)];
+  const pos = posPrincipal(j);
+  const excepcion = PESO_TECNICO_POSICION[pos] && PESO_TECNICO_POSICION[pos][itemId];
+  if (typeof excepcion==='number') return excepcion;
+  const grupo = GRUPO_POSICION[pos];
   const p = grupo && PESO_TECNICO[grupo][itemId];
   return typeof p==='number' ? p : 1;
 }
