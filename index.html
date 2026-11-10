@@ -2778,19 +2778,44 @@ function formEvaluacion(){
   if (!view.evalFecha) view.evalFecha = hoy();
   const ym = view.evalFecha.slice(0,7);
   const toma = db.tomas.find(t=>(t.fecha||'').slice(0,7)===ym);
-  app.innerHTML = `<button class="back" data-back="1">← Evaluación</button>
-    <h2 class="screen-title">${view.evalTipo==='fisico'?'Test Físico':'Habilidades'}</h2>
-    <p class="screen-note">Podés completar de a partes: guardá lo de hoy y seguís después con el resto, sobre la misma toma.</p>
+
+  /* a quién se le está cargando, para saber qué ya tiene y prellenarlo */
+  const jugadoresOrden = jugadoresVisibles().slice().sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+  const jSel = jugadoresOrden.find(j=>j.id===view.jugadorSel) || jugadoresOrden[0];
+  const regActual = toma && jSel ? db.evaluaciones.find(e=>e.jugadorId===jSel.id && e.tomaId===toma.id) : null;
+
+  /* test físico: se pregunta uno por uno (Cooper, Yo-Yo, Velocidad) en vez
+     de mostrar los 3 juntos, igual que ya se hace al cargar por categoría
+     completa desde la solapa Test Físicos */
+  if (view.evalTipo==='fisico' && !view.evalFisico){
+    app.innerHTML = `<button class="back" data-back="1">← Evaluación</button>
+      <h2 class="screen-title">Test Físico</h2>
+      <p class="screen-note">${jSel?esc(nomb(jSel))+' · ':''}¿qué test querés completar?</p>
+      <div class="roster">${FISICO.map(f=>{
+        const hecho = regActual && typeof regActual[f.id]==='number';
+        const emoji = f.id==='cooper'?'⏱️':f.id==='yoyo'?'🏃':'⚡';
+        return `<button class="row" data-evalFisico="${f.id}">
+          <span class="row-main"><span class="row-name">${emoji} ${esc(f.nombre)}</span>
+          <span class="row-meta"><span>${esc(f.unidad)}${hecho?' · ya cargado: '+milesFix(regActual[f.id],f.dec):''}</span></span></span>
+          <span style="color:var(--ink-2)">›</span></button>`;
+      }).join('')}</div>`;
+    return;
+  }
+
+  const tFisico = view.evalTipo==='fisico' ? FISICO.find(f=>f.id===view.evalFisico) : null;
+  const valorFisico = tFisico && regActual && typeof regActual[tFisico.id]==='number' ? regActual[tFisico.id] : '';
+  app.innerHTML = `<button class="back" data-back="1">← ${tFisico?'Test Físico':'Evaluación'}</button>
+    <h2 class="screen-title">${tFisico?esc(tFisico.nombre):'Habilidades'}</h2>
+    <p class="screen-note">Podés completar de a partes: guardá esto y seguís después con el resto, sobre la misma toma.</p>
     ${selJugador()}
     <div class="field"><label class="label" for="f-fecha">Fecha</label>
       <input type="date" id="f-fecha" value="${esc(view.evalFecha)}"></div>
     <p class="screen-note" style="margin-top:-10px">${toma
       ? `Se suma a la toma de ${esc(toma.nombre)}.`
       : `Se crea una toma nueva: ${esc(nombreMes(ym))}.`}</p>
-    ${view.evalTipo==='fisico' ? `
-      <div class="block-title">Físico</div>
-      ${FISICO.map(t=>`<div class="field"><label class="label" for="f-${t.id}">${esc(t.nombre)}<em>${esc(t.unidad)}</em></label>
-        <input type="number" inputmode="decimal" step="${t.dec?'0.01':'1'}" id="f-${t.id}" placeholder="vacío si no se tomó"></div>`).join('')}
+    ${tFisico ? `
+      <div class="field"><label class="label" for="f-${tFisico.id}">${esc(tFisico.nombre)}<em>${esc(tFisico.unidad)}</em></label>
+        <input type="number" inputmode="decimal" step="${tFisico.dec?'0.01':'1'}" id="f-${tFisico.id}" value="${esc(valorFisico)}" placeholder="vacío si no se tomó"></div>
     ` : `
       <div class="block-title">Técnico-táctico</div>
       ${TECNICO.map(t=>escala(t.id,t.nombre)).join('')}
@@ -4319,6 +4344,7 @@ app.addEventListener('click', async e=>{
     else if (view.testToma) view.testToma=null;
     else if (view.testFisico) view.testFisico=null;
     else if (view.testFisicoCategoria && esCoord()) view.testFisicoCategoria=null;
+    else if (view.evalFisico) view.evalFisico=null;
     else if (view.evalTipo) view.evalTipo=null;
     else if (view.ejercicioId) view.ejercicioId=null;
     else if (view.sesionId) view.sesionId=null;
@@ -4345,9 +4371,9 @@ app.addEventListener('click', async e=>{
       view.tab='entrenos'; view.form=d; view.jugadorId=null;
       marcarTab('entrenos'); window.scrollTo(0,0); return render();
     }
-    if (d==='cargarPara'){ view.jugadorSel=view.jugadorId; view.jugadorId=null; view.tab='cargar'; view.form='evaluacion'; view.evalTipo=null; view.evalFecha=null; }
+    if (d==='cargarPara'){ view.jugadorSel=view.jugadorId; view.jugadorId=null; view.tab='cargar'; view.form='evaluacion'; view.evalTipo=null; view.evalFecha=null; view.evalFisico=null; }
     else { view.tab='cargar'; view.form=d; view.jugadorId=null; view.editJugador=null;
-      if (d==='evaluacion'){ view.evalTipo=null; view.evalFecha=null; } }
+      if (d==='evaluacion'){ view.evalTipo=null; view.evalFecha=null; view.evalFisico=null; } }
     marcarTab('cargar'); window.scrollTo(0,0); return render();
   }
 
@@ -4414,6 +4440,8 @@ app.addEventListener('click', async e=>{
 
   const tipoEval = t.closest('[data-evalTipo]');
   if (tipoEval){ view.evalTipo = tipoEval.dataset.evaltipo; view.evalFecha = hoy(); window.scrollTo(0,0); return render(); }
+  const fisicoEval = t.closest('[data-evalFisico]');
+  if (fisicoEval){ view.evalFisico = fisicoEval.dataset.evalfisico; window.scrollTo(0,0); return render(); }
 
   const chipTestCat = t.closest('[data-testCat]');
   if (chipTestCat){ view.testFisicoCategoria = chipTestCat.dataset.testcat; window.scrollTo(0,0); return render(); }
@@ -4510,7 +4538,7 @@ async function guardarToma(){
   const nueva = { id:uid(), nombre:nombreMes(ym), fecha:ym+'-01' };
   db.tomas.push(nueva);
   await Store.save(db);
-  toast('Toma creada · '+nueva.nombre); view.evalFecha=nueva.fecha; view.evalTipo=null; view.form='evaluacion'; render();
+  toast('Toma creada · '+nueva.nombre); view.evalFecha=nueva.fecha; view.evalTipo=null; view.evalFisico=null; view.form='evaluacion'; render();
 }
 
 async function guardarRegistro(tipo){
@@ -4534,7 +4562,7 @@ async function guardarRegistro(tipo){
     await Store.save(db);
     const j = db.jugadores.find(x=>x.id===jugadorId);
     toast((nuevo?'Guardado · ':'Actualizado · ')+nomb(j));
-    view.jugadorSel=jugadorId; view.evalFecha=fecha; formEvaluacion(); window.scrollTo(0,0); return;
+    view.jugadorSel=jugadorId; view.evalFecha=fecha; view.evalFisico=null; formEvaluacion(); window.scrollTo(0,0); return;
   }
 
 }

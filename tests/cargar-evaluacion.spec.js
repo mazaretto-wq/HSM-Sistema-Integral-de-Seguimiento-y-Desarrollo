@@ -29,49 +29,79 @@ t('Primero pregunta qué vas a cargar (Test Físico / Habilidades), no un formul
 t('Todavía no hay ningún campo de carga (ni físico ni técnico) en esta pantalla',
   (await pg.locator('#f-fecha').count())===0);
 
+// ---- "Test Físico" pregunta uno por uno, no los 3 juntos ----
 await pg.click('.row:has-text("Test Físico")'); await pg.waitForTimeout(300);
 const hoyStr = await pg.evaluate(()=>hoy());
-t('La fecha sale con el día de hoy por default', await pg.inputValue('#f-fecha') === hoyStr, await pg.inputValue('#f-fecha'));
-t('El jugador desde el que entré ya viene elegido', await pg.locator('#f-jugador').inputValue() === jugId);
-t('Al elegir "Test Físico" se ven los campos de Cooper/Yo-Yo/Velocidad', (await pg.locator('label:has-text("Cooper")').count())===1);
-t('Al elegir "Test Físico" NO se ven los de Técnico-táctico/Comportamiento', (await pg.locator('.scale').count())===0);
+t('Al elegir "Test Físico" primero pregunta qué test completar (no el formulario todavía)',
+  (await pg.locator('.row:has-text("Cooper")').count())===1
+  && (await pg.locator('.row:has-text("Yo-Yo")').count())===1
+  && (await pg.locator('.row:has-text("Velocidad")').count())===1
+  && (await pg.locator('#f-fecha').count())===0);
 
-// ---- volver lleva al paso anterior (elegir qué cargar), no al menú de Cargar ----
+await pg.click('.row:has-text("Cooper")'); await pg.waitForTimeout(300);
+t('Recién ahí aparece el formulario, con la fecha de hoy por default', await pg.inputValue('#f-fecha') === hoyStr, await pg.inputValue('#f-fecha'));
+t('El jugador desde el que entré ya viene elegido', await pg.locator('#f-jugador').inputValue() === jugId);
+t('Solo se ve el campo de Cooper, no Yo-Yo ni Velocidad', (await pg.locator('input[id^="f-"][id$="cooper"], label:has-text("Cooper")').count())>0
+  && (await pg.locator('label:has-text("Yo-Yo"), label:has-text("Velocidad")').count())===0);
+t('Tampoco se ven las escalas de Habilidades', (await pg.locator('.scale').count())===0);
+
+// ---- volver desde el formulario cae en "qué test", no en "qué cargar" ----
 await pg.click('[data-back]'); await pg.waitForTimeout(300);
-t('"Volver" desde el formulario cae en la elección de qué cargar (no en el menú de Cargar)',
+t('"Volver" desde el campo de Cooper cae en la elección de qué test (no en Test Físico/Habilidades)',
+  (await pg.locator('.row:has-text("Cooper")').count())===1 && (await pg.locator('.row:has-text("Habilidades")').count())===0);
+await pg.click('[data-back]'); await pg.waitForTimeout(300);
+t('Un "Volver" más cae recién en la elección de Test Físico / Habilidades',
   (await pg.locator('.row:has-text("Test Físico")').count())===1);
 
-// ---- Habilidades: técnico-táctico + comportamiento juntos, sin lo físico ----
-await pg.click('.row:has-text("Habilidades")'); await pg.waitForTimeout(300);
-t('Al elegir "Habilidades" se ven las escalas de técnico-táctico y comportamiento', (await pg.locator('.scale').count())>0);
-t('Al elegir "Habilidades" NO se ven los campos de test físico', (await pg.locator('label:has-text("Cooper")').count())===0);
+// ---- cargo Cooper, guardo, y me vuelve a preguntar qué test (para seguir con Yo-Yo) ----
+await pg.click('.row:has-text("Test Físico")'); await pg.waitForTimeout(300);
+await pg.click('.row:has-text("Cooper")'); await pg.waitForTimeout(300);
+await pg.fill('#f-cooper', '2400');
+await pg.click('[data-guardar="evaluacion"]'); await pg.waitForTimeout(400);
+t('Al guardar Cooper, vuelve sola a preguntar qué test (no al menú de Cargar ni al de arriba)',
+  (await pg.locator('.row:has-text("Cooper")').count())===1 && (await pg.locator('.row:has-text("Habilidades")').count())===0);
+t('Esa fila de Cooper ahora avisa que ya está cargado', (await pg.locator('.row:has-text("Cooper")').innerText()).includes('ya cargado'));
 
-// cargo un par de valores técnico-tácticos y guardo
-await pg.click('[data-scale="control"] [data-v="8"]');
-await pg.click('[data-scale="puntualidad"] [data-v="9"]');
+await pg.click('.row:has-text("Yo-Yo")'); await pg.waitForTimeout(300);
+t('Al pasar a Yo-Yo, la fecha y el jugador siguen siendo los mismos (misma carga)',
+  await pg.inputValue('#f-fecha') === hoyStr && await pg.locator('#f-jugador').inputValue() === jugId);
+await pg.fill('#f-yoyo', '1700');
 await pg.click('[data-guardar="evaluacion"]'); await pg.waitForTimeout(400);
 
 const guardado = await pg.evaluate((id)=>{
-  const reg = db.evaluaciones.find(e=>e.jugadorId===id && typeof e.control==='number');
-  const toma = reg ? db.tomas.find(t=>t.id===reg.tomaId) : null;
-  return reg ? { control:reg.control, puntualidad:reg.puntualidad, fecha:reg.fecha, tomaFecha: toma&&toma.fecha, tomaNombre: toma&&toma.nombre } : null;
+  const regs = db.evaluaciones.filter(e=>e.jugadorId===id && (typeof e.cooper==='number' || typeof e.yoyo==='number'));
+  const toma = regs[0] ? db.tomas.find(t=>t.id===regs[0].tomaId) : null;
+  return { cantidadRegistros: regs.length, cooper: regs[0]&&regs[0].cooper, yoyo: regs[0]&&regs[0].yoyo,
+    fecha: regs[0]&&regs[0].fecha, tomaFecha: toma&&toma.fecha };
 }, jugId);
-t('Se guardó con los valores elegidos (control:8, puntualidad:9)', guardado && guardado.control===8 && guardado.puntualidad===9, JSON.stringify(guardado));
-t('La evaluación quedó fechada hoy, en una toma del mes de hoy', guardado && guardado.fecha===hoyStr && guardado.tomaFecha===hoyStr.slice(0,7)+'-01', JSON.stringify(guardado));
+t('Cooper y Yo-Yo quedaron en el MISMO registro (una sola fila por jugador y toma, no uno por test)',
+  guardado.cantidadRegistros===1 && guardado.cooper===2400 && guardado.yoyo===1700, JSON.stringify(guardado));
+t('Esa fila quedó fechada hoy, en una toma del mes de hoy', guardado.fecha===hoyStr && guardado.tomaFecha===hoyStr.slice(0,7)+'-01', JSON.stringify(guardado));
 
-// ---- cargar el test físico de ESE MISMO mes cae en la MISMA toma (no duplica) ----
-const totalTomasAntes = await pg.evaluate(()=>db.tomas.length);
-await pg.click('[data-back]'); await pg.waitForTimeout(200); // vuelve a elegir qué cargar
-await pg.click('.row:has-text("Test Físico")'); await pg.waitForTimeout(300);
-t('Al volver a entrar, la fecha sigue siendo la de hoy (no quedó pegada una vieja)', await pg.inputValue('#f-fecha') === hoyStr);
-await pg.fill('[id="f-yoyo"]', '1700');
+// ---- Velocidad (el tercero) ya viene marcado como pendiente, Cooper y Yo-Yo como hechos ----
+const textoLista = await pg.locator('.roster').innerText();
+t('La lista de qué test completar marca Cooper y Yo-Yo como ya cargados, y Velocidad sin marcar',
+  (textoLista.match(/ya cargado/g)||[]).length===2 && !/Velocidad[\s\S]*ya cargado/.test(textoLista), textoLista);
+
+// ---- Habilidades: técnico-táctico + comportamiento juntos, sin tocar lo físico ----
+// (un solo "Volver" alcanza: del picker de test cae directo al de Test Físico/Habilidades)
+await pg.click('[data-back]'); await pg.waitForTimeout(300);
+t('Ese "Volver" cae en la elección de Test Físico / Habilidades (no en el menú de Cargar)',
+  (await pg.locator('.row:has-text("Habilidades")').count())===1);
+await pg.click('.row:has-text("Habilidades")'); await pg.waitForTimeout(300);
+t('"Habilidades" sigue mostrando técnico-táctico y comportamiento juntos (no uno por uno)', (await pg.locator('.scale').count())>=9);
+t('"Habilidades" no muestra los campos de test físico', (await pg.locator('label:has-text("Cooper")').count())===0);
+
+await pg.click('[data-scale="control"] [data-v="8"]');
+await pg.click('[data-scale="puntualidad"] [data-v="9"]');
 await pg.click('[data-guardar="evaluacion"]'); await pg.waitForTimeout(400);
-const despues = await pg.evaluate((id)=>{
-  const reg = db.evaluaciones.find(e=>e.jugadorId===id && typeof e.yoyo==='number');
-  return { totalTomas: db.tomas.length, mismoReg: reg && typeof reg.control==='number' };
+const conHabilidades = await pg.evaluate((id)=>{
+  const reg = db.evaluaciones.find(e=>e.jugadorId===id && typeof e.control==='number');
+  return reg ? { control:reg.control, puntualidad:reg.puntualidad, mismoRegQueFisico: typeof reg.cooper==='number' } : null;
 }, jugId);
-t('No se creó una toma nueva: se sumó el test físico a la misma toma de hoy', despues.totalTomas===totalTomasAntes, JSON.stringify(despues));
-t('El yoyo quedó en el MISMO registro que ya tenía control/puntualidad (una sola fila por jugador y toma)', despues.mismoReg===true);
+t('Las habilidades quedaron guardadas en el mismo registro que el test físico de hoy (misma toma)',
+  conHabilidades && conHabilidades.control===8 && conHabilidades.puntualidad===9 && conHabilidades.mismoRegQueFisico===true,
+  JSON.stringify(conHabilidades));
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
