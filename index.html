@@ -176,6 +176,23 @@ h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter
 .up{color:var(--verde)}.down{color:var(--rojo)}.flat{color:var(--ink-2)}
 .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
+/* ---- vs ---- */
+.vs-pickers{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:start;margin-bottom:18px}
+.vs-lado{display:flex;flex-direction:column;gap:6px}
+.vs-versus{font-family:var(--display);font-weight:700;letter-spacing:.08em;color:var(--ink-2);padding-top:12px}
+.vs-head{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:6px}
+.vs-head .ficha-foto{margin:0 auto}
+.vs-jug{text-align:center}
+.vs-jug .row-name{font-size:13px;font-weight:600}
+.vs-jug .row-meta{justify-content:center}
+.vs-cmp{width:100%;border-collapse:collapse;font-size:13px}
+.vs-cmp td{padding:9px 6px;border-bottom:1px solid var(--linea)}
+.vs-cmp td.a,.vs-cmp td.b{font-family:var(--mono);font-weight:600;width:28%}
+.vs-cmp td.a{text-align:right}
+.vs-cmp td.b{text-align:left}
+.vs-cmp td.etq{text-align:center;color:var(--ink-2);font-size:11.5px;letter-spacing:.02em}
+.vs-cmp td.gana{color:var(--verde)}
+
 /* ---- cancha ---- */
 .pitch{position:relative;width:100%;aspect-ratio:68/100;background:var(--wash);border:2px solid var(--ink);border-radius:var(--r);overflow:hidden}
 .pitch svg.lines{position:absolute;inset:0;width:100%;height:100%}
@@ -340,6 +357,7 @@ button.dash-card{cursor:pointer}
   <button data-tab="entrenos">Entrenos</button>
   <button data-tab="testfisicos">Test físicos</button>
   <button data-tab="rutinas">Rutinas</button>
+  <button data-tab="vs">Vs</button>
   <button data-tab="cargar">Cargar</button>
   <button data-tab="datos">Datos</button>
 </nav>
@@ -707,9 +725,9 @@ function catsPermitidas(){
    usan "Agregar jugador" y "Cargar datos de X" desde dentro de una
    ficha) aunque ya no tengan un botón propio en la barra */
 function navVisiblesActual(){
-  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas']
-       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','cargar']
-                   : ['inicio','plantel','rutinas'];
+  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs']
+       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs','cargar']
+                   : ['inicio','plantel','rutinas','vs'];
 }
 function puedeVer(j){
   const p = catsPermitidas();
@@ -832,6 +850,59 @@ function pjPorPosicion(id){
     m[k] = (m[k]||0)+1;
   });
   return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+/* mismo cálculo que pjPorPosicion, pero de una temporada puntual (para
+   "Vs"); si esa temporada ya se archivó no queda nada partido a partido,
+   así que devuelve vacío */
+function pjPorPosicionAnio(id, anio){
+  const m = {};
+  db.partidos.filter(p=>p.jugadorId===id && p.jugo && p.fecha && p.fecha.startsWith(anio)).forEach(p=>{
+    const k = p.posicion || 'Sin registrar';
+    m[k] = (m[k]||0)+1;
+  });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+
+/* ---------- Vs: stats de UN jugador en UNA temporada puntual (actual o
+   archivada), para comparar dos jugadores (o el mismo en dos años)
+   lado a lado ---------- */
+function aniosDeJugador(j){
+  const anios = new Set([ANIO_ACTUAL]);
+  (j && j.historial || []).forEach(h=>anios.add(String(h.anio)));
+  return [...anios].sort().reverse();
+}
+function asistenciaAnio(j, anio){
+  if (anio===ANIO_ACTUAL){
+    const relevantes = db.sesiones.filter(s=>(s.asistentes||[]).length
+      && (j.categorias||[]).includes(s.categoria) && s.fecha && s.fecha.startsWith(anio));
+    if (!relevantes.length) return null;
+    const fue = relevantes.filter(s=>s.asistentes.includes(j.id)).length;
+    return { fue, total: relevantes.length, pct: Math.round(fue/relevantes.length*100) };
+  }
+  const filas = (j.historial||[]).filter(x=>String(x.anio)===String(anio) && typeof x.entrenosTotal==='number');
+  if (!filas.length) return null;
+  const fue = filas.reduce((a,x)=>a+(x.entrenosFue||0),0), total = filas.reduce((a,x)=>a+(x.entrenosTotal||0),0);
+  if (!total) return null;
+  return { fue, total, pct: Math.round(fue/total*100) };
+}
+/* la evaluación más reciente de ESE jugador dentro de esa temporada (no
+   la última toma del año en general, que puede ser de otra categoría);
+   en una temporada ya archivada da lo mismo, porque solo queda la toma
+   que se conservó */
+function evaluacionAnio(jid, anio){
+  const propias = db.evaluaciones.filter(e=>e.jugadorId===jid)
+    .map(e=>({ e, toma: db.tomas.find(t=>t.id===e.tomaId) }))
+    .filter(x=>x.toma && x.toma.fecha && x.toma.fecha.startsWith(anio));
+  if (!propias.length) return null;
+  return propias.sort((a,b)=>(a.toma.fecha||'').localeCompare(b.toma.fecha||'')).pop().e;
+}
+function statsVs(j, anio){
+  return {
+    totales: anio===ANIO_ACTUAL ? totalesTemporada(j.id) : historialAnio(j, anio),
+    asistencia: asistenciaAnio(j, anio),
+    evaluacion: evaluacionAnio(j.id, anio),
+    porPosicion: pjPorPosicionAnio(j.id, anio),
+  };
 }
 /* última toma que tenga alguno de esos ítems cargados */
 function ultimaCon(id, ids){
@@ -1061,9 +1132,9 @@ function render(){
      desde dentro de una ficha). "navVisibles": lo que de verdad se ve como
      botón en la barra; Plantel/Cargar/Datos quedan accesibles pero fuera
      de la barra para coordinación, Categorías ya lleva a un plantel filtrado */
-  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','cargar','datos']
-                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','cargar']
-                             : ['inicio','plantel','rutinas'];
+  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','vs','cargar','datos']
+                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','vs','cargar']
+                             : ['inicio','plantel','rutinas','vs'];
   const navVisibles = navVisiblesActual();
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = navVisibles.includes(b.dataset.tab) ? '' : 'none';
@@ -1087,6 +1158,7 @@ function render(){
   if (view.tab==='entrenos')return pantallaEntrenos();
   if (view.tab==='testfisicos') return pantallaTestFisicos();
   if (view.tab==='rutinas') return pantallaRutinas();
+  if (view.tab==='vs')      return pantallaVs();
   if (view.tab==='cargar')  return pantallaCargar();
   if (view.tab==='datos')   return pantallaDatos();
 }
@@ -1348,6 +1420,112 @@ function pantallaRutinas(){
         <button class="btn btn-naranja" data-cargarRutina="${esc(cat)}" ${view.rutinaSubiendo?'disabled':''}>${view.rutinaSubiendo?'Subiendo…':(url?'Cambiar rutina':'Cargar rutina')}</button>
         ${url?`<div class="gap"></div><button class="btn btn-danger" data-eliminarRutina="${esc(cat)}">Eliminar rutina</button>`:''}
       </div>`;
+  }
+  app.innerHTML = h;
+}
+
+/* ---------- VS: comparar a dos jugadores (o al mismo en dos temporadas
+   distintas) lado a lado. Accesible a los 3 roles, sin edición: solo
+   reusa los mismos totales que ya se ven en la ficha de cada uno ---------- */
+function filaVs(etq, va, vb, {unidad='', dec=0, mejor='alto', texto}={}){
+  const fmt = v => v==null ? '—' : (texto ? texto(v) : milesFix(v,dec)+unidad);
+  let claseA='', claseB='';
+  if (va!=null && vb!=null && va!==vb){
+    const aGana = mejor==='bajo' ? va<vb : va>vb;
+    claseA = aGana ? 'gana' : ''; claseB = !aGana ? 'gana' : '';
+  }
+  return `<tr><td class="a ${claseA}">${fmt(va)}</td><td class="etq">${esc(etq)}</td><td class="b ${claseB}">${fmt(vb)}</td></tr>`;
+}
+function bloqueComparacion(jA, anioA, jB, anioB){
+  const A = statsVs(jA, anioA), B = statsVs(jB, anioB);
+  const ta = A.totales, tb = B.totales;
+
+  let h = `<div class="block"><div class="block-title">📊 Estadísticas de la temporada</div>
+    <div class="scroll-x"><table class="vs-cmp"><tbody>
+    ${filaVs('Partidos jugados', ta.pj, tb.pj)}
+    ${filaVs('Minutos', ta.minutos, tb.minutos)}
+    ${filaVs('Goles', ta.goles, tb.goles)}
+    ${filaVs('Asistencias', ta.asistencias, tb.asistencias)}
+    ${filaVs('Goles + Asistencias', ta.goles+ta.asistencias, tb.goles+tb.asistencias)}
+    ${filaVs('Amarillas', ta.amarillas, tb.amarillas, {mejor:'bajo'})}
+    ${filaVs('Rojas', ta.rojas, tb.rojas, {mejor:'bajo'})}
+    </tbody></table></div></div>`;
+
+  const frac = a => a ? `${a.fue}/${a.total}` : '—';
+  h += `<div class="block"><div class="block-title">🏃 Asistencia a entrenamientos</div>
+    <div class="scroll-x"><table class="vs-cmp"><tbody>
+    ${filaVs('% de asistencia', A.asistencia&&A.asistencia.pct, B.asistencia&&B.asistencia.pct, {unidad:'%'})}
+    <tr><td class="a">${frac(A.asistencia)}</td><td class="etq">Presente / total</td><td class="b">${frac(B.asistencia)}</td></tr>
+    </tbody></table></div></div>`;
+
+  const porPosTxt = porPos => porPos.length
+    ? porPos.map(([p,n])=>`${esc(p)} (${n})`).join(' · ')
+    : 'Sin datos de puesto esa temporada';
+  h += `<div class="block"><div class="block-title">⚽ Dónde jugó</div>
+    <div class="vs-cmp" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12.5px">
+      <div style="text-align:right;color:var(--ink-2)">${porPosTxt(A.porPosicion)}</div>
+      <div style="color:var(--ink-2)">${porPosTxt(B.porPosicion)}</div>
+    </div></div>`;
+
+  const tablas = [
+    ['Test físicos', FISICO.map(f=>({...f, dec:f.dec||0}))],
+    ['Técnico-táctico', TECNICO.map(t=>({...t, mejor:'alto', dec:1, escala:true}))],
+    ['Comportamiento', CONDUCTA.map(t=>({...t, mejor:'alto', dec:1, escala:true}))],
+  ];
+  tablas.forEach(([titulo, items])=>{
+    const usados = items.filter(i=>(A.evaluacion&&typeof A.evaluacion[i.id]==='number')
+      || (B.evaluacion&&typeof B.evaluacion[i.id]==='number'));
+    if (!usados.length) return;
+    h += `<div class="block"><div class="block-title">${titulo}</div>
+      <div class="scroll-x"><table class="vs-cmp"><tbody>
+      ${usados.map(i=>filaVs(i.nombre + (i.unidad?` (${i.unidad})`:''),
+        A.evaluacion&&A.evaluacion[i.id], B.evaluacion&&B.evaluacion[i.id],
+        {dec:i.dec, mejor:i.mejor})).join('')}
+      </tbody></table></div></div>`;
+  });
+
+  return h;
+}
+function cabeceraVs(j, anio){
+  if (!j) return `<div class="vs-jug empty" style="padding:16px 8px"><p style="margin:0">Elegí un jugador</p></div>`;
+  return `<button class="vs-jug" data-jugador="${j.id}" style="background:none;border:0;padding:0;width:100%;cursor:pointer">
+    ${avatarJugador(j)}
+    <div class="row-name" style="margin-top:8px">${esc(nomb(j))}</div>
+    <div class="row-meta">${esc((j.categorias||[]).join(' · ')||'sin categoría')} · ${esc(anio)}</div>
+  </button>`;
+}
+function pantallaVs(){
+  if (!view.vsA) view.vsA = {id:'', anio:ANIO_ACTUAL};
+  if (!view.vsB) view.vsB = {id:'', anio:ANIO_ACTUAL};
+  const jugadores = jugadoresVisibles().slice().sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+  const jA = db.jugadores.find(x=>x.id===view.vsA.id);
+  const jB = db.jugadores.find(x=>x.id===view.vsB.id);
+
+  const selectorLado = (lado, sel, j) => `
+    <div class="vs-lado">
+      <select data-vsjug="${lado}">
+        <option value="">Elegí un jugador…</option>
+        ${jugadores.map(x=>`<option value="${x.id}" ${x.id===sel.id?'selected':''}>${esc(nomb(x))}</option>`).join('')}
+      </select>
+      <select data-vsanio="${lado}">
+        ${aniosDeJugador(j).map(a=>`<option value="${esc(a)}" ${a===sel.anio?'selected':''}>${esc(a)}</option>`).join('')}
+      </select>
+    </div>`;
+
+  let h = `<h2 class="screen-title">Vs</h2>
+    <p class="screen-note">Compará a dos jugadores en una temporada, o al mismo jugador en dos
+    temporadas distintas, con los mismos números que ya ves en cada ficha.</p>
+    <div class="vs-pickers">
+      ${selectorLado('a', view.vsA, jA)}
+      <div class="vs-versus">VS</div>
+      ${selectorLado('b', view.vsB, jB)}
+    </div>`;
+
+  if (!jA || !jB){
+    h += `<div class="empty"><p>Elegí los dos jugadores (y la temporada de cada uno) para comparar.</p></div>`;
+  } else {
+    h += `<div class="vs-head">${cabeceraVs(jA, view.vsA.anio)}<div></div>${cabeceraVs(jB, view.vsB.anio)}</div>`;
+    h += bloqueComparacion(jA, view.vsA.anio, jB, view.vsB.anio);
   }
   app.innerHTML = h;
 }
@@ -3694,6 +3872,17 @@ app.addEventListener('change', async e=>{
     if (file) subirRutina(file);
   }
   if (e.target.id==='test-fecha'){ view.testFecha = e.target.value; return render(); }
+  if (e.target.hasAttribute('data-vsjug')){
+    const lado = e.target.getAttribute('data-vsjug');
+    const j = db.jugadores.find(x=>x.id===e.target.value);
+    view['vs'+lado.toUpperCase()] = { id:e.target.value, anio: aniosDeJugador(j)[0] };
+    return render();
+  }
+  if (e.target.hasAttribute('data-vsanio')){
+    const lado = e.target.getAttribute('data-vsanio');
+    view['vs'+lado.toUpperCase()].anio = e.target.value;
+    return render();
+  }
   if (e.target.id==='s-cat' && view.draft){
     guardarBorrador();
     const validos = planteldeCategoria(view.draft.categoria).map(j=>j.id);

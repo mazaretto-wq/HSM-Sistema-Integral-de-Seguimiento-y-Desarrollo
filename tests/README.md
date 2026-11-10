@@ -55,6 +55,7 @@ node roles-y-permisos.spec.js
 | `alarma-tamano-firestore.spec.js` | Aviso cuando la base se acerca al límite de tamaño de Firestore |
 | `sincronizacion-en-vivo.spec.js` | Que un cambio de otro dispositivo se aplique solo cuando no se está editando nada, quede pendiente (con aviso) si se está editando, y nunca pise el rol/sesión de este dispositivo |
 | `archivar-temporada.spec.js` | Pantalla de Datos: archivar una temporada vieja descarga el CSV, resume partidos/entrenamientos en el historial del jugador, conserva solo la última toma de test físico del año, y no cambia el % de asistencia histórico |
+| `vs-comparar.spec.js` | Solapa Vs (visible para los 3 roles): comparar a dos jugadores en una temporada cada uno, incluida una ya archivada, con los mismos números de partidos, asistencia a entrenos y test físicos que se ven en cada ficha |
 
 ## Si agregás una función nueva a la app
 

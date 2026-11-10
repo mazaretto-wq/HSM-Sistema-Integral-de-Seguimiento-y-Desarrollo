@@ -16,7 +16,7 @@ await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 // la app ya siembra sola la base completa del club al no haber jugadores,
 // así que no hace falta pasar por "Datos" (que además ya no tiene solapa visible)
-t('Coordinación ve las 5 solapas', (await pg.locator('.tabs button:visible').count())===5);
+t('Coordinación ve las 6 solapas (con Vs)', (await pg.locator('.tabs button:visible').count())===6);
 await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(300);
 await pg.locator('[data-entrarCat]').first().click(); await pg.waitForTimeout(300);
 await pg.locator('.roster .row[data-jugador]').first().click(); await pg.waitForTimeout(400);
@@ -27,7 +27,7 @@ await pg.click('#salir'); await pg.waitForTimeout(400);
 await pg.click('#ac-dt'); await pg.waitForTimeout(300);
 await pg.selectOption('#ac-cat','Juveniles');
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
-t('DT ve 6 solapas (sin Datos)', (await pg.locator('.tabs button:visible').count())===6);
+t('DT ve 7 solapas (con Vs, sin Datos)', (await pg.locator('.tabs button:visible').count())===7);
 t('La primera solapa del DT dice Inicio', (await pg.locator('.tabs button').first().innerText()).toUpperCase()==='INICIO');
 await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(300);
 await pg.click('[data-entrarCat="Juveniles"]'); await pg.waitForTimeout(300);
@@ -37,7 +37,7 @@ await pg.click('[data-back]'); await pg.waitForTimeout(300);
 
 await pg.click('#salir'); await pg.waitForTimeout(400);
 await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
-t('Jugador también ve 3 solapas (Inicio, Plantel, Rutinas)', (await pg.locator('.tabs button:visible').count())===3);
+t('Jugador también ve 4 solapas (Inicio, Plantel, Rutinas, Vs)', (await pg.locator('.tabs button:visible').count())===4);
 t('Jugador aterriza en Inicio', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 await pg.click('.tabs button:has-text("Plantel")'); await pg.waitForTimeout(300);
 await pg.locator('.roster .row').first().click(); await pg.waitForTimeout(400);
