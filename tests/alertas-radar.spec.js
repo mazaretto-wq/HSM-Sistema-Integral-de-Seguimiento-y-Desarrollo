@@ -123,7 +123,10 @@ t('El jugador evaluado sí tiene el bloque "Perfil técnico-táctico"', await pg
 // ninguna etiqueta del gráfico se corta contra el borde del SVG (el bug
 // real que hubo: "Toma de decisión" perdía la "T" por quedarse afuera)
 const etiquetasOK = await pg.evaluate(()=>{
-  const svg = [...document.querySelectorAll('svg')].find(s => s.closest('.block').textContent.includes('Perfil técnico-táctico'));
+  // el bloque también tiene un ícono <svg> chiquito en el título (además
+  // del gráfico de verdad): nos quedamos con el que tiene <text>, que es
+  // el radar, no el ícono
+  const svg = [...document.querySelectorAll('svg')].find(s => s.querySelector('text') && s.closest('.block')?.textContent.includes('Perfil técnico-táctico'));
   if (!svg) return null;
   const vb = svg.viewBox.baseVal;
   return [...svg.querySelectorAll('text')].every(txt => {

@@ -68,6 +68,7 @@ button{cursor:pointer;border:none;background:none}
 .piz-tipo{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--linea);border-radius:var(--r);padding:22px 18px;cursor:pointer}
 .piz-tipo:hover{border-color:var(--naranja)}
 .piz-tipo-emoji{display:block;font-size:32px;line-height:1;margin-bottom:10px}
+.piz-tipo-emoji .icon{width:32px;height:32px}
 .piz-tipo-nombre{display:block;font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
 .puerta{max-width:420px;margin:0 auto;padding:8px 0 40px}
 .puerta .opt{display:block;width:100%;text-align:left;background:var(--paper);border:1px solid var(--linea);
@@ -350,9 +351,90 @@ button.dash-card{cursor:pointer}
 .chart-bar-label{font-family:var(--mono);font-size:9px;color:var(--ink-2);margin-top:6px;white-space:nowrap}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---- iconos: contorno nomás, sin relleno; naranja sobre fondo claro,
+   blanco adentro del panel oscuro de Inicio (mismo criterio que ya usa
+   el texto ahí: .inicio-dash .block-title{color:#fff}) ---- */
+.icon{width:18px;height:18px;flex:0 0 auto;stroke:var(--naranja);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-4px}
+.inicio-dash .icon{stroke:#fff}
+.dash-card-icon .icon{width:22px;height:22px}
+.fisico-test-label .icon{width:14px;height:14px}
 </style>
 </head>
 <body>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="ic-gol" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="9"/>
+  <path d="M12 7.5l3 2.2-1.1 3.6H10.1L9 9.7z"/>
+  <path d="M12 3v4.5M7.6 9.7L4 7M16.4 9.7L20 7M10.1 13.3L8 20M13.9 13.3L16 20"/>
+</symbol>
+<symbol id="ic-diana" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="9"/>
+  <circle cx="12" cy="12" r="5"/>
+  <path d="M12 3v2M12 19v2M3 12h2M19 12h2"/>
+</symbol>
+<symbol id="ic-trofeo" viewBox="0 0 24 24">
+  <path d="M7 4h10v4a5 5 0 0 1-10 0z"/>
+  <path d="M7 5H4a3 3 0 0 0 3 5M17 5h3a3 3 0 0 1-3 5"/>
+  <path d="M12 13v4M8.5 20h7l-.5-3h-6z"/>
+</symbol>
+<symbol id="ic-grupo" viewBox="0 0 24 24">
+  <circle cx="9" cy="8" r="3"/>
+  <path d="M4 20c0-3 2.2-5 5-5s5 2 5 5"/>
+  <circle cx="17.5" cy="9.2" r="2.3"/>
+  <path d="M15.8 20c.3-2.4 1.7-3.9 3.3-4.3"/>
+</symbol>
+<symbol id="ic-cronometro" viewBox="0 0 24 24">
+  <circle cx="12" cy="13" r="8"/>
+  <path d="M12 9v4l3 2"/>
+  <path d="M9 2h6M12 2v3"/>
+</symbol>
+<symbol id="ic-correr" viewBox="0 0 24 24">
+  <circle cx="14.2" cy="4.3" r="1.7"/>
+  <path d="M9 21l1.8-5 2.2 1 2.8 4M7.5 13l3-2 1.8 2.2 4-1.3M5.5 9.5l3-1.7 1.8 2.2"/>
+</symbol>
+<symbol id="ic-rayo" viewBox="0 0 24 24">
+  <path d="M13 2L4 14h6l-1 8 9-12h-6z"/>
+</symbol>
+<symbol id="ic-persona" viewBox="0 0 24 24">
+  <circle cx="12" cy="8" r="4"/>
+  <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>
+</symbol>
+<symbol id="ic-barras" viewBox="0 0 24 24">
+  <path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>
+</symbol>
+<symbol id="ic-subiendo" viewBox="0 0 24 24">
+  <path d="M3 17l6-6 4 4 8-8"/>
+  <path d="M15 7h6v6"/>
+</symbol>
+<symbol id="ic-bajando" viewBox="0 0 24 24">
+  <path d="M3 7l6 6 4-4 8 8"/>
+  <path d="M15 17h6v-6"/>
+</symbol>
+<symbol id="ic-balanza" viewBox="0 0 24 24">
+  <path d="M12 3v18M7.5 21h9"/>
+  <path d="M12 7L5.5 8.8M12 7l6.5 1.8"/>
+  <path d="M2.5 11.8l3-4 3 4M2.5 11.8a3 3 0 0 0 6 0"/>
+  <path d="M15.5 13.6l3-4 3 4M15.5 13.6a3 3 0 0 0 6 0"/>
+</symbol>
+<symbol id="ic-radar" viewBox="0 0 24 24">
+  <path d="M12 2l9 5.2v9.6L12 22l-9-5.2V7.2z"/>
+  <path d="M12 2v20M3 7.2l18 9.6M21 7.2L3 16.8"/>
+</symbol>
+<symbol id="ic-alerta" viewBox="0 0 24 24">
+  <path d="M12 3L22 20H2z"/>
+  <path d="M12 10v4M12 17.3v.1"/>
+</symbol>
+<symbol id="ic-estrella" viewBox="0 0 24 24">
+  <path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 17l-5.6 3.1 1.4-6.3L3 9.5l6.4-.6z"/>
+</symbol>
+<symbol id="ic-cerrar" viewBox="0 0 24 24">
+  <path d="M5 5l14 14M19 5L5 19"/>
+</symbol>
+</defs>
+</svg>
 
 <header class="topbar">
   <div class="wrap">
@@ -365,7 +447,7 @@ button.dash-card{cursor:pointer}
 <div class="pwa-banner" id="pwaBanner">
   <span id="pwaBannerTexto"></span>
   <button class="btn-instalar" id="pwaBannerBtn" style="display:none">Instalar app</button>
-  <button class="cerrar" id="pwaBannerCerrar" aria-label="Cerrar">✕</button>
+  <button class="cerrar" id="pwaBannerCerrar" aria-label="Cerrar"><svg class="icon"><use href="#ic-cerrar"></use></svg></button>
 </div>
 
 <main class="wrap" id="app"></main>
@@ -748,6 +830,9 @@ const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const hoy = () => new Date().toISOString().slice(0,10);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* icono de contorno (ver el sprite al principio de <body>): naranja sobre
+   fondo claro, blanco adentro del panel oscuro de Inicio, por CSS */
+const icono = (nombre, clase='') => `<svg class="icon${clase?' '+clase:''}"><use href="#ic-${nombre}"></use></svg>`;
 /* separador de miles para números grandes (minutos, metros de los tests
    físicos, etc.); los decimales (p. ej. velocidad 30m) quedan intactos */
 const miles = n => typeof n==='number' ? n.toLocaleString('es-AR') : n;
@@ -1377,7 +1462,7 @@ function bloqueAlertas(){
     <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
     <span class="row-meta"><span>${esc(motivos.join(' · '))}</span></span></span>
   </button>`);
-  const titulo = `⚠️ Para repasar${todas.length>TOPE_ALERTAS?` <span>${todas.length} en total</span>`:''}`;
+  const titulo = `${icono('alerta')} Para repasar${todas.length>TOPE_ALERTAS?` <span>${todas.length} en total</span>`:''}`;
   return `<div class="dash-title">Alertas</div>
     <div class="block"><div class="block-title">${titulo}</div>`
     + (filasHtml.length ? `<div class="roster">${filasHtml.join('')}</div>`
@@ -1395,16 +1480,16 @@ function pantallaInicio(){
     .slice(0,n);
 
   const destacados = [
-    { icon:'⚽', titulo:'Máximo goleador', unidad:'goles',
+    { icon:icono('gol'), titulo:'Máximo goleador', unidad:'goles',
       valorFn:j=>totales.get(j.id).goles },
-    { icon:'🎯', titulo:'Máximo asistidor', unidad:'asistencias',
+    { icon:icono('diana'), titulo:'Máximo asistidor', unidad:'asistencias',
       valorFn:j=>totales.get(j.id).asistencias },
-    { icon:'🏆', titulo:'Máximo contribuidor', unidad:'G+A',
+    { icon:icono('trofeo'), titulo:'Máximo contribuidor', unidad:'G+A',
       valorFn:j=>totales.get(j.id).goles+totales.get(j.id).asistencias },
-    { icon:'👥', titulo:'Mayor participación', unidad:'partidos',
+    { icon:icono('grupo'), titulo:'Mayor participación', unidad:'partidos',
       valorFn:j=>totales.get(j.id).pj },
   ].concat(FISICO.map(item=>({
-    icon: item.id==='cooper'?'⏱':item.id==='yoyo'?'🏃':'⚡',
+    icon: icono(item.id==='cooper'?'cronometro':item.id==='yoyo'?'correr':'rayo'),
     titulo: `Mejores · ${item.nombre}`, unidad:item.unidad, dec:item.dec, mejorBajo:item.mejor==='bajo',
     valorFn: j=>ultimoParItem(j.id, item.id).actual,
   }))).map(m=>{
@@ -1449,9 +1534,9 @@ function pantallaInicio(){
   h += bloqueAlertas();
 
   h += `<div class="dash-title">Rankings detallados</div><div class="dash-rankings">`;
-  h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
-  h += bloqueRankingInicio('🎯 Más asistencias', top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
-  h += bloqueRankingInicio('⏱ Más minutos', top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v)+"'",conCategoria)));
+  h += bloqueRankingInicio(`${icono('gol')} Más goles`, top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
+  h += bloqueRankingInicio(`${icono('diana')} Más asistencias`, top('asistencias',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
+  h += bloqueRankingInicio(`${icono('cronometro')} Más minutos`, top('minutos',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v)+"'",conCategoria)));
 
   FISICO.forEach(item=>{
     const filas = jugadores
@@ -1459,7 +1544,7 @@ function pantallaInicio(){
       .filter(x=>x.v!==null)
       .sort((a,b)=> item.mejor==='alto' ? b.v-a.v : a.v-b.v)
       .slice(0,3);
-    const emoji = item.id==='cooper'?'⏱':item.id==='yoyo'?'🏃':'⚡';
+    const emoji = icono(item.id==='cooper'?'cronometro':item.id==='yoyo'?'correr':'rayo');
     h += bloqueRankingInicio(`${emoji} Mejores · ${esc(item.nombre)}`,
       filas.map((x,i)=>filaRankingInicio(x.j,i,(item.dec?x.v.toFixed(item.dec):miles(x.v))+' '+item.unidad, conCategoria)));
   });
@@ -1630,7 +1715,7 @@ function bloqueComparacion(jA, anioA, jB, anioB){
   const A = statsVs(jA, anioA), B = statsVs(jB, anioB);
   const ta = A.totales, tb = B.totales;
 
-  let h = `<div class="block"><div class="block-title">📊 Estadísticas de la temporada</div>
+  let h = `<div class="block"><div class="block-title">${icono('barras')} Estadísticas de la temporada</div>
     <div class="scroll-x"><table class="vs-cmp"><tbody>
     ${filaVs('Partidos jugados', ta.pj, tb.pj)}
     ${filaVs('Minutos', ta.minutos, tb.minutos)}
@@ -1642,7 +1727,7 @@ function bloqueComparacion(jA, anioA, jB, anioB){
     </tbody></table></div></div>`;
 
   const frac = a => a ? `${a.fue}/${a.total}` : '—';
-  h += `<div class="block"><div class="block-title">🏃 Asistencia a entrenamientos</div>
+  h += `<div class="block"><div class="block-title">${icono('correr')} Asistencia a entrenamientos</div>
     <div class="scroll-x"><table class="vs-cmp"><tbody>
     ${filaVs('% de asistencia', A.asistencia&&A.asistencia.pct, B.asistencia&&B.asistencia.pct, {unidad:'%'})}
     <tr><td class="a">${frac(A.asistencia)}</td><td class="etq">Presente / total</td><td class="b">${frac(B.asistencia)}</td></tr>
@@ -1651,7 +1736,7 @@ function bloqueComparacion(jA, anioA, jB, anioB){
   const porPosTxt = porPos => porPos.length
     ? porPos.map(([p,n])=>`${esc(p)} (${n})`).join(' · ')
     : 'Sin datos de puesto esa temporada';
-  h += `<div class="block"><div class="block-title">⚽ Dónde jugó</div>
+  h += `<div class="block"><div class="block-title">${icono('gol')} Dónde jugó</div>
     <div class="vs-cmp" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12.5px">
       <div style="text-align:right;color:var(--ink-2)">${porPosTxt(A.porPosicion)}</div>
       <div style="color:var(--ink-2)">${porPosTxt(B.porPosicion)}</div>
@@ -2082,7 +2167,7 @@ function fichaJugador(){
       <div class="ficha-name" style="margin-top:12px">${esc(nomb(j))}</div>
       ${nombreYTags()}
     </div>`;
-    h += `<div class="block"><div class="block-title">👤 Perfil</div>
+    h += `<div class="block"><div class="block-title">${icono('persona')} Perfil</div>
       <div class="scroll-x"><table class="cmp"><tbody>
       ${[
         ['Puesto principal', posPrincipal(j) || '—'],
@@ -2097,7 +2182,7 @@ function fichaJugador(){
     /* ---- columna derecha ---- */
     h += `<div>`;
 
-    h += `<div class="block" style="margin-top:0"><div class="block-title">📊 Estadísticas generales</div>
+    h += `<div class="block" style="margin-top:0"><div class="block-title">${icono('barras')} Estadísticas generales</div>
       <div class="stat-grid">
         <div class="stat"><div class="stat-label">Partidos</div><div class="stat-value">${T.pj}</div></div>
         <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${miles(T.minutos)}<small>'</small></div></div>
@@ -2112,7 +2197,7 @@ function fichaJugador(){
         pj:x.pj||0, goles:x.goles||0, asistencias:x.asis||0, minutos:x.min||0, amarillas:x.ta||0, rojas:x.tr||0 }))
     ];
     h += `<div class="perfil-2col">
-      <div class="block"><div class="block-title">🏆 Historial de temporadas</div>
+      <div class="block"><div class="block-title">${icono('trofeo')} Historial de temporadas</div>
         <div class="scroll-x"><table class="cmp"><thead><tr>
           <th>Temp.</th><th>Categoría</th><th>PJ</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarj.</th></tr></thead><tbody>
         ${filasHist.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>
@@ -2122,7 +2207,7 @@ function fichaJugador(){
         </tbody></table></div>
         ${historialAnio(j, ANIO_ACTUAL).pj ? `<p class="screen-note" style="margin-top:8px">La temporada ${ANIO_ACTUAL} incluye partidos cargados como total del torneo, sin detalle partido a partido.</p>` : ''}
       </div>
-      <div class="block"><div class="block-title">📈 Evolución de rendimiento</div>
+      <div class="block"><div class="block-title">${icono('subiendo')} Evolución de rendimiento</div>
         ${hist.length ? `
           <div class="chart-leyenda">
             <span><i style="background:var(--ink-2)"></i>Minutos</span>
@@ -2136,12 +2221,12 @@ function fichaJugador(){
     </div>`;
 
     h += `<div class="perfil-2col">
-      <div class="block"><div class="block-title">🏋️ Tests físicos (último registro)</div>
+      <div class="block"><div class="block-title">${icono('cronometro')} Tests físicos (último registro)</div>
         <div class="fisico-tests">
         ${FISICO.map(f=>{
           const v = fis[f.id];
           const pct = v!==undefined ? pctFisicoCategoria(f, v, roster) : 0;
-          const emoji = f.id==='cooper'?'⏱️':f.id==='yoyo'?'🏃':'⚡';
+          const emoji = icono(f.id==='cooper'?'cronometro':f.id==='yoyo'?'correr':'rayo');
           return `<div class="fisico-test">
             <div class="fisico-test-label">${emoji} ${esc(f.nombre)}</div>
             <div class="fisico-test-value">${v!==undefined?milesFix(v,f.dec)+' '+esc(f.unidad):'—'}</div>
@@ -2152,7 +2237,7 @@ function fichaJugador(){
         </div>
         <p class="screen-note" style="margin-top:8px">La barra compara contra el mejor de ${esc(propiaCat||'su categoría')} en ese test.</p>
       </div>
-      <div class="block"><div class="block-title">👥 Posición en el plantel</div>
+      <div class="block"><div class="block-title">${icono('grupo')} Posición en el plantel</div>
         <div class="stat-grid">
           <div class="stat"><div class="stat-label">Ranking general</div><div class="stat-value">#${pos.general}</div></div>
           <div class="stat"><div class="stat-label">${pos.categoria?'En '+esc(pos.categoria):'En su categoría'}</div>
@@ -2171,7 +2256,7 @@ function fichaJugador(){
     const valorMetrica = p => metricaActiva.id==='pj' ? (p.jugo?1:0)
       : metricaActiva.id==='tarjetas' ? (p.amarillas||0)+(p.rojas||0)
       : (p[metricaActiva.id]||0);
-    h += `<div class="block"><div class="block-title">⭐ Detalle de rendimiento</div>
+    h += `<div class="block"><div class="block-title">${icono('estrella')} Detalle de rendimiento</div>
       <div class="chips">${METRICAS_DETALLE.map(m=>`<button class="chip" data-fichaMetric="${m.id}" aria-pressed="${metricaActiva.id===m.id}">${esc(m.nombre)}</button>`).join('')}</div>`;
     if (!partidosRecientes.length){
       h += `<div class="empty"><p>Todavía no hay partidos cargados para mostrar.</p></div>`;
@@ -2200,7 +2285,7 @@ function fichaJugador(){
     const g = puntuacion(j.id), tec = promedioTecnico(j.id), con = promedioDe(j.id, CONDUCTA);
     let bloquePuntuacion = '';
     if (g!==null){
-      bloquePuntuacion = `<div class="block"><div class="block-title">⚖️ Puntuación</div>
+      bloquePuntuacion = `<div class="block"><div class="block-title">${icono('balanza')} Puntuación</div>
         <div class="stat-grid">
           <div class="stat"><div class="stat-label">General</div>
             <div class="stat-value" style="color:${colorSem(g)}">${g.toFixed(1)}</div></div>
@@ -2215,7 +2300,7 @@ function fichaJugador(){
     const tecUlt = tecnicoUltimo(j.id);
     let bloqueRadar = '';
     if (Object.keys(tecUlt).length){
-      bloqueRadar = `<div class="block"><div class="block-title">🕸️ Perfil técnico-táctico</div>
+      bloqueRadar = `<div class="block"><div class="block-title">${icono('radar')} Perfil técnico-táctico</div>
         ${svgRadarTecnico(tecUlt)}
         <p class="screen-note" style="margin-top:8px;text-align:center">Último valor cargado de cada ítem, sobre 10.</p></div>`;
     }
@@ -2223,7 +2308,7 @@ function fichaJugador(){
     const mej = aMejorar(j);
     let bloqueMejorar = '';
     if (mej.length){
-      bloqueMejorar = `<div class="block"><div class="block-title">📉 Lo que más tiene que mejorar</div>`;
+      bloqueMejorar = `<div class="block"><div class="block-title">${icono('bajando')} Lo que más tiene que mejorar</div>`;
       mej.forEach(m=>{
         const pct = Math.round(m.valor/10*100);
         bloqueMejorar += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -2867,7 +2952,7 @@ function formEvaluacion(){
       <p class="screen-note">${jSel?esc(nomb(jSel))+' · ':''}¿qué test querés completar?</p>
       <div class="roster">${FISICO.map(f=>{
         const hecho = regActual && typeof regActual[f.id]==='number';
-        const emoji = f.id==='cooper'?'⏱️':f.id==='yoyo'?'🏃':'⚡';
+        const emoji = icono(f.id==='cooper'?'cronometro':f.id==='yoyo'?'correr':'rayo');
         return `<button class="row" data-evalFisico="${f.id}">
           <span class="row-main"><span class="row-name">${emoji} ${esc(f.nombre)}</span>
           <span class="row-meta"><span>${esc(f.unidad)}${hecho?' · ya cargado: '+milesFix(regActual[f.id],f.dec):''}</span></span></span>
@@ -3120,14 +3205,14 @@ const PIZ_W = 100, PIZ_H = 68;   // cancha horizontal; proporción real de campo
    Para sumar una categoría o subcategoría nueva más adelante alcanza con agregarla
    acá: la selección, los filtros de "Mis ejercicios" y el guardado ya la toman sola. */
 const PIZ_CATEGORIAS = [
-  { id:'pelota', nombre:'Ejercicios con pelota', emoji:'🟠',
+  { id:'pelota', nombre:'Ejercicios con pelota', emoji:icono('gol'),
     subs:[
       {id:'controles',    nombre:'Ejercicios de controles'},
       {id:'recuperacion', nombre:'Ejercicios de recuperación / tenencia'},
       {id:'definicion',   nombre:'Ejercicios de definición'},
       {id:'defensa',      nombre:'Ejercicios de defensa'}
     ]},
-  { id:'fisico', nombre:'Ejercicios físicos', emoji:'⚫',
+  { id:'fisico', nombre:'Ejercicios físicos', emoji:icono('rayo'),
     subs:[
       {id:'pasadas', nombre:'Pasadas'}
     ]}
