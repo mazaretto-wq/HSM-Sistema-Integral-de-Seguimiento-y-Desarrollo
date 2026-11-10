@@ -927,6 +927,40 @@ function statsVs(j, anio){
     porPosicion: pjPorPosicionAnio(j.id, anio),
   };
 }
+
+/* ---------- Alertas (Inicio): jugadores que convendría repasar ---------- */
+const ALERTA_MESES_SIN_EVALUAR = 4;
+const ALERTA_AMARILLAS = 3;
+/* fecha de la evaluación más reciente del jugador (de cualquier tipo:
+   físico, técnico o comportamiento), tomada de su toma */
+function ultimaFechaEvaluado(j){
+  const evs = evalsDe(j.id);
+  if (!evs.length) return null;
+  const ultima = evs[evs.length-1];
+  const toma = db.tomas.find(t=>t.id===ultima.tomaId);
+  return (toma && toma.fecha) || ultima.fecha || null;
+}
+function mesesDesde(fechaStr){
+  if (!fechaStr) return Infinity;
+  const f = new Date(fechaStr+'T00:00:00');
+  if (isNaN(f)) return Infinity;
+  const hoyD = new Date();
+  let meses = (hoyD.getFullYear()-f.getFullYear())*12 + (hoyD.getMonth()-f.getMonth());
+  if (hoyD.getDate() < f.getDate()) meses--;
+  return Math.max(0, meses);
+}
+/* lista de motivos de alerta de un jugador (vacía si no tiene ninguno) */
+function alertasDe(j){
+  const motivos = [];
+  const meses = mesesDesde(ultimaFechaEvaluado(j));
+  if (meses >= ALERTA_MESES_SIN_EVALUAR){
+    motivos.push(meses===Infinity ? 'Nunca se evaluó' : `Sin evaluarse hace ${meses} meses`);
+  }
+  const T = totalesTemporada(j.id);
+  if (T.rojas >= 1) motivos.push(`${T.rojas} roja${T.rojas>1?'s':''} esta temporada`);
+  if (T.amarillas >= ALERTA_AMARILLAS) motivos.push(`${T.amarillas} amarillas esta temporada`);
+  return motivos;
+}
 /* última toma que tenga alguno de esos ítems cargados */
 function ultimaCon(id, ids){
   const evs = evalsDe(id);
@@ -960,6 +994,13 @@ function fisicoUltimo(id){
   const evs = evalsDe(id), out = {};
   FISICO.forEach(f=>{ for (let i=evs.length-1;i>=0;i--){
     if (typeof evs[i][f.id]==='number'){ out[f.id]=evs[i][f.id]; break; } } });
+  return out;
+}
+/* último valor de cada ítem técnico-táctico (para el gráfico de telaraña) */
+function tecnicoUltimo(id){
+  const evs = evalsDe(id), out = {};
+  TECNICO.forEach(t=>{ for (let i=evs.length-1;i>=0;i--){
+    if (typeof evs[i][t.id]==='number'){ out[t.id]=evs[i][t.id]; break; } } });
   return out;
 }
 /* goles+asistencias de toda la temporada, sumando todas las categorías del
@@ -1016,6 +1057,38 @@ function svgEvolucion(puntos){
     ${linea('minutos','var(--ink-2)')}
     ${linea('goles','var(--naranja)')}
     ${linea('asistencias','var(--verde)')}
+  </svg>`;
+}
+/* telaraña con las habilidades técnico-tácticas (escala 0-10, un eje por
+   ítem de TECNICO): de un vistazo se ven los puntos fuertes y débiles */
+/* nombres cortos para que no se corten los de los costados (el eje usa
+   el nombre completo en el resto de la app, esto es solo de exhibición) */
+const ETIQUETA_RADAR = { decision:'Decisión' };
+function svgRadarTecnico(valores){
+  const ejes = TECNICO, n = ejes.length;
+  const W=400, H=400, cx=W/2, cy=H/2, R=78;
+  const ang = i => -Math.PI/2 + i*(2*Math.PI/n);
+  const pt = (i, frac) => [cx + Math.cos(ang(i))*R*frac, cy + Math.sin(ang(i))*R*frac];
+
+  const anillos = [.2,.4,.6,.8,1].map(f=>
+    `<polygon points="${ejes.map((_,i)=>pt(i,f).join(',')).join(' ')}" fill="none" stroke="var(--linea)" stroke-width="1"/>`
+  ).join('');
+  const lineasEjes = ejes.map((_,i)=>{ const [x,y]=pt(i,1);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--linea)" stroke-width="1"/>`; }).join('');
+
+  const datoPts = ejes.map((e,i)=> pt(i, Math.max(0, Math.min(1, (valores[e.id]||0)/10)) ));
+  const poligono = `<polygon points="${datoPts.map(p=>p.join(',')).join(' ')}" fill="var(--naranja)" fill-opacity=".2" stroke="var(--naranja)" stroke-width="2" stroke-linejoin="round"/>`;
+  const circulos = ejes.map((e,i)=> typeof valores[e.id]==='number'
+    ? `<circle cx="${datoPts[i][0]}" cy="${datoPts[i][1]}" r="3.5" fill="var(--naranja)"/>` : '').join('');
+
+  const etiquetas = ejes.map((e,i)=>{
+    const [x,y] = pt(i, 1.35), c = Math.cos(ang(i));
+    const anchor = Math.abs(c)<.3 ? 'middle' : (c>0?'start':'end');
+    return `<text x="${x}" y="${y}" font-size="10" fill="var(--ink-2)" text-anchor="${anchor}" dominant-baseline="middle" font-family="var(--mono)">${esc(ETIQUETA_RADAR[e.id]||e.nombre)}</text>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:340px;height:auto;display:block;margin:0 auto">
+    ${anillos}${lineasEjes}${poligono}${circulos}${etiquetas}
   </svg>`;
 }
 
@@ -1219,6 +1292,31 @@ function bloqueRankingInicio(titulo, filasHtml){
        : `<p class="screen-note" style="margin:0">Todavía no hay datos cargados.</p>`)
     + `</div>`;
 }
+/* jugadores para repasar: sin evaluarse hace rato, o con tarjetas
+   acumuladas en la temporada. Solo para coordinación/DT: a un jugador no
+   le sirve ver esto de sus compañeros. */
+/* tarjetas = algo puntual de esta semana/mes, más urgente de mirar que
+   "hace rato no se evalúa" (que es un pendiente de fondo, no una urgencia) */
+const TOPE_ALERTAS = 8;
+function bloqueAlertas(){
+  const conTarjeta = m => m.some(x=>/roja|amarilla/.test(x));
+  const todas = jugadoresParaInicio()
+    .map(j=>({ j, motivos: alertasDe(j) }))
+    .filter(x=>x.motivos.length)
+    .sort((a,b)=> (conTarjeta(b.motivos)-conTarjeta(a.motivos)) || b.motivos.length-a.motivos.length);
+  const filas = todas.slice(0, TOPE_ALERTAS);
+  const filasHtml = filas.map(({j,motivos})=>`<button class="row" data-jugador="${j.id}">
+    ${avatarJugador(j)}
+    <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
+    <span class="row-meta"><span>${esc(motivos.join(' · '))}</span></span></span>
+  </button>`);
+  const titulo = `⚠️ Para repasar${todas.length>TOPE_ALERTAS?` <span>${todas.length} en total</span>`:''}`;
+  return `<div class="dash-title">Alertas</div>
+    <div class="block"><div class="block-title">${titulo}</div>`
+    + (filasHtml.length ? `<div class="roster">${filasHtml.join('')}</div>`
+       : `<p class="screen-note" style="margin:0">Sin alertas por el momento.</p>`)
+    + `</div>`;
+}
 function pantallaInicio(){
   const jugadores = jugadoresParaInicio();
   const conCategoria = !esDT();
@@ -1280,6 +1378,8 @@ function pantallaInicio(){
     </button>`;
   });
   h += `</div>`;
+
+  if (esCoord()||esDT()) h += bloqueAlertas();
 
   h += `<div class="dash-title">Rankings detallados</div><div class="dash-rankings">`;
   h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
@@ -1749,7 +1849,8 @@ function bloqueEstadoActual(j, titulo, items){
     if (f.anterior!=null){
       const dif = f.actual - f.anterior;
       const mejora = f.mejor==='alto' ? dif>0 : dif<0;
-      d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(f.dec)}</span>`;
+      const flecha = dif===0?'→':(mejora?'↑':'↓');
+      d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${flecha} ${dif>0?'+':''}${dif.toFixed(f.dec)}</span>`;
     }
     h += `<tr><td>${etiqueta}</td>
       <td class="val" style="color:${col}">${f.escala?f.actual.toFixed(f.dec):milesFix(f.actual,f.dec)}${d}</td></tr>`;
@@ -2028,6 +2129,13 @@ function fichaJugador(){
         <p class="screen-note" style="margin-top:8px">Promedio de la última toma con datos, sobre 10.</p></div>`;
     }
 
+    const tecUlt = tecnicoUltimo(j.id);
+    if (Object.keys(tecUlt).length){
+      h += `<div class="block"><div class="block-title">🕸️ Perfil técnico-táctico</div>
+        ${svgRadarTecnico(tecUlt)}
+        <p class="screen-note" style="margin-top:8px;text-align:center">Último valor cargado de cada ítem, sobre 10.</p></div>`;
+    }
+
     const mej = aMejorar(j);
     if (mej.length){
       h += `<div class="block"><div class="block-title">📉 Lo que más tiene que mejorar</div>`;
@@ -2131,7 +2239,8 @@ function fichaJugador(){
             if (prev){
               const dif = v - prev[i.id];
               const mejora = i.mejor==='alto' ? dif>0 : dif<0;
-              d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${dif>0?'+':''}${dif.toFixed(i.dec)}</span>`;
+              const flecha = dif===0?'→':(mejora?'↑':'↓');
+              d = `<span class="dlt ${dif===0?'flat':(mejora?'up':'down')}">${flecha} ${dif>0?'+':''}${dif.toFixed(i.dec)}</span>`;
             }
             h += `<td class="val" style="color:${col}">${i.escala?v.toFixed(i.dec):milesFix(v,i.dec)}${d}</td>`;
           });
