@@ -56,6 +56,7 @@ node roles-y-permisos.spec.js
 | `sincronizacion-en-vivo.spec.js` | Que un cambio de otro dispositivo se aplique solo cuando no se está editando nada, quede pendiente (con aviso) si se está editando, y nunca pise el rol/sesión de este dispositivo |
 | `archivar-temporada.spec.js` | Pantalla de Datos: archivar una temporada vieja descarga el CSV, resume partidos/entrenamientos en el historial del jugador, conserva solo la última toma de test físico del año, y no cambia el % de asistencia histórico |
 | `vs-comparar.spec.js` | Solapa Vs (visible para los 3 roles): comparar a dos jugadores en una temporada cada uno, incluida una ya archivada, con los mismos números de partidos, asistencia a entrenos y test físicos que se ven en cada ficha |
+| `pwa.spec.js` | manifest.json y sw.js se sirven bien, las metaetiquetas de instalación están en el `<head>`, el service worker se registra solo, y el banner "Instalar app" se comporta distinto en Android (botón) que en iPhone (aviso de Compartir) |
 
 ## Si agregás una función nueva a la app
 
