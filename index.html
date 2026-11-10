@@ -636,6 +636,32 @@ const TECNICO = [
   {id:'decision',  nombre:'Toma de decisión'},
   {id:'ubicacion', nombre:'Ubicación'}
 ];
+/* cuánto pesa cada ítem técnico-táctico según el puesto: a un delantero
+   no le pesa igual un 1v1 defensivo flojo que a un defensor, y viceversa.
+   Solo afecta el PROMEDIO y "lo que más tiene que mejorar" (un peso 0
+   nunca aparece ahí); el valor cargado se sigue viendo igual en la
+   telaraña y en Detalle/Historial, no se esconde nada.
+   El arquero queda afuera por ahora: ninguno de estos 6 ítems lo
+   describe bien, sería otra planilla aparte. */
+const GRUPO_POSICION = {
+  'Lateral Derecho':'defensor', 'Lateral Izquierdo':'defensor',
+  'Central Derecho':'defensor', 'Central Izquierdo':'defensor',
+  'Mediocampista Defensivo':'mediocampista', 'Mediocampista Interior':'mediocampista',
+  'Volante Derecho':'mediocampista', 'Volante Izquierdo':'mediocampista', 'Enganche':'mediocampista',
+  'Extremo Derecho':'delantero', 'Extremo Izquierdo':'delantero', 'Delantero Centro':'delantero',
+};
+const PESO_TECNICO = {
+  defensor:      {control:1, remate:0,  unoOf:.5, unoDef:1,  decision:1, ubicacion:1},
+  mediocampista: {control:1, remate:1,  unoOf:1,  unoDef:1,  decision:1, ubicacion:1},
+  delantero:     {control:1, remate:1,  unoOf:1,  unoDef:.5, decision:1, ubicacion:1},
+};
+/* peso del ítem para ESTE jugador según su puesto principal; sin grupo
+   (arquero, o sin posición cargada todavía) pesa 1 como siempre */
+function pesoTecnico(j, itemId){
+  const grupo = GRUPO_POSICION[posPrincipal(j)];
+  const p = grupo && PESO_TECNICO[grupo][itemId];
+  return typeof p==='number' ? p : 1;
+}
 const CONDUCTA = [
   {id:'puntualidad', nombre:'Puntualidad'},
   {id:'entrenos',    nombre:'Entrenamientos'},
@@ -800,10 +826,15 @@ function evalsDe(id){
   return db.evaluaciones.filter(e=>e.jugadorId===id).sort((a,b)=>orden.indexOf(a.tomaId)-orden.indexOf(b.tomaId));
 }
 function promedioTecnico(id){
+  const j = db.jugadores.find(x=>x.id===id);
   const evs = evalsDe(id); if(!evs.length) return null;
   for (let i=evs.length-1;i>=0;i--){
-    const v = TECNICO.map(t=>evs[i][t.id]).filter(x=>typeof x==='number');
-    if (v.length) return v.reduce((a,b)=>a+b,0)/v.length;
+    const items = TECNICO.map(t=>({v:evs[i][t.id], w:j?pesoTecnico(j,t.id):1}))
+      .filter(x=>typeof x.v==='number' && x.w>0);
+    if (items.length){
+      const pesos = items.reduce((a,x)=>a+x.w,0);
+      return items.reduce((a,x)=>a+x.v*x.w,0)/pesos;
+    }
   }
   return null;
 }
@@ -977,8 +1008,18 @@ const promedioDe = (id, lista) => {
   const r = ultimaCon(id, lista.map(x=>x.id));
   return r ? r.valores.reduce((a,b)=>a+b,0)/r.valores.length : null;
 };
-/* nota general: promedio de lo técnico-táctico y lo de comportamiento */
-const puntuacion = id => promedioDe(id, [...TECNICO, ...CONDUCTA]);
+/* nota general: promedio de lo técnico-táctico (ponderado por puesto,
+   como promedioTecnico) y lo de comportamiento (sin ponderar) */
+const puntuacion = id => {
+  const j = db.jugadores.find(x=>x.id===id);
+  const r = ultimaCon(id, [...TECNICO.map(x=>x.id), ...CONDUCTA.map(x=>x.id)]);
+  if (!r) return null;
+  const items = [...TECNICO.map(t=>({id:t.id, w:j?pesoTecnico(j,t.id):1})), ...CONDUCTA.map(c=>({id:c.id, w:1}))]
+    .map(x=>({v:r.ev[x.id], w:x.w})).filter(x=>typeof x.v==='number' && x.w>0);
+  if (!items.length) return null;
+  const pesos = items.reduce((a,x)=>a+x.w,0);
+  return items.reduce((a,x)=>a+x.v*x.w,0)/pesos;
+};
 
 /* los ítems más flojos de la última toma */
 function aMejorar(j){
@@ -987,6 +1028,9 @@ function aMejorar(j){
   const r = ultimaCon(j.id, items.map(x=>x.id));
   const out = [];
   if (r) items.forEach(i=>{ const v = r.ev[i.id];
+    /* un ítem que no pesa nada para este puesto (ej.: 1v1 defensivo en
+       un delantero) no tiene sentido como "a mejorar" */
+    if (TECNICO.some(t=>t.id===i.id) && pesoTecnico(j, i.id)===0) return;
     if (typeof v==='number' && v<7) out.push({nombre:i.nombre, valor:v, grupo:i.grupo}); });
   if (j.piernaMala && j.piernaMala<=2)
     out.push({nombre:'Pierna inhábil', valor:j.piernaMala*2, grupo:'Físico', crudo:`${j.piernaMala}/5`});

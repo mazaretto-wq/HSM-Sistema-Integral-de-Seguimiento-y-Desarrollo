@@ -58,7 +58,8 @@ node roles-y-permisos.spec.js
 | `vs-comparar.spec.js` | Solapa Vs (visible para los 3 roles): comparar a dos jugadores en una temporada cada uno, incluida una ya archivada, con los mismos números de partidos, asistencia a entrenos y test físicos que se ven en cada ficha |
 | `pwa.spec.js` | manifest.json y sw.js se sirven bien, las metaetiquetas de instalación están en el `<head>`, el service worker se registra solo, y el banner "Instalar app" se comporta distinto en Android (botón) que en iPhone (aviso de Compartir) |
 | `alertas-radar.spec.js` | Bloque "Para repasar" en Inicio (sin evaluarse hace 4+ meses, 3+ amarillas o 1+ roja; visible para los 3 roles; tope de 8 filas con el total real en el título); gráfico de telaraña del perfil técnico-táctico en la ficha, con el valor de cada ítem y sin que se corte ninguna etiqueta; flechas ↑/↓ en la comparación con la toma anterior |
-| `cargar-evaluacion.spec.js` | "Cargar datos de un jugador": primero pregunta Test Físico o Habilidades (técnico-táctico + comportamiento juntos), la fecha sale con la de hoy por default y cae sola en la toma de ese mes (crea una si hace falta, sin duplicar si ya existe) |
+| `cargar-evaluacion.spec.js` | "Cargar datos de un jugador": primero pregunta Test Físico o Habilidades (técnico-táctico + comportamiento juntos); Test Físico a su vez pregunta uno por uno (Cooper, Yo-Yo, Velocidad); la fecha sale con la de hoy por default y cae sola en la toma de ese mes (crea una si hace falta, sin duplicar si ya existe) |
+| `ponderacion-tecnica.spec.js` | El promedio técnico-táctico y "lo que más tiene que mejorar" ponderan cada ítem según el puesto del jugador (ej.: el remate no le pesa a un defensor); el valor crudo se sigue viendo igual en Detalle y en la telaraña, sin esconder nada |
 
 ## Si agregás una función nueva a la app
 
