@@ -325,13 +325,16 @@ button.dash-card{cursor:pointer}
 /* ---------- ficha del jugador: solapa General en formato tablero ---------- */
 .perfil-grid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:16px}
 .perfil-2col{display:grid;grid-template-columns:1fr;gap:16px}
+.perfil-3col{display:grid;grid-template-columns:1fr;gap:16px}
 /* los ítems de grid no se achican por debajo del contenido (una tabla
    ancha) salvo que se lo digamos: sin esto, una tabla desborda la página
    entera en vez de scrollear solo adentro de su .scroll-x */
-.perfil-grid>*, .perfil-2col>*{min-width:0}
+.perfil-grid>*, .perfil-2col>*, .perfil-3col>*{min-width:0}
+.perfil-3col>.block{margin:0}
 @media (min-width:860px){
   .perfil-grid{grid-template-columns:280px 1fr;align-items:start}
   .perfil-2col{grid-template-columns:1fr 1fr}
+  .perfil-3col{grid-template-columns:1fr 1.2fr 1fr;align-items:start}
 }
 .fisico-tests{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
 .fisico-test{border:1px solid var(--linea);border-radius:var(--r);padding:12px}
@@ -1084,7 +1087,8 @@ function svgRadarTecnico(valores){
   const etiquetas = ejes.map((e,i)=>{
     const [x,y] = pt(i, 1.35), c = Math.cos(ang(i));
     const anchor = Math.abs(c)<.3 ? 'middle' : (c>0?'start':'end');
-    return `<text x="${x}" y="${y}" font-size="10" fill="var(--ink-2)" text-anchor="${anchor}" dominant-baseline="middle" font-family="var(--mono)">${esc(ETIQUETA_RADAR[e.id]||e.nombre)}</text>`;
+    const v = valores[e.id];
+    return `<text x="${x}" y="${y}" font-size="10" fill="var(--ink-2)" text-anchor="${anchor}" dominant-baseline="middle" font-family="var(--mono)">${esc(ETIQUETA_RADAR[e.id]||e.nombre)}<tspan x="${x}" dy="14" font-size="13" font-weight="700" fill="var(--naranja)">${typeof v==='number'?v:'—'}</tspan></text>`;
   }).join('');
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:340px;height:auto;display:block;margin:0 auto">
@@ -1293,8 +1297,9 @@ function bloqueRankingInicio(titulo, filasHtml){
     + `</div>`;
 }
 /* jugadores para repasar: sin evaluarse hace rato, o con tarjetas
-   acumuladas en la temporada. Solo para coordinación/DT: a un jugador no
-   le sirve ver esto de sus compañeros. */
+   acumuladas en la temporada. Visible para los 3 roles, igual que el
+   resto de Inicio (rankings, destacados): nada de esto es más privado
+   que lo que ya se ve ahí. */
 /* tarjetas = algo puntual de esta semana/mes, más urgente de mirar que
    "hace rato no se evalúa" (que es un pendiente de fondo, no una urgencia) */
 const TOPE_ALERTAS = 8;
@@ -1379,7 +1384,7 @@ function pantallaInicio(){
   });
   h += `</div>`;
 
-  if (esCoord()||esDT()) h += bloqueAlertas();
+  h += bloqueAlertas();
 
   h += `<div class="dash-title">Rankings detallados</div><div class="dash-rankings">`;
   h += bloqueRankingInicio('⚽ Más goles', top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
@@ -2114,10 +2119,14 @@ function fichaJugador(){
     h += `</div>`;  /* cierra columna derecha */
     h += `</div>`;  /* cierra perfil-grid */
 
-    /* ---- se mantienen, fuera de la grilla: notas de calidad y datos de origen ---- */
+    /* ---- se mantienen, fuera de la grilla: notas de calidad y datos de
+       origen. Van en una fila de 3 columnas en pantallas anchas (a mejorar ·
+       telaraña · puntuación) para no amontonar todo en una sola columna
+       larguísima; en el celular se apilan como siempre. ---- */
     const g = puntuacion(j.id), tec = promedioTecnico(j.id), con = promedioDe(j.id, CONDUCTA);
+    let bloquePuntuacion = '';
     if (g!==null){
-      h += `<div class="block"><div class="block-title">⚖️ Puntuación</div>
+      bloquePuntuacion = `<div class="block"><div class="block-title">⚖️ Puntuación</div>
         <div class="stat-grid">
           <div class="stat"><div class="stat-label">General</div>
             <div class="stat-value" style="color:${colorSem(g)}">${g.toFixed(1)}</div></div>
@@ -2130,25 +2139,31 @@ function fichaJugador(){
     }
 
     const tecUlt = tecnicoUltimo(j.id);
+    let bloqueRadar = '';
     if (Object.keys(tecUlt).length){
-      h += `<div class="block"><div class="block-title">🕸️ Perfil técnico-táctico</div>
+      bloqueRadar = `<div class="block"><div class="block-title">🕸️ Perfil técnico-táctico</div>
         ${svgRadarTecnico(tecUlt)}
         <p class="screen-note" style="margin-top:8px;text-align:center">Último valor cargado de cada ítem, sobre 10.</p></div>`;
     }
 
     const mej = aMejorar(j);
+    let bloqueMejorar = '';
     if (mej.length){
-      h += `<div class="block"><div class="block-title">📉 Lo que más tiene que mejorar</div>`;
+      bloqueMejorar = `<div class="block"><div class="block-title">📉 Lo que más tiene que mejorar</div>`;
       mej.forEach(m=>{
         const pct = Math.round(m.valor/10*100);
-        h += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        bloqueMejorar += `<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <span style="font-size:13px;width:130px;flex:0 0 130px">${esc(m.nombre)}
             <em style="display:block;font-size:10px;color:var(--ink-2);font-style:normal">${esc(m.grupo)}</em></span>
           <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
             <span style="display:block;height:100%;width:${pct}%;background:${colorSem(m.valor)};border-radius:99px"></span></span>
           <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${colorSem(m.valor)};width:34px;text-align:right">${esc(m.crudo||m.valor)}</span></div>`;
       });
-      h += `<p class="screen-note" style="margin-top:10px">Lo más bajo de la última toma. El detalle completo está en la solapa Detalle.</p></div>`;
+      bloqueMejorar += `<p class="screen-note" style="margin-top:10px">Lo más bajo de la última toma. El detalle completo está en la solapa Detalle.</p></div>`;
+    }
+
+    if (bloqueMejorar || bloqueRadar || bloquePuntuacion){
+      h += `<div class="perfil-3col">${bloqueMejorar}${bloqueRadar}${bloquePuntuacion}</div>`;
     }
 
     if (cats.length>1){

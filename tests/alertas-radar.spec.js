@@ -30,7 +30,7 @@ const datos = await pg.evaluate(()=>{
   const tomaReciente = { id:uid(), nombre:'Hoy', fecha:hoy() };
   db.tomas.push(tomaReciente);
   [sano, conAmarillas, conRoja, evaluadoHaceNada].forEach(id=>{
-    db.evaluaciones.push({ id:uid(), jugadorId:id, tomaId:tomaReciente.id, fecha:hoy(), control:7 });
+    db.evaluaciones.push({ id:uid(), jugadorId:id, tomaId:tomaReciente.id, fecha:hoy(), control:7, remate:5 });
   });
   render();
   return { sano, conAmarillas, conRoja, evaluadoHaceNada };
@@ -79,10 +79,10 @@ t('El título avisa el total real cuando hay más de las que se muestran', titul
 await pg.evaluate((orig)=>{ db.jugadores = orig; render(); }, jugadoresCompletos);
 await pg.waitForTimeout(300);
 
-// ---- jugador (rol de solo lectura) no ve el bloque de alertas ----
+// ---- jugador (rol de solo lectura) también ve el bloque de alertas ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
 await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
-t('El jugador NO ve el bloque de alertas (es para coordinación/DT)', await pg.locator('.block:has-text("Para repasar")').count()===0);
+t('El jugador también ve el bloque de alertas (mismo criterio que el resto de Inicio)', await pg.locator('.block:has-text("Para repasar")').count()===1);
 
 // ---- radar técnico-táctico: visible en General, y con un valor bien a la
 // vista no se corta ningún texto (ancho/alto del chart == lo que entra) ----
@@ -104,6 +104,23 @@ const etiquetasOK = await pg.evaluate(()=>{
   });
 });
 t('Ninguna etiqueta del radar se corta contra el borde del gráfico', etiquetasOK===true, String(etiquetasOK));
+
+// cada eje del radar muestra el valor, no solo el nombre
+const textoRadar = await pg.locator('.block:has-text("Perfil técnico-táctico")').innerText();
+t('El radar muestra el valor de cada ítem junto a su nombre (no solo la forma)',
+  /Control y pase[\s\S]{0,6}7/.test(textoRadar), textoRadar);
+
+// "lo que hay que mejorar" (izquierda) · radar (centro) · puntuación
+// (derecha) van en una sola fila en pantallas anchas, para no obligar a
+// bajar y bajar en vez de leer todo de un vistazo
+const ordenPerfil3col = await pg.evaluate(()=>{
+  const cont = document.querySelector('.perfil-3col');
+  if (!cont) return null;
+  return [...cont.children].map(b => b.querySelector('.block-title')?.textContent.trim());
+});
+t('"Lo que más tiene que mejorar", el radar y "Puntuación" van en una sola fila, en ese orden',
+  !!ordenPerfil3col && /mejorar/i.test(ordenPerfil3col[0]) && /técnico-táctico/i.test(ordenPerfil3col[1]) && /puntuación/i.test(ordenPerfil3col[2]),
+  JSON.stringify(ordenPerfil3col));
 
 // un jugador SIN ninguna evaluación técnico-táctica no muestra el bloque
 const sinNada = await pg.evaluate(()=>{
@@ -134,6 +151,15 @@ await pg.waitForTimeout(300);
 const filaControl = await pg.locator('tr:has-text("Control y pase")').first().innerText();
 t('La mejora de "Control y pase" (4→7) se marca con flecha ↑ hacia arriba', filaControl.includes('↑'), filaControl);
 t('El número de la diferencia sigue mostrándose junto a la flecha', /\+3/.test(filaControl), filaControl);
+
+// la flecha también se ve para el rol jugador (solo lectura): nunca tuvo
+// ninguna restricción de rol, a diferencia de lo que sí pasaba con Alertas
+await pg.click('#salir'); await pg.waitForTimeout(400);
+await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
+await pg.evaluate((id)=>{ view.jugadorId=id; view.fichaTab='detalle'; render(); }, jFlechas);
+await pg.waitForTimeout(300);
+const filaControlJugador = await pg.locator('tr:has-text("Control y pase")').first().innerText();
+t('El jugador (rol de solo lectura) también ve la flecha de la comparación', filaControlJugador.includes('↑'), filaControlJugador);
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
