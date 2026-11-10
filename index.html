@@ -1685,22 +1685,34 @@ function cabeceraVs(j, anio){
   </button>`;
 }
 function pantallaVs(){
-  if (!view.vsA) view.vsA = {id:'', anio:ANIO_ACTUAL};
-  if (!view.vsB) view.vsB = {id:'', anio:ANIO_ACTUAL};
+  if (!view.vsA) view.vsA = {id:'', anio:ANIO_ACTUAL, cat:'Todas'};
+  if (!view.vsB) view.vsB = {id:'', anio:ANIO_ACTUAL, cat:'Todas'};
   const jugadores = jugadoresVisibles().slice().sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
   const jA = db.jugadores.find(x=>x.id===view.vsA.id);
   const jB = db.jugadores.find(x=>x.id===view.vsB.id);
 
-  const selectorLado = (lado, sel, j) => `
+  /* filtro de categoría por lado: el plantel completo es una lista larga
+     para buscar un nombre a ojo, así que cada lado se puede acotar aparte
+     (el DT ya viene acotado a la suya, no tiene sentido mostrarle el filtro) */
+  const cats = catsPermitidas();
+  const selectorLado = (lado, sel, j) => {
+    const catSel = sel.cat || 'Todas';
+    const filtrados = jugadores.filter(x => catSel==='Todas' || (x.categorias||[]).includes(catSel));
+    return `
     <div class="vs-lado">
+      ${cats.length>1 ? `<select data-vscat="${lado}">
+        <option value="Todas" ${catSel==='Todas'?'selected':''}>Todas las categorías</option>
+        ${cats.map(c=>`<option value="${esc(c)}" ${c===catSel?'selected':''}>${esc(c)}</option>`).join('')}
+      </select>` : ''}
       <select data-vsjug="${lado}">
         <option value="">Elegí un jugador…</option>
-        ${jugadores.map(x=>`<option value="${x.id}" ${x.id===sel.id?'selected':''}>${esc(nomb(x))}</option>`).join('')}
+        ${filtrados.map(x=>`<option value="${x.id}" ${x.id===sel.id?'selected':''}>${esc(nomb(x))}</option>`).join('')}
       </select>
       <select data-vsanio="${lado}">
         ${aniosDeJugador(j).map(a=>`<option value="${esc(a)}" ${a===sel.anio?'selected':''}>${esc(a)}</option>`).join('')}
       </select>
     </div>`;
+  };
 
   let h = `<h2 class="screen-title">Vs</h2>
     <p class="screen-note">Compará a dos jugadores en una temporada, o al mismo jugador en dos
@@ -4118,10 +4130,17 @@ app.addEventListener('change', async e=>{
     if (file) subirRutina(file);
   }
   if (e.target.id==='test-fecha'){ view.testFecha = e.target.value; return render(); }
+  if (e.target.hasAttribute('data-vscat')){
+    const lado = e.target.getAttribute('data-vscat');
+    const clave = 'vs'+lado.toUpperCase();
+    view[clave] = { ...view[clave], id:'', cat:e.target.value };
+    return render();
+  }
   if (e.target.hasAttribute('data-vsjug')){
     const lado = e.target.getAttribute('data-vsjug');
+    const clave = 'vs'+lado.toUpperCase();
     const j = db.jugadores.find(x=>x.id===e.target.value);
-    view['vs'+lado.toUpperCase()] = { id:e.target.value, anio: aniosDeJugador(j)[0] };
+    view[clave] = { ...view[clave], id:e.target.value, anio: aniosDeJugador(j)[0] };
     return render();
   }
   if (e.target.hasAttribute('data-vsanio')){

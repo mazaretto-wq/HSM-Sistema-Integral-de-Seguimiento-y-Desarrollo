@@ -20,11 +20,13 @@ t('"Vs" aparece en la barra también para el rol Jugador', await pg.locator('.ta
 const anioViejo = '2024';
 const datos = await pg.evaluate((anio)=>{
   const idA = uid(), idB = uid();
+  const idC = uid();
   db.jugadores.push(
     { id:idA, nombre:'Goleador', apellido:'Uno', categorias:['Juveniles'], historial:[
       { anio, categoria:'Juveniles', pj:10, goles:8, asis:2, min:850, ta:1, tr:0, entrenosFue:18, entrenosTotal:20 }
     ] },
     { id:idB, nombre:'Asistidor', apellido:'Dos', categorias:['Juveniles'] },
+    { id:idC, nombre:'DeOtraCategoria', apellido:'Tres', categorias:['Selección'] },
   );
   // Dos, en la temporada actual, con partidos y un test físico cargados
   db.partidos.push(
@@ -34,12 +36,36 @@ const datos = await pg.evaluate((anio)=>{
   db.tomas.push(toma);
   db.evaluaciones.push({ id:uid(), jugadorId:idB, tomaId:toma.id, fecha:ANIO_ACTUAL+'-03-05', yoyo:1600 });
   render();
-  return { idA, idB, anio };
+  return { idA, idB, idC, anio };
 }, anioViejo);
 
 await pg.evaluate(()=>{ view.tab='vs'; render(); }); await pg.waitForTimeout(300);
 t('La pantalla de Vs muestra los dos selectores de jugador', await pg.locator('[data-vsjug="a"]').count()===1 && await pg.locator('[data-vsjug="b"]').count()===1);
 t('Sin elegir a los dos, pide que se completen ambos', (await pg.locator('#app').innerText()).includes('Elegí los dos jugadores'));
+
+// ---- filtro de categoría por lado, para no tener que buscar a ojo en
+// una lista larga: cada lado se acota por separado ----
+t('Hay un filtro de categoría para cada lado (jugador ve todas, no está acotado como el DT)',
+  await pg.locator('[data-vscat="a"]').count()===1 && await pg.locator('[data-vscat="b"]').count()===1);
+const totalSinFiltro = await pg.locator('[data-vsjug="a"] option').count();
+await pg.selectOption('[data-vsjug="a"]', datos.idA); // elige alguien, antes de filtrar
+await pg.waitForTimeout(300);
+await pg.selectOption('[data-vscat="a"]', 'Selección'); // idA es de Juveniles, no de Selección
+await pg.waitForTimeout(300);
+const soloSeleccion = await pg.evaluate(()=>{
+  const opts = [...document.querySelector('[data-vsjug="a"]').options].slice(1); // sin el placeholder
+  return opts.every(o => (db.jugadores.find(j=>j.id===o.value)?.categorias||[]).includes('Selección'));
+});
+const cantidadSeleccion = await pg.locator('[data-vsjug="a"] option').count();
+t('Filtrar por "Selección" en el lado A deja solo jugadores de esa categoría en el desplegable',
+  soloSeleccion && cantidadSeleccion < totalSinFiltro, `antes=${totalSinFiltro} después=${cantidadSeleccion}`);
+t('El filtro del lado B no se vio afectado por el del lado A (son independientes)',
+  await pg.locator('[data-vsjug="b"] option').count() === totalSinFiltro);
+t('Al cambiar de categoría, el jugador elegido en ese lado se limpia (idA era de Juveniles, quedó afuera del filtro)',
+  await pg.locator('[data-vsjug="a"]').inputValue() === '');
+
+await pg.selectOption('[data-vscat="a"]', 'Todas');
+await pg.waitForTimeout(300);
 
 await pg.selectOption('[data-vsjug="a"]', datos.idA);
 await pg.selectOption('[data-vsanio="a"]', datos.anio);
@@ -76,6 +102,15 @@ t('Al cambiar de jugador en A, el año se resetea a la temporada actual', anioSe
 // ---- clickear el encabezado de un jugador comparado abre su ficha ----
 await pg.click('.vs-jug[data-jugador]'); await pg.waitForTimeout(300);
 t('Tocar el nombre de un jugador comparado abre su ficha', await pg.locator('.ficha-name').count()>0);
+
+// ---- DT: ya viene acotado a su categoría en todo lo demás, así que el
+// filtro de categoría en Vs no le aporta nada y no se le muestra ----
+await pg.click('#salir'); await pg.waitForTimeout(400);
+await pg.click('#ac-dt'); await pg.waitForTimeout(300);
+await pg.selectOption('#ac-cat','Juveniles');
+await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await pg.evaluate(()=>{ view.tab='vs'; render(); }); await pg.waitForTimeout(300);
+t('El DT (ya acotado a su categoría) no ve el filtro de categoría en Vs', await pg.locator('[data-vscat="a"]').count()===0);
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
