@@ -437,6 +437,10 @@ button.dash-card{cursor:pointer}
 <symbol id="ic-cerrar" viewBox="0 0 24 24">
   <path d="M5 5l14 14M19 5L5 19"/>
 </symbol>
+<symbol id="ic-cruz" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="9"/>
+  <path d="M12 8v8M8 12h8"/>
+</symbol>
 </defs>
 </svg>
 
@@ -769,6 +773,10 @@ const CONDUCTA = [
   {id:'actitud',     nombre:'Actitud y compromiso'}
 ];
 
+const TIPOS_LESION = ['Muscular','Articular / ligamentaria','Ósea / fractura','Tendinosa','Contusión','Otra'];
+const PARTES_CUERPO = ['Tobillo','Rodilla','Isquiotibiales','Cuádriceps','Gemelo / pantorrilla','Aductores',
+  'Pie','Cadera','Columna / espalda','Hombro','Codo / muñeca','Otra'];
+
 const FORMACIONES = {
   '4-3-3':[['Arquero',50,92],['Lateral Izquierdo',15,74],['Central Izquierdo',38,79],['Central Derecho',62,79],['Lateral Derecho',85,74],
            ['Mediocampista Interior',28,54],['Mediocampista Defensivo',50,62],['Mediocampista Interior',72,54],
@@ -810,7 +818,7 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
    calma son trabajo físico general, el resto se hace con pelota */
 const grupoDeFase = id => (id==='fisico'||id==='activacion'||id==='vuelta') ? 'fisico' : 'pelota';
 
-let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, config:{rol:'Coordinador', categoriaDT:'', acceso:null} };
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], config:{rol:'Coordinador', categoriaDT:'', acceso:null} };
 
 /* Respaldo para cuando Firebase no carga. NO es la contraseña de coordinación:
    esa la valida Firebase y no está en este archivo. Esta solo permite editar en
@@ -826,7 +834,8 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
-             pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null };
+             pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
+             lesionForm:false };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -957,6 +966,22 @@ function historialTotal(j){
 function partidosDe(id, cat){
   return db.partidos.filter(p=>p.jugadorId===id && (!cat||cat==='Todas'||p.categoria===cat));
 }
+/* ---------- Lesiones ---------- */
+function lesionesDe(id){
+  return db.lesiones.filter(l=>l.jugadorId===id).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+}
+function diasEntre(f1, f2){
+  const a = new Date(f1+'T00:00:00'), b = new Date(f2+'T00:00:00');
+  if (isNaN(a)||isNaN(b)) return null;
+  return Math.round((b-a)/86400000);
+}
+function fechaMasDias(fecha, dias){
+  const d = new Date(fecha+'T00:00:00');
+  if (isNaN(d)) return null;
+  d.setDate(d.getDate()+Number(dias));
+  return d.toISOString().slice(0,10);
+}
+const fechaCorta = f => f ? f.slice(8,10)+'/'+f.slice(5,7)+'/'+f.slice(0,4) : '—';
 function baseCat(j, cat){
   const filas = (j && j.base || []).filter(b=>!cat||cat==='Todas'||b.categoria===cat);
   return filas.reduce((a,b)=>({pj:a.pj+(b.pj||0), goles:a.goles+(b.goles||0),
@@ -2113,14 +2138,14 @@ async function guardarValoresTestFisico(){
 }
 
 /* ---------- FICHA DEL JUGADOR: General (tablero), Detalle (estado
-   actual) e Historial (toma a toma) ---------- */
+   actual), Historial (toma a toma) y Lesiones (seguimiento de bajas) ---------- */
 function fichaJugador(){
   const j = db.jugadores.find(x=>x.id===view.jugadorId);
   if (!j){ view.jugadorId=null; return render(); }
   const e = edad(j.fechaNac), evs = evalsDe(j.id);
   const cats = (j.categorias||[]);
   const tab = view.fichaTab || 'general';
-  const SOLAPAS = [['general','General'],['detalle','Detalle'],['historial','Historial']];
+  const SOLAPAS = [['general','General'],['detalle','Detalle'],['historial','Historial'],['lesiones','Lesiones']];
 
   const fotoAcciones = () => esCoord()?`<div class="ficha-foto-acciones">
     <button class="linkish" data-foto-jugador="${j.id}">${fotoDe(j)?'Cambiar foto':'Agregar foto'}</button>
@@ -2429,14 +2454,74 @@ function fichaJugador(){
     }
   }
 
+  /* ===================== LESIONES: cargar una baja y, una vez que el
+     jugador vuelve, comparar el tiempo previsto de recuperación contra
+     el real ===================== */
+  if (tab==='lesiones'){
+    if (view.lesionForm){
+      h += `<div class="block"><div class="block-title">${icono('cruz')} Cargar lesión</div>
+        <div class="field"><label class="label" for="l-fecha">Fecha de la lesión</label>
+          <input type="date" id="l-fecha" value="${esc(hoy())}"></div>
+        <div class="field"><label class="label" for="l-tipo">Tipo de lesión</label>
+          <select id="l-tipo">${TIPOS_LESION.map(t=>`<option>${esc(t)}</option>`).join('')}</select></div>
+        <div class="field"><label class="label" for="l-parte">Parte del cuerpo</label>
+          <select id="l-parte">${PARTES_CUERPO.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
+        <div class="field"><label class="label" for="l-dias">Tiempo previsto de vuelta<em>días</em></label>
+          <input type="number" inputmode="numeric" min="1" step="1" id="l-dias" placeholder="ej: 15"></div>
+        <button class="btn btn-naranja" data-guardar="lesion">Guardar</button>
+        <div class="gap"></div><button class="btn btn-ghost" data-lesionCancelar="1">Cancelar</button></div>`;
+    } else {
+      const lesiones = lesionesDe(j.id);
+      h += `<div class="block"><div class="block-title">${icono('cruz')} Lesiones</div>`;
+      if (puedeEditar()) h += `<button class="btn btn-naranja" data-lesionForm="1">Cargar lesión</button><div class="gap"></div>`;
+      if (!lesiones.length){
+        h += `<div class="empty"><p>Sin lesiones registradas.</p></div>`;
+      } else {
+        h += `<div class="scroll-x"><table class="cmp"><thead><tr>
+          <th>Fecha</th><th>Tipo</th><th>Parte</th><th>Vuelta prevista</th><th>Vuelta real</th><th>Dif.</th>
+          ${puedeEditar()?'<th></th>':''}</tr></thead><tbody>`;
+        lesiones.forEach(l=>{
+          const prevista = fechaMasDias(l.fecha, l.diasPrevistos);
+          let colReal, colDif;
+          if (l.fechaVuelta){
+            const diasReales = diasEntre(l.fecha, l.fechaVuelta);
+            const dif = diasReales - l.diasPrevistos;
+            const col = dif<=0 ? 'var(--verde)' : 'var(--rojo)';
+            colReal = `${fechaCorta(l.fechaVuelta)} <span class="flat" style="font-family:var(--mono);font-size:10px">(${diasReales} d)</span>`;
+            colDif = `<span style="color:${col};font-weight:600">${dif===0?'a tiempo':(dif>0?'+':'')+dif+' d'}</span>`;
+          } else if (puedeEditar()) {
+            colReal = `<div style="display:flex;gap:4px;align-items:center;white-space:nowrap">
+              <input type="date" id="v-vuelta-${l.id}" value="${esc(hoy())}" style="width:120px;padding:4px 6px;font-size:12px">
+              <button class="linkish" data-registrarVuelta="${l.id}">Registrar</button></div>`;
+            colDif = `<span class="pill" style="border-color:var(--ambar);color:var(--ambar)">En curso</span>`;
+          } else {
+            colReal = '—';
+            colDif = `<span class="pill" style="border-color:var(--ambar);color:var(--ambar)">En curso</span>`;
+          }
+          h += `<tr>
+            <td>${fechaCorta(l.fecha)}</td>
+            <td>${esc(l.tipo)}</td>
+            <td>${esc(l.parte)}</td>
+            <td>${fechaCorta(prevista)} <span class="flat" style="font-family:var(--mono);font-size:10px">(${l.diasPrevistos} d)</span></td>
+            <td>${colReal}</td>
+            <td>${colDif}</td>
+            ${puedeEditar()?`<td><button class="linkish" style="color:var(--rojo)" data-borrarLesion="${l.id}">Eliminar</button></td>`:''}
+          </tr>`;
+        });
+        h += `</tbody></table></div>`;
+      }
+      h += `</div>`;
+    }
+  }
+
   if (view.fichaEditando){
     h += `<div class="block"><button class="btn btn-naranja" id="guardarEdicionFicha">Guardar cambios</button>
       <div class="gap"></div><button class="btn btn-ghost" data-cancelarEdicionFicha="1">Cancelar</button></div>`;
-  } else {
+  } else if (!view.lesionForm) {
     h += `<div class="block"><button class="btn btn-ghost" data-pdf="${j.id}">Descargar ficha en PDF</button></div>`;
   }
 
-  if (puedeEditar() && !view.fichaEditando) h += `<div class="block">
+  if (puedeEditar() && !view.fichaEditando && !view.lesionForm) h += `<div class="block">
     <button class="btn btn-naranja" data-go="cargarPara">Cargar datos de ${esc(j.nombre||j.apellido)}</button>
     <div class="gap"></div><button class="btn btn-ghost" data-editar="${j.id}">Editar datos del jugador</button>
     ${esCoord()&&(tab==='detalle'||tab==='historial')?`<div class="gap"></div><button class="btn btn-ghost" data-editarFicha="1">Corregir valores de esta solapa</button>`:''}
@@ -4084,7 +4169,7 @@ async function guardarEjercicio(){
 function pantallaDatos(){
   const c = db.config;
   app.innerHTML = `<h2 class="screen-title">Datos</h2>
-    <p class="screen-note">${db.jugadores.length} jugadores · ${db.evaluaciones.length} evaluaciones · ${db.partidos.length} partidos</p>
+    <p class="screen-note">${db.jugadores.length} jugadores · ${db.evaluaciones.length} evaluaciones · ${db.partidos.length} partidos · ${db.lesiones.length} lesiones</p>
     <div class="block"><div class="block-title">Panel</div>
       <div class="field"><span class="label">Ver como</span>
         <div class="chips" data-toggle="rol">
@@ -4114,7 +4199,8 @@ function pantallaDatos(){
     <div class="block"><div class="block-title">Exportar</div>
       <button class="btn btn-ghost" data-csv="jugadores">CSV de jugadores</button><div class="gap"></div>
       <button class="btn btn-ghost" data-csv="evaluaciones">CSV de evaluaciones</button><div class="gap"></div>
-      <button class="btn btn-ghost" data-csv="partidos">CSV de partidos</button>
+      <button class="btn btn-ghost" data-csv="partidos">CSV de partidos</button><div class="gap"></div>
+      <button class="btn btn-ghost" data-csv="lesiones">CSV de lesiones</button>
     </div>
     <div class="block"><div class="block-title">Archivar temporada</div>
       <p class="screen-note">Resume en un total anual los partidos, tests físicos y entrenamientos de
@@ -4402,9 +4488,9 @@ app.addEventListener('click', async e=>{
   if (chipOrden){ view.orden=chipOrden.dataset.orden; window.scrollTo(0,0); return render(); }
 
   const chipFicha = t.closest('.chip[data-ficha]');
-  if (chipFicha){ view.fichaTab=chipFicha.dataset.ficha; window.scrollTo(0,0); return render(); }
+  if (chipFicha){ view.fichaTab=chipFicha.dataset.ficha; view.lesionForm=false; window.scrollTo(0,0); return render(); }
   const irFichaTab = t.closest('[data-irFichaTab]');
-  if (irFichaTab){ view.fichaTab=irFichaTab.dataset.irfichatab; window.scrollTo(0,0); return render(); }
+  if (irFichaTab){ view.fichaTab=irFichaTab.dataset.irfichatab; view.lesionForm=false; window.scrollTo(0,0); return render(); }
   const chipMetrica = t.closest('[data-fichaMetric]');
   if (chipMetrica){ view.fichaDetalleMetric=chipMetrica.dataset.fichametric; return render(); }
 
@@ -4514,10 +4600,10 @@ app.addEventListener('click', async e=>{
   }
 
   const row = t.closest('[data-jugador]');
-  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; view.fichaDetalleMetric='pj'; window.scrollTo(0,0); return render(); }
+  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; view.fichaDetalleMetric='pj'; view.lesionForm=false; window.scrollTo(0,0); return render(); }
 
   if (t.closest('[data-back]')){
-    if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; }
+    if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; view.lesionForm=false; }
     else if (view.categoriaAjena) view.categoriaAjena=null;
     else if (view.testRegistrando){ view.testRegistrando=false; view.testValores={}; }
     else if (view.testToma) view.testToma=null;
@@ -4580,6 +4666,7 @@ app.addEventListener('click', async e=>{
   if (t.id==='guardarPartidoPlantel'){ return guardarPartidoPlantel(); }
 
   const g = t.closest('[data-guardar]');
+  if (g && g.dataset.guardar==='lesion') return guardarLesion();
   if (g){ return guardarRegistro(g.dataset.guardar); }
 
   const pdf = t.closest('[data-pdf]');
@@ -4642,6 +4729,30 @@ app.addEventListener('click', async e=>{
   }
   if (t.id==='guardarEdicionFicha'){ return guardarEdicionFicha(); }
 
+  if (t.closest('[data-lesionForm]') && puedeEditar()){
+    view.lesionForm=true; window.scrollTo(0,0); return render();
+  }
+  if (t.closest('[data-lesionCancelar]')){
+    view.lesionForm=false; window.scrollTo(0,0); return render();
+  }
+  const regVuelta = t.closest('[data-registrarVuelta]');
+  if (regVuelta && puedeEditar()){
+    const id = regVuelta.dataset.registrarvuelta;
+    const l = db.lesiones.find(x=>x.id===id);
+    const input = document.getElementById('v-vuelta-'+id);
+    const fechaVuelta = input && input.value;
+    if (!l || !fechaVuelta) return toast('Elegí la fecha de vuelta');
+    if (fechaVuelta < l.fecha) return toast('La vuelta no puede ser antes de la fecha de la lesión');
+    l.fechaVuelta = fechaVuelta;
+    await Store.save(db); toast('Vuelta registrada'); return render();
+  }
+  const delLesion = t.closest('[data-borrarLesion]');
+  if (delLesion && puedeEditar()){
+    if (!confirm('¿Eliminar este registro de lesión?')) return;
+    db.lesiones = db.lesiones.filter(x=>x.id!==delLesion.dataset.borrarlesion);
+    await Store.save(db); toast('Lesión eliminada'); return render();
+  }
+
   const ed = t.closest('[data-editar]');
   if (ed){
     view.editJugador = ed.dataset.editar; view.jugadorId = null;
@@ -4657,11 +4768,12 @@ app.addEventListener('click', async e=>{
     db.jugadores = db.jugadores.filter(x=>x.id!==id);
     db.evaluaciones = db.evaluaciones.filter(r=>r.jugadorId!==id);
     db.partidos = db.partidos.filter(r=>r.jugadorId!==id);
+    db.lesiones = db.lesiones.filter(r=>r.jugadorId!==id);
     await Store.save(db); view.jugadorId=null; toast('Jugador eliminado'); return render();
   }
   if (t.id==='borrarTodo'){
     if (!confirm('Se borra todo. ¿Seguro?')) return;
-    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], config:db.config };
+    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], config:db.config };
     await Store.save(db); toast('Datos borrados'); return render();
   }
   const csv = t.closest('[data-csv]');
@@ -4744,6 +4856,21 @@ async function guardarRegistro(tipo){
     view.jugadorSel=jugadorId; view.evalFecha=fecha; view.evalFisico=null; formEvaluacion(); window.scrollTo(0,0); return;
   }
 
+}
+
+async function guardarLesion(){
+  const j = db.jugadores.find(x=>x.id===view.jugadorId);
+  if (!j) return;
+  const fecha = document.getElementById('l-fecha').value || hoy();
+  const tipo = document.getElementById('l-tipo').value;
+  const parte = document.getElementById('l-parte').value;
+  const dias = leerNum('l-dias');
+  if (!dias || dias<1) return toast('Ingresá el tiempo previsto de vuelta, en días');
+  db.lesiones.push({ id:uid(), jugadorId:j.id, fecha, tipo, parte, diasPrevistos:dias, fechaVuelta:null });
+  await Store.save(db);
+  view.lesionForm = false;
+  toast('Lesión cargada · '+nomb(j));
+  render();
 }
 
 /* ---------- CSV ---------- */

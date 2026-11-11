@@ -62,6 +62,7 @@ node roles-y-permisos.spec.js
 | `alertas-radar.spec.js` | Bloque "Para repasar" en Inicio (sin evaluarse hace 4+ meses, 3+ amarillas o 1+ roja; visible para los 3 roles; tope de 8 filas con el total real en el título); gráfico de telaraña del perfil técnico-táctico en la ficha, con el valor de cada ítem y sin que se corte ninguna etiqueta; flechas ↑/↓ en la comparación con la toma anterior |
 | `cargar-evaluacion.spec.js` | "Cargar datos de un jugador": primero pregunta Test Físico o Habilidades (técnico-táctico + comportamiento juntos); Test Físico a su vez pregunta uno por uno (Cooper, Yo-Yo, Velocidad); la fecha sale con la de hoy por default y cae sola en la toma de ese mes (crea una si hace falta, sin duplicar si ya existe) |
 | `ponderacion-tecnica.spec.js` | El promedio técnico-táctico y "lo que más tiene que mejorar" ponderan cada ítem según el puesto del jugador (ej.: el remate no le pesa a un defensor); el valor crudo se sigue viendo igual en Detalle y en la telaraña, sin esconder nada |
+| `lesiones.spec.js` | Solapa "Lesiones" de la ficha: coordinación/DT cargan tipo, parte del cuerpo, fecha y tiempo previsto de vuelta; al registrar la vuelta real se compara contra lo previsto (en rojo si se pasó, en verde si volvió antes); el rol Jugador solo mira, sin botones de carga/edición; eliminar un jugador borra también sus lesiones |
 
 ## Si agregás una función nueva a la app
 

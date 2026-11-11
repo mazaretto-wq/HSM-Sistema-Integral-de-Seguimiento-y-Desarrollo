@@ -54,7 +54,7 @@ const jugId = await pg.evaluate(()=>{
 await pg.evaluate((id)=>{ view.jugadorId=id; view.tab='plantel'; render(); }, jugId);
 await pg.waitForTimeout(400);
 const chips = await pg.locator('.chips').first().locator('.chip').allInnerTexts();
-t('La ficha tiene 3 solapas: General, Detalle, Historial', chips.length===3);
+t('La ficha tiene 4 solapas: General, Detalle, Historial, Lesiones', chips.length===4, JSON.stringify(chips));
 await pg.click('.chip[data-ficha="detalle"]'); await pg.waitForTimeout(300);
 t('Aparece "Corregir valores de esta solapa"', (await pg.locator('[data-editarFicha]').count())===1);
 await pg.click('[data-editarFicha]'); await pg.waitForTimeout(300);
