@@ -441,6 +441,11 @@ button.dash-card{cursor:pointer}
   <circle cx="12" cy="12" r="9"/>
   <path d="M12 8v8M8 12h8"/>
 </symbol>
+<symbol id="ic-cancha" viewBox="0 0 24 24">
+  <rect x="2.5" y="4" width="19" height="16" rx="1.5"/>
+  <path d="M2.5 12h19"/>
+  <circle cx="12" cy="12" r="3.3"/>
+</symbol>
 </defs>
 </svg>
 
@@ -831,7 +836,7 @@ const puedeEditar = () => esCoord() || esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
@@ -1016,6 +1021,33 @@ function totales(id, cat){
     pj:a.pj+(p.jugo?1:0), goles:a.goles+(p.goles||0), asistencias:a.asistencias+(p.asistencias||0),
     minutos:a.minutos+(p.minutos||0), amarillas:a.amarillas+(p.amarillas||0), rojas:a.rojas+(p.rojas||0)
   }),{pj:0,goles:0,asistencias:0,minutos:0,amarillas:0,rojas:0});
+}
+/* ---------- Esquemas: qué formación se usó en cada partido. El valor
+   se guarda repetido en la fila de cada jugador de ese partido (igual
+   que ya pasa con fecha/categoría/rival), así que para contar
+   partidos hay que agrupar primero por fecha+categoría+rival ---------- */
+function partidosPorEsquema(cat){
+  const vistos = new Map();
+  db.partidos.forEach(p=>{
+    if (cat && cat!=='Todas' && p.categoria!==cat) return;
+    if (!p.esquema || !p.fecha || !p.fecha.startsWith(ANIO_ACTUAL)) return;
+    const key = p.fecha+'|'+p.categoria+'|'+(p.rival||'');
+    if (!vistos.has(key)) vistos.set(key, p.esquema);
+  });
+  return [...vistos.values()];
+}
+/* ranking de esquemas usados esta temporada, el más usado primero */
+function esquemasDeLaTemporada(cat){
+  const usados = partidosPorEsquema(cat);
+  const conteo = {};
+  usados.forEach(e=>conteo[e]=(conteo[e]||0)+1);
+  return Object.entries(conteo).sort((a,b)=>b[1]-a[1]).map(([esquema,n])=>({esquema,n}));
+}
+/* el esquema del partido más reciente de esa categoría: sirve de default
+   al cargar uno nuevo, para no tener que elegirlo partido a partido */
+function ultimoEsquemaDe(cat){
+  const filas = db.partidos.filter(p=>p.categoria===cat && p.esquema && p.fecha).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  return filas.length ? filas[filas.length-1].esquema : null;
 }
 /* asistencia acumulada: solo cuenta sesiones donde se pasó lista */
 function asistenciaDe(id){
@@ -1584,6 +1616,24 @@ function pantallaInicio(){
   app.innerHTML = h;
 }
 
+/* esquema(s) más usado(s) en los partidos de una categoría puntual esta
+   temporada: se arma en base a lo cargado en "Partido" (ver formPartido) */
+function bloqueEsquemas(cat){
+  const ranking = esquemasDeLaTemporada(cat);
+  const total = ranking.reduce((a,r)=>a+r.n,0);
+  if (!total) return '';
+  const max = ranking[0].n;
+  return `<div class="block"><div class="block-title">${icono('cancha')} Esquema más usado</div>
+    ${ranking.map(r=>`<div class="bar-row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:13px;width:66px;flex:0 0 66px;font-family:var(--mono)">${esc(r.esquema)}</span>
+      <span style="flex:1;height:8px;background:var(--wash);border-radius:99px;overflow:hidden">
+        <span style="display:block;height:100%;width:${Math.round(r.n/max*100)}%;background:var(--naranja);border-radius:99px"></span></span>
+      <span style="font-family:var(--mono);font-size:12px;font-weight:600;width:84px;text-align:right">${r.n} PJ · ${Math.round(r.n/total*100)}%</span>
+    </div>`).join('')}
+    <p class="screen-note" style="margin-top:4px">Sobre ${total} partido${total>1?'s':''} de ${esc(cat)} en ${ANIO_ACTUAL} con esquema cargado.</p>
+  </div>`;
+}
+
 /* ---------- PLANTEL ---------- */
 function pantallaPlantel(){
   const cats = catsPermitidas();
@@ -1608,6 +1658,8 @@ function pantallaPlantel(){
       <p class="screen-note" style="margin:0">La app trae más datos embebidos que todavía no están en esta base.</p>
       ${pendientes}</div>`;
   }
+
+  if (view.categoria!=='Todas') h += bloqueEsquemas(view.categoria);
 
   if (!db.jugadores.length && !esCoord()){
     h += `<div class="empty"><p>Todavía no hay datos cargados. Pedile a coordinación que los cargue.</p></div>`;
@@ -3084,6 +3136,7 @@ function formPartido(){
   const cat = view.partidoCat;
   const plantel = planteldeCategoria(cat);
   const fecha = view.partidoFecha || hoy();
+  const esquema = view.partidoEsquema || ultimoEsquemaDe(cat) || Object.keys(FORMACIONES)[0];
   const celda = (j,campo)=>`<td><input type="number" inputmode="numeric" min="0"
     data-jug="${j.id}" data-campo="${campo}" placeholder="0"></td>`;
 
@@ -3093,6 +3146,8 @@ function formPartido(){
     los que queden en 0 minutos figuran como que no jugaron.</p>
     <div class="field"><label class="label" for="p-cat">Categoría</label>
       <select id="p-cat">${cats.map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="field"><label class="label" for="p-esquema">Esquema<em>para el reporte de uso por categoría</em></label>
+      <select id="p-esquema">${Object.keys(FORMACIONES).map(f=>`<option ${f===esquema?'selected':''}>${esc(f)}</option>`).join('')}</select></div>
     <div class="two">
       <div class="field"><label class="label" for="p-fecha">Fecha</label>
         <input type="date" id="p-fecha" value="${esc(fecha)}"></div>
@@ -3122,6 +3177,7 @@ async function guardarPartidoPlantel(){
   const cat = document.getElementById('p-cat').value;
   const fecha = document.getElementById('p-fecha').value || hoy();
   const rival = document.getElementById('p-rival').value.trim();
+  const esquema = document.getElementById('p-esquema').value;
   const plantel = planteldeCategoria(cat);
   if (!plantel.length) return toast('No hay jugadores en '+cat);
 
@@ -3147,13 +3203,13 @@ async function guardarPartidoPlantel(){
     db.partidos = db.partidos.filter(p=>!mismo(p));
   }
   db.config.ultimaCatPartido = cat;
-  filas.forEach(f=>db.partidos.push({ id:uid(), jugadorId:f.id, fecha, categoria:cat,
+  filas.forEach(f=>db.partidos.push({ id:uid(), jugadorId:f.id, fecha, categoria:cat, esquema,
     posicion:f.posicion, rival, jugo:f.minutos>0, goles:f.goles, asistencias:f.asistencias,
     minutos:f.minutos, amarillas:f.amarillas, rojas:f.rojas }));
 
   await Store.save(db);
   toast(`Partido guardado · jugaron ${jugaron} de ${filas.length}`);
-  view.partidoFecha=null; view.partidoRival=''; view.form=null;
+  view.partidoFecha=null; view.partidoRival=''; view.partidoEsquema=null; view.form=null;
   window.scrollTo(0,0); render();
 }
 
@@ -4279,7 +4335,7 @@ app.addEventListener('change', async e=>{
   if (e.target.id==='p-cat'){
     const f=document.getElementById('p-fecha'), r=document.getElementById('p-rival');
     view.partidoFecha = f?f.value:null; view.partidoRival = r?r.value:'';
-    view.partidoCat = e.target.value; return render();
+    view.partidoCat = e.target.value; view.partidoEsquema = null; return render();
   }
   if (e.target.id==='f-jugador'){
     view.jugadorSel = e.target.value;
