@@ -44,7 +44,7 @@ node roles-y-permisos.spec.js
 | Archivo | Qué prueba |
 |---|---|
 | `roles-y-permisos.spec.js` | Permisos básicos de los 3 roles (coordinación/DT/jugador), edición de ficha, subida de foto con resguardo local, agrupación de ejercicios, herramientas de la pizarra |
-| `categorias-y-rutinas.spec.js` | Pantalla de Categorías (entrar a la propia / mirar una ajena) y Rutinas (cargar, ver por categoría, resguardo local) |
+| `categorias-y-rutinas.spec.js` | Pantalla de Categorías (entrar a la propia / mirar una ajena) y Rutinas (cargar, ver por categoría, resguardo local); un jugador identificado por DNI cae directo en la rutina de su categoría, sin selector y sin ver las de otras, pero sigue viendo todas las categorías en el resto de la app (Plantel, etc.) |
 | `test-fisicos-flujo.spec.js` | Flujo completo de Test Físicos: registrar una toma, que quede en `evaluaciones`/`tomas` (sin duplicar), verlo en la ficha |
 | `test-fisicos-toma-detalle.spec.js` | Entrar a una toma puntual de un test físico y ver el resultado de cada jugador |
 | `inicio-nav-y-landing.spec.js` | Navegación por rol (qué solapas ve cada uno) y que todos aterricen en Inicio |
@@ -64,6 +64,7 @@ node roles-y-permisos.spec.js
 | `ponderacion-tecnica.spec.js` | El promedio técnico-táctico y "lo que más tiene que mejorar" ponderan cada ítem según el puesto del jugador (ej.: el remate no le pesa a un defensor); el valor crudo se sigue viendo igual en Detalle y en la telaraña, sin esconder nada |
 | `lesiones.spec.js` | Solapa "Lesiones" de la ficha: coordinación/DT cargan tipo, parte del cuerpo, fecha y tiempo previsto de vuelta; al registrar la vuelta real se compara contra lo previsto (en rojo si se pasó, en verde si volvió antes); el rol Jugador solo mira, sin botones de carga/edición; eliminar un jugador borra también sus lesiones |
 | `partido-esquema.spec.js` | El formulario de "Partido" pide el esquema usado (además del puesto de cada jugador, que ya existía) y sugiere solo el último usado en esa categoría; en Plantel, al entrar a una categoría puntual, se ve "Esquema más usado" con el ranking y el % de esta temporada (no se muestra en "Todas") |
+| `acceso-dni-jugador.spec.js` | "Soy jugador" pide el DNI (sin contraseña) en vez de entrar directo; no deja entrar con un DNI que no está cargado en ningún jugador; coordinación carga el DNI desde la ficha del jugador, y no deja cargar el mismo DNI en dos jugadores distintos; con el DNI correcto entra y queda atado a la categoría de ese jugador |
 
 ## Si agregás una función nueva a la app
 

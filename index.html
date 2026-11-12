@@ -823,7 +823,7 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
    calma son trabajo físico general, el resto se hace con pelota */
 const grupoDeFase = id => (id==='fisico'||id==='activacion'||id==='vuelta') ? 'fisico' : 'pelota';
 
-let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], config:{rol:'Coordinador', categoriaDT:'', acceso:null} };
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
 
 /* Respaldo para cuando Firebase no carga. NO es la contraseña de coordinación:
    esa la valida Firebase y no está en este archivo. Esta solo permite editar en
@@ -833,10 +833,11 @@ const esCoord = () => db.config.acceso === 'coordinacion';
 const esDT    = () => db.config.acceso === 'dt';
 /* el DT edita, pero catsPermitidas() lo deja solo dentro de su categoría */
 const puedeEditar = () => esCoord() || esDT();
+const esJugador = () => !esCoord() && !esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dtCat:null, fondoHome:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtCat:null, fondoHome:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
@@ -1344,7 +1345,7 @@ function pantallaAcceso(){
       <div class="home-roles">
         <button class="opt" id="ac-jugador">
           <strong>Soy jugador</strong>
-          <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña.':' Sin contraseña.'}</span></button>
+          <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña y después tu DNI.':' Pide tu DNI, sin contraseña.'}</span></button>
         <button class="opt" id="ac-dt">
           <strong>Soy DT</strong>
           <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide contraseña.</span></button>
@@ -1372,10 +1373,19 @@ function pantallaAcceso(){
         <div class="gap"></div><button class="btn btn-ghost" id="ac-volver">Volver</button>
       </div>`
     : view.puerta==='coord' ? formLogin('Coordinación','')
+    : view.puerta==='jugadorDni' ? `
+      <div class="block"><div class="block-title">Jugadores</div>
+        <p class="screen-note" style="margin-top:0">Ingresá tu DNI para entrar directo a tu categoría (en Rutinas, por ejemplo).</p>
+        <div class="field"><label class="label" for="ac-dni">DNI</label>
+          <input type="text" inputmode="numeric" id="ac-dni" placeholder="sin puntos"></div>
+        ${view.dniMal?`<p class="screen-note" style="color:var(--rojo);margin-top:-6px">${esc(view.dniMal)}</p>`:''}
+        <button class="btn btn-naranja" id="ac-dni-entrar">Entrar</button>
+        <div class="gap"></div><button class="btn btn-ghost" id="ac-volver">Volver</button>
+      </div>`
     : formLogin('Jugadores','Pedile la contraseña a coordinación.')
       + `<div class="gap"></div><button class="btn btn-ghost" id="ac-local">Ver sin conexión</button>`}
   </div>`;
-  const inp = document.getElementById('ac-clave');
+  const inp = document.getElementById('ac-clave') || document.getElementById('ac-dni');
   if (inp) inp.focus();
 }
 
@@ -1409,10 +1419,28 @@ async function entrar(rol){
     if (nube) { db = Object.assign(db, nube, {config: Object.assign(db.config, nube.config||{})}); }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
   }
+  /* la cuenta compartida de jugadores ya quedó autenticada; falta saber
+     CUÁL jugador es, para mandarlo directo a su categoría en Rutinas */
+  if (rol==='jugador'){ view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render(); }
   db.config.acceso = rol; view.puerta = null; view.claveMal = false;
   if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
   else { db.config.rol = 'Coordinador'; db.config.categoriaDT = ''; }
   view.categoria = 'Todas'; view.partidoCat = null;
+  view.tab = 'inicio'; marcarTab(view.tab);
+  await Store.save(db); render();
+}
+/* identifica al jugador por DNI y lo manda directo a su categoría
+   (sobre todo para Rutinas: ver categoriaActivaRutina). No hay
+   contraseña acá: si el DNI no está cargado, no entra. */
+async function entrarConDni(){
+  const dni = (document.getElementById('ac-dni')||{}).value?.trim() || '';
+  if (!dni){ view.dniMal = 'Ingresá tu DNI.'; return render(); }
+  const j = db.jugadores.find(x=>(x.dni||'').trim()===dni);
+  if (!j){ view.dniMal = 'No encontramos ese DNI. Pedile a coordinación que te lo cargue en tu ficha.'; return render(); }
+  db.config.acceso = 'jugador'; db.config.rol = 'Coordinador'; db.config.categoriaDT = '';
+  db.config.categoriaJugador = (j.categorias||[])[0] || '';
+  view.puerta = null; view.claveMal = false; view.dniMal = false;
+  view.categoria = 'Todas'; view.rutinaCategoria = null;
   view.tab = 'inicio'; marcarTab(view.tab);
   await Store.save(db); render();
 }
@@ -1450,7 +1478,7 @@ function render(){
   document.getElementById('rolebox').innerHTML = (esCoord()
     ? `Coordinación · todas`
     : esDT() ? `DT · ${esc(c.categoriaDT||'sin categoría')}`
-    : `Jugador · solo lectura`)
+    : `Jugador · solo lectura${c.categoriaJugador?' · '+esc(c.categoriaJugador):''}`)
     + (sinNube ? `<br><span style="color:var(--rojo)">solo este dispositivo</span>` : '')
     + `<br><button class="linkish" id="salir">salir</button>`;
   if (view.fotoEditor) return pantallaRecorteFoto();
@@ -1737,14 +1765,18 @@ function pantallaCategoriaAjena(){
 }
 
 /* ---------- RUTINAS: un PDF/imagen por categoría, siempre el último ---------- */
+/* el jugador identificado por DNI cae directo en su categoría, igual
+   que el DT: sin selector, sin ver las rutinas de otras categorías */
 function categoriaActivaRutina(){
   if (esDT()) return db.config.categoriaDT;
+  if (esJugador() && db.config.categoriaJugador) return db.config.categoriaJugador;
   return view.rutinaCategoria || null;
 }
 function pantallaRutinas(){
   const cat = categoriaActivaRutina();
+  const catFija = esDT() || (esJugador() && db.config.categoriaJugador);
   let h = `<h2 class="screen-title">Rutinas</h2>`;
-  if (!esDT()){
+  if (!catFija){
     h += `<p class="screen-note">${esCoord()?'Elegí una categoría para ver o cargar su rutina.':'Elegí la categoría de tu plantel para ver su rutina.'}</p>
       <div class="chips">${CATEGORIAS.map(c=>
         `<button class="chip" data-rutinaCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}${(db.rutinas[c]||rutinaLocalDe(c))?' ●':''}</button>`).join('')}</div>`;
@@ -3231,6 +3263,8 @@ function formJugador(){
     </div>
     <div class="field"><label class="label" for="j-carnet">Carnet<em>número de la planilla</em></label>
       <input type="number" inputmode="numeric" id="j-carnet" value="${esc(j.carnet||'')}"></div>
+    <div class="field"><label class="label" for="j-dni">DNI<em>para que entre directo a su categoría</em></label>
+      <input type="text" inputmode="numeric" id="j-dni" value="${esc(j.dni||'')}" placeholder="sin puntos"></div>
     <div class="field"><label class="label" for="j-nac">Fecha de nacimiento</label>
       <input type="date" id="j-nac" value="${esc(j.fechaNac||'')}"></div>
     <div class="field"><span class="label">Categorías<em>puede ser más de una</em></span>
@@ -4325,6 +4359,9 @@ app.addEventListener('keydown', e=>{
   if (e.target.id==='ac-clave' && e.key==='Enter'){
     e.preventDefault(); document.getElementById('ac-entrar').click();
   }
+  if (e.target.id==='ac-dni' && e.key==='Enter'){
+    e.preventDefault(); document.getElementById('ac-dni-entrar').click();
+  }
 });
 
 app.addEventListener('change', async e=>{
@@ -4423,19 +4460,15 @@ app.addEventListener('click', async e=>{
   if (puerta && puerta.id==='ac-jugador'){
     if (fb && fbEstado==='sinPermiso'){ view.puerta='jugador'; view.claveMal=false; return render(); }
     if (fb && fbUser){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
-    db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT='';
-    view.tab='inicio'; marcarTab('inicio');
-    await Store.save(db); return render();
+    view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render();
   }
   if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
   if (puerta && puerta.id==='ac-dt'){ view.puerta='dt'; view.claveMal=false; return render(); }
-  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; return render(); }
-  if (t.id==='ac-local'){          /* mirar lo que hay en este dispositivo */
-    db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT='';
-    view.tab='inicio'; marcarTab('inicio');
-    view.puerta=null; view.claveMal=false;
-    await Store.save(db); return render();
+  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; view.dniMal=false; return render(); }
+  if (t.id==='ac-local'){          /* sin nube: igual hace falta el DNI para saber a qué categoría va */
+    view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render();
   }
+  if (t.id==='ac-dni-entrar'){ return entrarConDni(); }
   if (t.id==='ac-entrar'){
     return entrar(view.puerta==='jugador' ? 'jugador' : view.puerta==='dt' ? 'dt' : 'coordinacion');
   }
@@ -4851,9 +4884,14 @@ async function guardarJugador(){
   if (!apellido) return toast('Falta el apellido');
   const cats = [...document.querySelectorAll('[data-multi="cats"] .chip[aria-pressed="true"]')].map(b=>b.dataset.v);
   if (!cats.length) return toast('Elegí al menos una categoría');
+  const dni = document.getElementById('j-dni').value.trim();
+  if (dni && db.jugadores.some(x=>x.id!==view.editJugador && (x.dni||'').trim()===dni)){
+    return toast('Ese DNI ya está cargado en otro jugador');
+  }
   const datos = { apellido,
     nombre: document.getElementById('j-nombre').value.trim(),
     carnet: document.getElementById('j-carnet').value.trim(),
+    dni,
     fechaNac: document.getElementById('j-nac').value || null,
     categorias: cats,
     posiciones: (()=>{

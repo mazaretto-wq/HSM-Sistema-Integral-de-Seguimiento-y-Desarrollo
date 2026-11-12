@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
 const path = require('path');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
@@ -66,17 +66,22 @@ t('El toast avisa que quedó en este dispositivo (sin Storage en este entorno)',
 const rutinaGuardada = await pg.evaluate(()=> !!db.rutinas['Juveniles'] && !db.rutinas['Juveniles'].url);
 t('La rutina NO quedó con una URL en "db" (mismo resguardo que las fotos: no arriesga la sync)', rutinaGuardada);
 
-// --- jugador: ve la rutina de la categoría que elige, no otra ---
+// --- jugador identificado por DNI: cae directo en la rutina de SU
+//     categoría, igual que el DT (sin selector, sin ver las de otras) ---
+const jugJuveniles = await pg.evaluate(()=>db.jugadores.find(j=>(j.categorias||[]).includes('Juveniles')).id);
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
+await entrarComoJugador(pg, jugJuveniles);
 await pg.click('.tabs button:has-text("Rutinas")'); await pg.waitForTimeout(300);
-t('Jugador ve el selector de categorías', (await pg.locator('[data-rutinaCat]').count())>0);
-t('Sin elegir categoría todavía, pide elegir una', (await pg.locator('.empty').count())===1);
-await pg.click('[data-rutinaCat="Cadetes"]'); await pg.waitForTimeout(300);
-t('Cadetes (sin rutina cargada) muestra el estado vacío correcto', (await pg.locator('.empty:has-text("Todavía no hay una rutina")').count())===1);
-await pg.click('[data-rutinaCat="Juveniles"]'); await pg.waitForTimeout(300);
-t('Juveniles sí muestra la rutina que cargó el DT (no la de otra categoría)', (await pg.locator('.block-title:has-text("rutina_test.pdf")').count())===1);
+t('El jugador identificado NO ve selector de categoría (va directo a la suya, como el DT)', (await pg.locator('[data-rutinaCat]').count())===0);
+t('Esa categoría es la suya (Juveniles): se ve la rutina que cargó el DT', (await pg.locator('.block-title:has-text("rutina_test.pdf")').count())===1);
+t('No tiene forma de pasar a la rutina de otra categoría', (await pg.locator('.chips').count())===0);
 t('Jugador no tiene botón para cargar/eliminar rutina', (await pg.locator('[data-cargarRutina],[data-eliminarRutina]').count())===0);
+
+// --- el DNI solo acota Rutinas: en Plantel sigue viendo todas las categorías ---
+await pg.click('.tabs button:has-text("Plantel")'); await pg.waitForTimeout(300);
+const chipsPlantelJugador = await pg.locator('.chips').first().locator('.chip').allInnerTexts();
+t('En Plantel el jugador sigue viendo todas las categorías (el DNI no restringe el resto de la app)',
+  chipsPlantelJugador.length===6, chipsPlantelJugador.join(' | '));
 
 t('Sin errores de consola hasta acá', errs.length===0, errs.join(' | '));
 

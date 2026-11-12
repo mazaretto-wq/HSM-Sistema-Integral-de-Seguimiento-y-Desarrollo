@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -99,7 +99,7 @@ await pg.evaluate((d)=>{
   render();
 }, datos);
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
+await entrarComoJugador(pg);
 const textoAlertasJugador = await pg.locator('.block:has-text("Para repasar")').count()
   ? await pg.locator('.block:has-text("Para repasar")').innerText() : '';
 t('El jugador ve el bloque de alertas cuando hay alguna tarjeta para mostrar', textoAlertasJugador!=='');
@@ -186,7 +186,7 @@ t('El número de la diferencia sigue mostrándose junto a la flecha', /\+3/.test
 // la flecha también se ve para el rol jugador (solo lectura): nunca tuvo
 // ninguna restricción de rol, a diferencia de lo que sí pasaba con Alertas
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
+await entrarComoJugador(pg);
 await pg.evaluate((id)=>{ view.jugadorId=id; view.fichaTab='detalle'; render(); }, jFlechas);
 await pg.waitForTimeout(300);
 const filaControlJugador = await pg.locator('tr:has-text("Control y pase")').first().innerText();

@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -78,7 +78,7 @@ t('No tocó la otra lesión del mismo jugador', (await pg.evaluate((id)=>db.lesi
 // ---- rol jugador: solo lectura, sin botones de carga/edición ----
 await pg.evaluate(()=>{ db.config.acceso=null; });
 await pg.reload(); await pg.waitForTimeout(1200);
-await pg.click('#ac-jugador'); await pg.waitForTimeout(600);
+await entrarComoJugador(pg, jugId);
 await pg.evaluate((id)=>{ view.jugadorId=id; view.fichaTab='lesiones'; render(); }, jugId);
 await pg.waitForTimeout(300);
 t('El rol Jugador NO ve "Cargar lesión"', (await pg.locator('[data-lesionForm]').count())===0);

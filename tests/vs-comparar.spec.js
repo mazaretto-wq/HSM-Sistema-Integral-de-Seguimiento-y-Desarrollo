@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -12,7 +12,7 @@ await pg.evaluate(()=>{try{localStorage.clear()}catch(e){}});
 await pg.reload(); await pg.waitForTimeout(1500);
 
 // ---- jugador (el rol con menos permisos) también tiene que poder usar "Vs" ----
-await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
+await entrarComoJugador(pg);
 t('"Vs" aparece en la barra también para el rol Jugador', await pg.locator('.tabs button:has-text("Vs")').count()===1);
 
 // datos fabricados: dos jugadores, uno con una temporada vieja (2024) ya

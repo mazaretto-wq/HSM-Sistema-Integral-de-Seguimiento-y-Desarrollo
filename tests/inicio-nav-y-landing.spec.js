@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -52,9 +52,9 @@ await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(
 await pg.click('[data-entrarCat="Juveniles"]'); await pg.waitForTimeout(300);
 t('El plantel del DT (antes "Inicio") sigue estando, vía Categorías', (await pg.locator('h2.screen-title').innerText())==='PLANTEL');
 
-// ---- jugador: sin cambios ----
+// ---- jugador: nav y landing sin cambios (el login ahora pide DNI, ver entrarComoJugador) ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-jugador'); await pg.waitForTimeout(700);
+await entrarComoJugador(pg);
 t('Jugador también aterriza en Inicio', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 const tabsJug = await pg.locator('.tabs button:visible').allInnerTexts();
 t('Jugador ve 4 solapas: Inicio, Plantel, Rutinas, Vs',
