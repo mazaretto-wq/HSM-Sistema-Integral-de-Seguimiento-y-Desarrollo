@@ -472,6 +472,7 @@ button.dash-card{cursor:pointer}
   <button data-tab="entrenos">Entrenos</button>
   <button data-tab="testfisicos">Test físicos</button>
   <button data-tab="rutinas">Rutinas</button>
+  <button data-tab="partidos">Partidos</button>
   <button data-tab="vs">Vs</button>
   <button data-tab="cargar">Cargar</button>
   <button data-tab="datos">Datos</button>
@@ -854,7 +855,7 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
    calma son trabajo físico general, el resto se hace con pelota */
 const grupoDeFase = id => (id==='fisico'||id==='activacion'||id==='vuelta') ? 'fisico' : 'pelota';
 
-let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], dts:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], dts:[], partidosLinks:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
 
 /* Respaldo para cuando Firebase no carga. NO es la contraseña de coordinación:
    esa la valida Firebase y no está en este archivo. Esta solo permite editar en
@@ -869,7 +870,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtDni:null, fondoHome:null,
-             categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
+             categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false, partidosCategoria:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false };
@@ -927,9 +928,9 @@ function catsPermitidas(){
    usan "Agregar jugador" y "Cargar datos de X" desde dentro de una
    ficha) aunque ya no tengan un botón propio en la barra */
 function navVisiblesActual(){
-  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs','datos']
-       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs','cargar']
-                   : ['inicio','plantel','rutinas','vs'];
+  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','partidos','vs','datos']
+       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','partidos','vs','cargar']
+                   : ['inicio','plantel','rutinas','partidos','vs'];
 }
 function puedeVer(j){
   const p = catsPermitidas();
@@ -1504,9 +1505,9 @@ function render(){
      desde dentro de una ficha). "navVisibles": lo que de verdad se ve como
      botón en la barra; Plantel/Cargar/Datos quedan accesibles pero fuera
      de la barra para coordinación, Categorías ya lleva a un plantel filtrado */
-  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','vs','cargar','datos']
-                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','vs','cargar']
-                             : ['inicio','plantel','rutinas','vs'];
+  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','partidos','vs','cargar','datos']
+                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','partidos','vs','cargar']
+                             : ['inicio','plantel','rutinas','partidos','vs'];
   const navVisibles = navVisiblesActual();
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = navVisibles.includes(b.dataset.tab) ? '' : 'none';
@@ -1530,6 +1531,7 @@ function render(){
   if (view.tab==='entrenos')return pantallaEntrenos();
   if (view.tab==='testfisicos') return pantallaTestFisicos();
   if (view.tab==='rutinas') return pantallaRutinas();
+  if (view.tab==='partidos') return pantallaPartidosLinks();
   if (view.tab==='vs')      return pantallaVs();
   if (view.tab==='cargar')  return pantallaCargar();
   if (view.tab==='datos')   return pantallaDatos();
@@ -1847,6 +1849,55 @@ function pantallaRutinas(){
         <button class="btn btn-naranja" data-cargarRutina="${esc(cat)}" ${view.rutinaSubiendo?'disabled':''}>${view.rutinaSubiendo?'Subiendo…':(url?'Cambiar rutina':'Cargar rutina')}</button>
         ${url?`<div class="gap"></div><button class="btn btn-danger" data-eliminarRutina="${esc(cat)}">Eliminar rutina</button>`:''}
       </div>`;
+  }
+  app.innerHTML = h;
+}
+
+/* ---------- PARTIDOS: el link para ingresar a cada partido (transmisión,
+   videollamada, lo que sea), con un título escrito arriba. Solo
+   coordinación lo carga/elimina; DT y jugadores (identificados por DNI)
+   solo lo ven, acotados a su categoría igual que en Rutinas ---------- */
+function categoriaActivaPartidos(){
+  if (esDT()) return db.config.categoriaDT;
+  if (esJugador() && db.config.categoriaJugador) return db.config.categoriaJugador;
+  return view.partidosCategoria || null;
+}
+function partidosLinksDe(cat){
+  return db.partidosLinks.filter(p=>p.categoria===cat).slice().reverse();
+}
+function pantallaPartidosLinks(){
+  const cat = categoriaActivaPartidos();
+  const catFija = esDT() || (esJugador() && db.config.categoriaJugador);
+  let h = `<h2 class="screen-title">Partidos</h2>`;
+  if (!catFija){
+    h += `<p class="screen-note">${esCoord()?'Elegí una categoría para ver o cargar el link de sus partidos.':'Elegí la categoría de tu plantel.'}</p>
+      <div class="chips">${CATEGORIAS.map(c=>
+        `<button class="chip" data-partidosCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
+  } else {
+    h += `<p class="screen-note">Partidos de ${esc(cat)}.</p>`;
+  }
+  if (!cat){
+    h += `<div class="empty"><p>Elegí una categoría arriba.</p></div>`;
+    app.innerHTML = h; return;
+  }
+  if (esCoord()){
+    h += `<div class="block"><div class="block-title">${icono('cancha')} Cargar partido</div>
+      <div class="field"><label class="label" for="pl-titulo">Título</label>
+        <input type="text" id="pl-titulo" placeholder="ej: vs Club Rival · Fecha 10"></div>
+      <div class="field"><label class="label" for="pl-link">Link para ingresar</label>
+        <input type="text" id="pl-link" placeholder="https://..."></div>
+      <button class="btn btn-naranja" id="agregarPartidoLink">Agregar</button>
+    </div>`;
+  }
+  const lista = partidosLinksDe(cat);
+  if (!lista.length){
+    h += `<div class="empty"><p>Todavía no hay partidos cargados para ${esc(cat)}.</p></div>`;
+  } else {
+    h += lista.map(p=>`<div class="block">
+      <div class="block-title">${esc(p.titulo)}</div>
+      <a class="btn btn-naranja" href="${esc(p.link)}" target="_blank" rel="noopener">Ingresar</a>
+      ${esCoord()?`<div class="gap"></div><button class="btn btn-ghost" style="color:var(--rojo)" data-borrarPartidoLink="${p.id}">Eliminar</button>`:''}
+    </div>`).join('');
   }
   app.innerHTML = h;
 }
@@ -4855,6 +4906,20 @@ app.addEventListener('click', async e=>{
     return eliminarRutina(delRutina.dataset.eliminarrutina);
   }
 
+  const chipPartidosCat = t.closest('[data-partidosCat]');
+  if (chipPartidosCat){ view.partidosCategoria = chipPartidosCat.dataset.partidoscat; return render(); }
+  if (t.id==='agregarPartidoLink'){
+    if (!esCoord()) return toast('Esto lo hace coordinación');
+    return guardarPartidoLink();
+  }
+  const delPartidoLink = t.closest('[data-borrarPartidoLink]');
+  if (delPartidoLink){
+    if (!esCoord()) return toast('Esto lo hace coordinación');
+    if (!confirm('¿Eliminar este partido?')) return;
+    db.partidosLinks = db.partidosLinks.filter(p=>p.id!==delPartidoLink.dataset.borrarpartidolink);
+    await Store.save(db); toast('Partido eliminado'); return render();
+  }
+
   const tipoEval = t.closest('[data-evalTipo]');
   if (tipoEval){ view.evalTipo = tipoEval.dataset.evaltipo; view.evalFecha = hoy(); window.scrollTo(0,0); return render(); }
   const fisicoEval = t.closest('[data-evalFisico]');
@@ -4924,7 +4989,7 @@ app.addEventListener('click', async e=>{
   }
   if (t.id==='borrarTodo'){
     if (!confirm('Se borra todo. ¿Seguro?')) return;
-    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], dts:[], config:db.config };
+    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], dts:[], partidosLinks:[], config:db.config };
     await Store.save(db); toast('Datos borrados'); return render();
   }
   const csv = t.closest('[data-csv]');
@@ -4985,6 +5050,19 @@ async function guardarDT(){
   db.dts.push({ id:uid(), dni, categoria });
   await Store.save(db);
   toast('DT agregado · '+categoria); render();
+}
+
+async function guardarPartidoLink(){
+  const categoria = categoriaActivaPartidos();
+  if (!categoria) return;
+  const titulo = document.getElementById('pl-titulo').value.trim();
+  let link = document.getElementById('pl-link').value.trim();
+  if (!titulo) return toast('Ponele un título al partido');
+  if (!link) return toast('Pegá el link para ingresar');
+  if (!/^https?:\/\//i.test(link)) link = 'https://'+link;
+  db.partidosLinks.push({ id:uid(), categoria, titulo, link });
+  await Store.save(db);
+  toast('Partido agregado · '+categoria); render();
 }
 
 async function guardarToma(){
@@ -5381,6 +5459,12 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
       j.posiciones = [j.posicion, j.posicionAlt].filter(Boolean);
       delete j.posicion; delete j.posicionAlt; migrado = true;
     }
+    /* corrige el apellido del jugador de prueba (41781139) en dispositivos
+       que ya lo habían sembrado con el nombre viejo, que quedaba primero
+       en los listados A-Z en vez de al final */
+    if (j.dni==='41781139' && j.apellido==='Acceso de prueba'){
+      j.apellido = 'Zzz (acceso de prueba)'; j.nombre = 'Coordinación'; migrado = true;
+    }
   });
   /* "Selección Libre" era una categoría duplicada de "Selección", y
      "Primera" se había cargado por error sin ningún jugador: se unifican
@@ -5414,7 +5498,6 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
     if (!db.dts.some(d=>d.dni==='41781139')) db.dts.push({ id:uid(), dni:'41781139', categoria:'Juveniles' });
     db.config.dtsSeeded = true; migrado = true;
   }
-
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
@@ -5428,6 +5511,21 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
       await cargarJuveniles(true);
       await cargarPlanteles(true);
     } catch(e){ console.warn('No se pudo cargar la base inicial:', e); }
+  }
+  /* mismo DNI del DT de arriba, también como acceso de jugador (para poder
+     probar las dos vistas); jugador de prueba, no uno real del plantel.
+     Va DESPUÉS de sembrar el plantel para no pisar el conteo que decide
+     si hace falta cargarlo (si no, "db.jugadores.length" ya no daría 0 y
+     el plantel real nunca se cargaría solo) */
+  if (!db.config.jugadorAccesoSeeded){
+    if (!db.jugadores.some(j=>j.dni==='41781139')){
+      /* el apellido empieza con "Zzz" a propósito: así queda al final en
+         los listados A-Z (el orden de siempre) y no se cuela como "el
+         primer jugador de Juveniles" en ningún lado */
+      db.jugadores.push({ id:uid(), apellido:'Zzz (acceso de prueba)', nombre:'Coordinación', categorias:['Juveniles'], dni:'41781139' });
+    }
+    db.config.jugadorAccesoSeeded = true;
+    await Store.save(db);
   }
   fbEscucharCambios();
   render();

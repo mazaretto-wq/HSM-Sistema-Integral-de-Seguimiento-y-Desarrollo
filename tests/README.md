@@ -66,6 +66,7 @@ node roles-y-permisos.spec.js
 | `partido-esquema.spec.js` | El formulario de "Partido" pide el esquema usado (además del puesto de cada jugador, que ya existía) y sugiere solo el último usado en esa categoría; en Plantel, al entrar a una categoría puntual, se ve "Esquema más usado" con el ranking y el % de esta temporada (no se muestra en "Todas") |
 | `acceso-dni-jugador.spec.js` | "Soy jugador" pide el DNI (sin contraseña) en vez de entrar directo; no deja entrar con un DNI que no está cargado en ningún jugador; coordinación carga el DNI desde la ficha del jugador, y no deja cargar el mismo DNI en dos jugadores distintos; con el DNI correcto entra y queda atado a la categoría de ese jugador |
 | `acceso-dni-dt.spec.js` | "Soy DT" pide usuario (DNI) + contraseña (la misma para todos) en vez de elegir la categoría de un desplegable; la categoría la decide el DNI, cargado desde Datos > "DT por categoría"; un DNI no cargado o la contraseña mal no dejan entrar; coordinación puede agregar y eliminar DT desde esa pantalla, y eliminar uno le saca el acceso en el momento |
+| `partidos-links.spec.js` | Solapa "Partidos": el primer filtro es la categoría; solo coordinación carga (título + link, que se completa con `https://` si hace falta) o elimina; DT y jugador (identificados) caen directo en la suya, sin selector y sin botón de carga; el más nuevo se ve primero; cada categoría tiene sus propios partidos, sin mezclarse con las demás |
 
 ## Si agregás una función nueva a la app
 

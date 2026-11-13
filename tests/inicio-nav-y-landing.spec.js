@@ -16,8 +16,8 @@ await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 t('Coordinación aterriza en Inicio al loguearse', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 const tabsCoord = await pg.locator('.tabs button:visible').allInnerTexts();
-t('Coordinación ve 7 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Vs, Datos',
-  tabsCoord.length===7 && tabsCoord.map(x=>x.toUpperCase()).join('|')==='INICIO|CATEGORÍAS|ENTRENOS|TEST FÍSICOS|RUTINAS|VS|DATOS',
+t('Coordinación ve 8 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Partidos, Vs, Datos',
+  tabsCoord.length===8 && tabsCoord.map(x=>x.toUpperCase()).join('|')==='INICIO|CATEGORÍAS|ENTRENOS|TEST FÍSICOS|RUTINAS|PARTIDOS|VS|DATOS',
   tabsCoord.join(' | '));
 
 // ---- el roster completo sigue estando, solo que vía Categorías ----
@@ -42,8 +42,8 @@ await pg.click('#salir'); await pg.waitForTimeout(400);
 await entrarComoDT(pg, 'Juveniles');
 t('DT también aterriza en Inicio', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 const tabsDT = await pg.locator('.tabs button:visible').allInnerTexts();
-t('DT ve 7 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Vs, Cargar',
-  tabsDT.length===7 && tabsDT.map(x=>x.toUpperCase()).join('|')==='INICIO|CATEGORÍAS|ENTRENOS|TEST FÍSICOS|RUTINAS|VS|CARGAR',
+t('DT ve 8 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Partidos, Vs, Cargar',
+  tabsDT.length===8 && tabsDT.map(x=>x.toUpperCase()).join('|')==='INICIO|CATEGORÍAS|ENTRENOS|TEST FÍSICOS|RUTINAS|PARTIDOS|VS|CARGAR',
   tabsDT.join(' | '));
 t('El Inicio del DT dice "Los mejores de Juveniles" (solo su equipo)', (await pg.locator('.screen-note').first().innerText()).includes('Juveniles'));
 await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(300);
@@ -55,8 +55,8 @@ await pg.click('#salir'); await pg.waitForTimeout(400);
 await entrarComoJugador(pg);
 t('Jugador también aterriza en Inicio', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 const tabsJug = await pg.locator('.tabs button:visible').allInnerTexts();
-t('Jugador ve 4 solapas: Inicio, Plantel, Rutinas, Vs',
-  tabsJug.length===4 && tabsJug.map(x=>x.toUpperCase()).join('|')==='INICIO|PLANTEL|RUTINAS|VS',
+t('Jugador ve 5 solapas: Inicio, Plantel, Rutinas, Partidos, Vs',
+  tabsJug.length===5 && tabsJug.map(x=>x.toUpperCase()).join('|')==='INICIO|PLANTEL|RUTINAS|PARTIDOS|VS',
   tabsJug.join(' | '));
 t('El Inicio del jugador dice "todas las categorías" (igual que coordinación)',
   (await pg.locator('.screen-note').first().innerText()).includes('todas las categorías'));
