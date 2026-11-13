@@ -52,8 +52,8 @@ node roles-y-permisos.spec.js
 | `ficha-tablero-general.spec.js` | Tablero de la solapa General de la ficha (estadísticas, historial, gráfico, tests físicos, posición en el plantel, detalle de rendimiento) |
 | `ficha-foto-grande.spec.js` | Que la foto grande de la solapa General siga permitiendo subir/cambiar foto, y que Detalle/Historial conserven el encabezado chico |
 | `migracion-categorias.spec.js` | Migración de categorías duplicadas ("Selección Libre" → "Selección") en dispositivos con datos viejos |
-| `alarma-tamano-firestore.spec.js` | Aviso cuando la base se acerca al límite de tamaño de Firestore |
-| `sincronizacion-en-vivo.spec.js` | Que un cambio de otro dispositivo se aplique solo cuando no se está editando nada, quede pendiente (con aviso) si se está editando, y nunca pise el rol/sesión de este dispositivo |
+| `alarma-tamano-firestore.spec.js` | Aviso cuando la base se acerca al límite de tamaño de Firestore; si `fbEscribir` informa el tamaño real ya comprimido, el aviso se arma sobre ese número, no sobre el JSON sin comprimir (que ahora pesa bastante más que lo que de verdad ocupa en la nube) |
+| `sincronizacion-en-vivo.spec.js` | Que un cambio de otro dispositivo se aplique solo cuando no se está editando nada, quede pendiente (con aviso) si se está editando, y nunca pise el rol/sesión de este dispositivo; un cambio que llega comprimido ("gz", el formato nuevo) también se descomprime y se aplica igual que el formato viejo ("json") |
 | `archivar-temporada.spec.js` | Pantalla de Datos: archivar una temporada vieja descarga el CSV, resume partidos/entrenamientos en el historial del jugador, conserva solo la última toma de test físico del año, y no cambia el % de asistencia histórico |
 | `estimar-ahorro-archivar.spec.js` | La pantalla de Datos muestra cuántos KB liberaría archivar la temporada elegida (se recalcula solo al cambiar de temporada en el desplegable), y ese número coincide con lo que de verdad baja el tamaño de la base al archivar |
 | `vs-comparar.spec.js` | Solapa Vs (visible para los 3 roles): comparar a dos jugadores en una temporada cada uno, incluida una ya archivada, con los mismos números de partidos, asistencia a entrenos y test físicos que se ven en cada ficha |
@@ -82,3 +82,12 @@ que todo se prueba con el modo "sin conexión" (`hsm-sin-conexion`), que usa
 los mismos datos pero guardados solo en el dispositivo. Si en algún momento
 se prueba desde un entorno con acceso real a internet, valdría la pena sumar
 pruebas de ese flujo.
+
+Por la misma razón tampoco se puede probar la carga real de `pako` (la
+librería que comprime la base antes de subirla a Firestore): el sandbox
+bloquea también los CDN (jsdelivr, cdnjs), no solo Firebase. Lo que sí se
+probó acá es la lógica de compresión/descompresión en sí (con un `pako`
+fabricado a mano en `sincronizacion-en-vivo.spec.js`) y, aparte de estas
+pruebas, el algoritmo de compresión (DEFLATE) contra una muestra de datos
+con la forma real de la base, usando el `zlib` de Node: redujo unos
+650 KB de JSON a poco más de 20 KB, con una vuelta exacta al original.

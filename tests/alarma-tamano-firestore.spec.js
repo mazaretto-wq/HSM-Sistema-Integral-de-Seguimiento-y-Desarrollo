@@ -59,6 +59,25 @@ const resultado3 = await pg.evaluate(async ()=>{
 });
 t('Una base chica no dispara ningún aviso', resultado3===null, String(resultado3));
 
+// ---- la base ahora se sube comprimida: si fbEscribir informa los bytes
+// REALES ya comprimidos, el aviso se arma sobre esos, no sobre el JSON
+// crudo (que ahora pesa bastante más que lo que de verdad ocupa en
+// Firestore) ----
+const resultado4 = await pg.evaluate(async ()=>{
+  const relleno = 'x'.repeat(900000);   // crudo > 80% del límite
+  fbEscribir = async () => ({ok:true, bytes: 500});  // comprimido, bien chico
+  fbUser = { email:'coord@test.com' };
+  avisoTamanoDado = false;
+  let avisado = null;
+  const toastOrig = window.toast;
+  window.toast = (m)=>{ avisado = m; };
+  programarSubida({ relleno });
+  await new Promise(r=>setTimeout(r, 1500));
+  window.toast = toastOrig;
+  return avisado;
+});
+t('Con el tamaño comprimido disponible, NO avisa aunque el JSON crudo sea grande (los bytes reales son chicos)', resultado4===null, String(resultado4));
+
 t('Sin errores de JS', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);

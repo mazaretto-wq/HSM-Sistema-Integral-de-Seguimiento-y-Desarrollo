@@ -95,6 +95,26 @@ const r6 = await pg.evaluate(()=>{
 });
 t('Al dejar de editar, el cambio que había quedado pendiente se aplica en el siguiente render', r6.len===1 && r6.nombre==='No debería verse todavía', JSON.stringify(r6));
 
+// ---- la base ahora se sube comprimida (campo "gz" en vez de "json"): el
+// listener en vivo tiene que poder descomprimirla también, no solo leer
+// el formato viejo. Se simula "pako" (no se puede bajar el real: la red
+// a los CDN está bloqueada en este sandbox) con un ida-y-vuelta trivial,
+// para probar que el código llama a cargarPako() y usa pako.inflate() ----
+await pg.evaluate(()=>{
+  window.pako = { inflate: (bytes)=> new TextDecoder().decode(bytes) };
+  fbUser = { email: 'yo@harassantamaria.com' };
+  view.form = null; view.fichaEditando=false; view.testRegistrando=false; view.draft=null;
+  view.pizDraft=null; view.fotoEditor=null; view.editJugador=null; view.rutinaSubiendo=false;
+  const jsonTexto = JSON.stringify({ jugadores:[{id:'comprimido', nombre:'Llegó comprimido de otro dispositivo'}],
+    partidos:[], evaluaciones:[], tomas:[], sesiones:[], ejercicios:[], pizarra:[], rutinas:{}, config:{acceso:'coordinacion'} });
+  const s = { metadata:{hasPendingWrites:false}, exists:true,
+    data:()=>({ gz:{ toUint8Array:()=> new TextEncoder().encode(jsonTexto) }, por:'otro@harassantamaria.com' }) };
+  window.__cb(s);   // la rama "gz" pasa por un await (cargarPako): no se puede leer el resultado en este mismo evaluate
+});
+await pg.waitForTimeout(150);
+const r7 = await pg.evaluate(()=>({ len: db.jugadores.length, nombre: db.jugadores[0] && db.jugadores[0].nombre }));
+t('Un cambio remoto que llega comprimido ("gz") también se descomprime y se aplica', r7.len===1 && r7.nombre==='Llegó comprimido de otro dispositivo', JSON.stringify(r7));
+
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);

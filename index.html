@@ -548,13 +548,38 @@ function fbEsperarSesion(){
     setTimeout(()=>res(fbUser), 4000);
   });
 }
+/* ---- carga perezosa de pako (deflate/gzip), recién cuando hace falta
+   leer o escribir en Firestore: la base se sube comprimida en vez de
+   como texto plano, para que rinda bastante más antes de pegar contra
+   el límite de 1 MiB por documento. Dos CDN por si alguna está
+   bloqueada, mismo criterio que cargarLibsPDF ---- */
+let pakoLibPromise = null;
+function cargarPako(){
+  if (window.pako) return Promise.resolve();
+  if (pakoLibPromise) return pakoLibPromise;
+  const fuentes = [
+    'https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js'
+  ];
+  const intentar = i => {
+    if (i>=fuentes.length) return Promise.reject(new Error('ninguna fuente de pako cargó'));
+    return cargarScript(fuentes[i]).catch(()=>intentar(i+1));
+  };
+  pakoLibPromise = intentar(0).catch(err=>{ pakoLibPromise=null; throw err; });
+  return pakoLibPromise;
+}
 async function fbLeer(){
   if (!fb) return null;
   try{
     const snap = await fb.ref.get();
     fbEstado = 'listo';
     const d = snap.exists ? snap.data() : null;
-    return d && d.json ? JSON.parse(d.json) : null;
+    if (!d) return null;
+    if (d.gz){                              /* formato nuevo: comprimido */
+      await cargarPako();
+      return JSON.parse(pako.inflate(d.gz.toUint8Array(), {to:'string'}));
+    }
+    return d.json ? JSON.parse(d.json) : null;   /* formato viejo, por si algún dispositivo no subió nada todavía con el código nuevo */
   }catch(e){
     fbEstado = (e && e.code === 'permission-denied') ? 'sinPermiso' : 'error';
     console.warn('Firestore · lectura:', (e && e.code) || e);
@@ -567,9 +592,11 @@ async function fbEscribir(d){
     /* el rol con el que entraste es de este dispositivo, no del club:
        si viajara, otro equipo bajaría "coordinación" y entraría sin clave */
     const limpio = {...d, config: {...d.config, acceso:null}};
-    await fb.ref.set({ json: JSON.stringify(limpio), actualizado: Date.now(),
-                       por: (fbUser.email || '') });
-    return {ok:true};
+    await cargarPako();
+    const comprimido = pako.deflate(JSON.stringify(limpio));
+    await fb.ref.set({ gz: firebase.firestore.Blob.fromUint8Array(comprimido),
+                       actualizado: Date.now(), por: (fbUser.email || '') });
+    return {ok:true, bytes:comprimido.length};
   }catch(e){
     const motivo = (e && e.code) || String((e && e.message) || e);
     console.warn('Firestore · escritura:', motivo);
@@ -596,10 +623,14 @@ function programarSubida(d){
                      : r.motivo==='permission-denied' ? ' (sin permiso en Firestore)' : '';
       toast('No se pudo guardar en la nube; quedó en este dispositivo'+detalle);
     } else if (r.ok && !avisoTamanoDado && esCoord()){
-      const bytes = tamanoBytesDb(subidaUlt);
+      /* bytes reales ya comprimidos, que es lo que de verdad cuenta contra
+         el límite de Firestore (si por lo que sea no vinieron, se estima
+         sobre el JSON sin comprimir, que pesa bastante más: queda del
+         lado conservador) */
+      const bytes = r.bytes ?? tamanoBytesDb(subidaUlt);
       if (bytes > LIMITE_DOC_BYTES*0.8){
         avisoTamanoDado = true;
-        toast(`Atención: la base del club ya usa ${Math.round(bytes/1024)} KB de los ${Math.round(LIMITE_DOC_BYTES/1024)} KB que admite la nube por archivo. Conviene ir pensando en achicarla (fotos/rutinas viejas, partidos muy antiguos) antes de que deje de sincronizar entre dispositivos.`);
+        toast(`Atención: la base del club ya usa ${Math.round(bytes/1024)} KB de los ${Math.round(LIMITE_DOC_BYTES/1024)} KB que admite la nube por archivo (ya comprimida). Conviene ir pensando en achicarla (fotos/rutinas viejas, partidos muy antiguos) antes de que deje de sincronizar entre dispositivos.`);
       }
     }
   }, 1200);
@@ -625,14 +656,17 @@ let avisoRemotoDado = false;
 function fbEscucharCambios(){
   if (!fb) return;
   let primero = true;
-  fb.ref.onSnapshot(snap=>{
+  fb.ref.onSnapshot(async snap=>{
     if (primero){ primero = false; return; }           /* esto ya lo tenemos: es la carga inicial */
     if (snap.metadata.hasPendingWrites || !snap.exists) return;  /* guardado nuestro, todavía sin confirmar */
     const data = snap.data();
-    if (!data || !data.json) return;
+    if (!data || !(data.gz || data.json)) return;
     if (data.por && fbUser && data.por === fbUser.email) return;  /* lo guardamos nosotros mismos */
     let nuevo;
-    try{ nuevo = JSON.parse(data.json); }catch(e){ return; }
+    try{
+      if (data.gz){ await cargarPako(); nuevo = JSON.parse(pako.inflate(data.gz.toUint8Array(), {to:'string'})); }
+      else { nuevo = JSON.parse(data.json); }
+    }catch(e){ return; }
     if (hayEdicionEnCurso()){
       actualizacionRemotaPendiente = nuevo;
       if (!avisoRemotoDado){
