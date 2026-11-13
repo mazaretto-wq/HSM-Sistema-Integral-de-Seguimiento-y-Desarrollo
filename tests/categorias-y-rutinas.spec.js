@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador, entrarComoDT } = require('./helpers');
 const path = require('path');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
@@ -28,9 +28,7 @@ t('Entrar a una categoría como coordinación navega a Plantel filtrado',
 
 // --- DT: su categoría marcada, las demás "solo mirar" y de solo lectura ---
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-dt'); await pg.waitForTimeout(300);
-await pg.selectOption('#ac-cat','Juveniles');
-await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await entrarComoDT(pg, 'Juveniles');
 await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(300);
 const filaPropia = pg.locator('[data-entrarCat="Juveniles"]');
 t('El DT ve marcada su propia categoría', (await filaPropia.innerText()).toUpperCase().includes('TU CATEGORÍA'));

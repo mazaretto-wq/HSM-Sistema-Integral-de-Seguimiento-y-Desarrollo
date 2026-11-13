@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoDT } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -14,9 +14,7 @@ await pg.reload(); await pg.waitForTimeout(2200);
 // en más se trabaja contra esa base real, con deltas en vez de valores
 // absolutos (no se puede asumir "0 tomas" de entrada)
 
-await pg.click('#ac-dt'); await pg.waitForTimeout(300);
-await pg.selectOption('#ac-cat','Juveniles');
-await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await entrarComoDT(pg, 'Juveniles');
 
 const base = await pg.evaluate(()=>({
   tomas: db.tomas.length,

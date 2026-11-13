@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador, entrarComoDT } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -24,9 +24,7 @@ t('Coordinación puede eliminar jugadores', (await pg.locator('[data-borrar]').c
 await pg.click('[data-back]'); await pg.waitForTimeout(300);
 
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-dt'); await pg.waitForTimeout(300);
-await pg.selectOption('#ac-cat','Juveniles');
-await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await entrarComoDT(pg, 'Juveniles');
 t('DT ve 7 solapas (con Vs, sin Datos)', (await pg.locator('.tabs button:visible').count())===7);
 t('La primera solapa del DT dice Inicio', (await pg.locator('.tabs button').first().innerText()).toUpperCase()==='INICIO');
 await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(300);

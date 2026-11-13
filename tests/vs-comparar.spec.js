@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador, entrarComoDT } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -106,9 +106,7 @@ t('Tocar el nombre de un jugador comparado abre su ficha', await pg.locator('.fi
 // ---- DT: ya viene acotado a su categoría en todo lo demás, así que el
 // filtro de categoría en Vs no le aporta nada y no se le muestra ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-dt'); await pg.waitForTimeout(300);
-await pg.selectOption('#ac-cat','Juveniles');
-await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await entrarComoDT(pg, 'Juveniles');
 await pg.evaluate(()=>{ view.tab='vs'; render(); }); await pg.waitForTimeout(300);
 t('El DT (ya acotado a su categoría) no ve el filtro de categoría en Vs', await pg.locator('[data-vscat="a"]').count()===0);
 

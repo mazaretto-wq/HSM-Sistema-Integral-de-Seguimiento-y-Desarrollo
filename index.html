@@ -511,16 +511,13 @@ const FB_COL = 'hsm', FB_DOC = 'base';
    que no está en este archivo: la valida Firebase. */
 const FB_CUENTAS = {
   coordinacion: 'coordinacion@harassantamaria.com',
-  jugador:      'jugadores@harassantamaria.com'
+  jugador:      'jugadores@harassantamaria.com',
+  dt:           'dt@harassantamaria.com'
 };
-/* un DT por categoría: elige la suya y entra con su contraseña */
-const FB_DTS = [
-  { categoria:'Promocional', mail:'dt.promocional@harassantamaria.com' },
-  { categoria:'Cadetes',     mail:'dt.cadetes@harassantamaria.com' },
-  { categoria:'Juveniles',   mail:'dt.juveniles@harassantamaria.com' },
-  { categoria:'Juveniles B', mail:'dt.juvenilesb@harassantamaria.com' },
-  { categoria:'Selección',   mail:'dt.seleccion@harassantamaria.com' }
-];
+/* contraseña única para todos los DT (no es alta seguridad, es solo para
+   despistar). Entran con su DNI como usuario; qué categoría les
+   corresponde según ese DNI se arma en pantallaDatos > "DT por categoría" */
+const CLAVE_DT = 'B@sehsm';
 
 let fb = null;            /* { db, auth, ref } cuando el SDK está */
 let fbUser = null;        /* usuario logueado, o null */
@@ -823,7 +820,7 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
    calma son trabajo físico general, el resto se hace con pelota */
 const grupoDeFase = id => (id==='fisico'||id==='activacion'||id==='vuelta') ? 'fisico' : 'pelota';
 
-let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], dts:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
 
 /* Respaldo para cuando Firebase no carga. NO es la contraseña de coordinación:
    esa la valida Firebase y no está en este archivo. Esta solo permite editar en
@@ -837,7 +834,7 @@ const esJugador = () => !esCoord() && !esDT();
 let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugadorSel:null,
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
-             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtCat:null, fondoHome:null,
+             editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtDni:null, fondoHome:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
@@ -1348,7 +1345,7 @@ function pantallaAcceso(){
           <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña y después tu DNI.':' Pide tu DNI, sin contraseña.'}</span></button>
         <button class="opt" id="ac-dt">
           <strong>Soy DT</strong>
-          <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide contraseña.</span></button>
+          <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide tu usuario (DNI) y contraseña.</span></button>
         <button class="opt" id="ac-coord">
           <strong>Coordinación</strong>
           <span>Todas las categorías, más las cargas y la configuración. Pide contraseña.</span></button>
@@ -1363,9 +1360,8 @@ function pantallaAcceso(){
     <p class="screen-note">Elegí cómo vas a usar la app. Podés cambiar después desde "salir", arriba a la derecha.</p>
     ${view.puerta==='dt' ? `
       <div class="block"><div class="block-title">Director técnico</div>
-        <div class="field"><label class="label" for="ac-cat">Categoría a cargo</label>
-          <select id="ac-cat">${FB_DTS.map(d=>
-            `<option value="${esc(d.categoria)}" ${view.dtCat===d.categoria?'selected':''}>${esc(d.categoria)}</option>`).join('')}</select></div>
+        <div class="field"><label class="label" for="ac-dt-dni">Usuario<em>tu DNI</em></label>
+          <input type="text" inputmode="numeric" id="ac-dt-dni" value="${esc(view.dtDni||'')}" placeholder="sin puntos"></div>
         <div class="field"><label class="label" for="ac-clave">Contraseña</label>
           <input type="password" id="ac-clave" autocomplete="current-password" placeholder="••••••••"></div>
         ${view.claveMal?`<p class="screen-note" style="color:var(--rojo);margin-top:-6px">${esc(view.claveMal)}</p>`:''}
@@ -1385,25 +1381,34 @@ function pantallaAcceso(){
     : formLogin('Jugadores','Pedile la contraseña a coordinación.')
       + `<div class="gap"></div><button class="btn btn-ghost" id="ac-local">Ver sin conexión</button>`}
   </div>`;
-  const inp = document.getElementById('ac-clave') || document.getElementById('ac-dni');
+  const inp = document.getElementById('ac-dt-dni') || document.getElementById('ac-dni') || document.getElementById('ac-clave');
   if (inp) inp.focus();
+}
+
+/* a qué categoría corresponde ese DNI, según lo cargado en Datos > "DT por categoría" */
+function categoriaDelDtPorDni(dni){
+  const registro = db.dts.find(d=>(d.dni||'').trim()===dni);
+  return registro ? registro.categoria : null;
 }
 
 /* entra y, si hay nube, se loguea de verdad */
 async function entrar(rol){
   const clave = (document.getElementById('ac-clave')||{}).value || '';
-  const cat   = (document.getElementById('ac-cat')||{}).value || '';
-  if (rol==='dt'){ view.dtCat = cat; }
+  let cat = '';
+  if (rol==='dt'){
+    const dni = (document.getElementById('ac-dt-dni')||{}).value?.trim() || '';
+    view.dtDni = dni;
+    cat = categoriaDelDtPorDni(dni);
+    if (!cat){ view.claveMal = 'Usuario no encontrado.'; return render(); }
+  }
 
   if (!fb){                                   /* sin nube: la clave del archivo */
-    if (rol!=='jugador' && clave !== CLAVE_LOCAL){
+    if (rol==='dt' && clave !== CLAVE_DT){ view.claveMal = 'Contraseña incorrecta.'; return render(); }
+    if (rol!=='jugador' && rol!=='dt' && clave !== CLAVE_LOCAL){
       view.claveMal = 'Contraseña incorrecta.'; return render();
     }
   } else {
-    const cuenta = rol==='dt'
-      ? (FB_DTS.find(d=>d.categoria===cat)||{}).mail
-      : FB_CUENTAS[rol];
-    if (!cuenta){ view.claveMal='Elegí una categoría.'; return render(); }
+    const cuenta = FB_CUENTAS[rol];
     try { await fb.auth.signInWithEmailAndPassword(cuenta, clave); }
     catch(e){
       const c = e && e.code;
@@ -1422,7 +1427,7 @@ async function entrar(rol){
   /* la cuenta compartida de jugadores ya quedó autenticada; falta saber
      CUÁL jugador es, para mandarlo directo a su categoría en Rutinas */
   if (rol==='jugador'){ view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render(); }
-  db.config.acceso = rol; view.puerta = null; view.claveMal = false;
+  db.config.acceso = rol; view.puerta = null; view.claveMal = false; view.dtDni = null;
   if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
   else { db.config.rol = 'Coordinador'; db.config.categoriaDT = ''; }
   view.categoria = 'Todas'; view.partidoCat = null;
@@ -4270,6 +4275,22 @@ function pantallaDatos(){
         <select id="cfg-cat">${CATEGORIAS.map(x=>`<option ${x===c.categoriaDT?'selected':''}>${esc(x)}</option>`).join('')}</select></div>`:''}
       <p class="screen-note">Por ahora esto filtra la vista. Cuando conectemos Firebase, cada DT entra con su usuario y solo ve su categoría de verdad.</p>
     </div>
+    <div class="block"><div class="block-title">DT por categoría</div>
+      <p class="screen-note" style="margin-top:0">Cada DT entra con su DNI como usuario y la contraseña <strong>${esc(CLAVE_DT)}</strong> (es la misma para todos; el DNI solo sirve para que la app sepa a qué categoría mandarlo).</p>
+      ${db.dts.length ? `<div class="roster">${db.dts.map(d=>`<div class="row">
+        <span class="row-main"><span class="row-name">DNI ${esc(d.dni)}</span>
+        <span class="row-meta"><span>${esc(d.categoria)}</span></span></span>
+        <button class="linkish" style="color:var(--rojo)" data-borrarDT="${d.id}">Eliminar</button>
+      </div>`).join('')}</div>` : `<p class="screen-note" style="margin:0">Sin DT cargados todavía.</p>`}
+      <div class="gap"></div>
+      <div class="two">
+        <div class="field"><label class="label" for="dt-dni">DNI del DT</label>
+          <input type="text" inputmode="numeric" id="dt-dni" placeholder="sin puntos"></div>
+        <div class="field"><label class="label" for="dt-cat">Categoría a cargo</label>
+          <select id="dt-cat">${CATEGORIAS.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+      </div>
+      <button class="btn btn-naranja" id="agregarDT">Agregar DT</button>
+    </div>
     <div class="block"><div class="block-title">Tomas</div>
       ${db.tomas.length?`<div class="roster">${tomasOrden().map(t=>`<div class="row">
         <span class="row-main"><span class="row-name">${esc(t.nombre)}</span>
@@ -4356,7 +4377,7 @@ document.querySelector('.tabs').addEventListener('click', e=>{
 });
 
 app.addEventListener('keydown', e=>{
-  if (e.target.id==='ac-clave' && e.key==='Enter'){
+  if ((e.target.id==='ac-clave' || e.target.id==='ac-dt-dni') && e.key==='Enter'){
     e.preventDefault(); document.getElementById('ac-entrar').click();
   }
   if (e.target.id==='ac-dni' && e.key==='Enter'){
@@ -4464,7 +4485,7 @@ app.addEventListener('click', async e=>{
   }
   if (puerta && puerta.id==='ac-coord'){ view.puerta='coord'; view.claveMal=false; return render(); }
   if (puerta && puerta.id==='ac-dt'){ view.puerta='dt'; view.claveMal=false; return render(); }
-  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; view.dniMal=false; return render(); }
+  if (t.id==='ac-volver'){ view.puerta=null; view.claveMal=false; view.dniMal=false; view.dtDni=null; return render(); }
   if (t.id==='ac-local'){          /* sin nube: igual hace falta el DNI para saber a qué categoría va */
     view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render();
   }
@@ -4753,6 +4774,13 @@ app.addEventListener('click', async e=>{
   if (t.id==='guardarJugador'){ return guardarJugador(); }
   if (t.id==='guardarToma'){ return guardarToma(); }
   if (t.id==='guardarPartidoPlantel'){ return guardarPartidoPlantel(); }
+  if (t.id==='agregarDT'){ return guardarDT(); }
+  const delDT = t.closest('[data-borrarDT]');
+  if (delDT){
+    if (!confirm('¿Eliminar este DT?')) return;
+    db.dts = db.dts.filter(d=>d.id!==delDT.dataset.borrardt);
+    await Store.save(db); toast('DT eliminado'); return render();
+  }
 
   const g = t.closest('[data-guardar]');
   if (g && g.dataset.guardar==='lesion') return guardarLesion();
@@ -4862,7 +4890,7 @@ app.addEventListener('click', async e=>{
   }
   if (t.id==='borrarTodo'){
     if (!confirm('Se borra todo. ¿Seguro?')) return;
-    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], config:db.config };
+    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], dts:[], config:db.config };
     await Store.save(db); toast('Datos borrados'); return render();
   }
   const csv = t.closest('[data-csv]');
@@ -4913,6 +4941,16 @@ async function guardarJugador(){
     await Store.save(db); toast('Jugador guardado');
   }
   view.form=null; view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
+}
+
+async function guardarDT(){
+  const dni = document.getElementById('dt-dni').value.trim();
+  const categoria = document.getElementById('dt-cat').value;
+  if (!dni) return toast('Ingresá el DNI del DT');
+  if (db.dts.some(d=>(d.dni||'').trim()===dni)) return toast('Ese DNI ya está cargado');
+  db.dts.push({ id:uid(), dni, categoria });
+  await Store.save(db);
+  toast('DT agregado · '+categoria); render();
 }
 
 async function guardarToma(){
@@ -5335,6 +5373,12 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
   }
   if (db.config.categoriaDT && UNIR_CATEGORIA[db.config.categoriaDT]){
     db.config.categoriaDT = normCat(db.config.categoriaDT); migrado = true;
+  }
+  /* primer DT cargado con el nuevo acceso por DNI: una sola vez, para que
+     no reaparezca si después se lo borra a propósito desde Datos */
+  if (!db.config.dtsSeeded){
+    if (!db.dts.some(d=>d.dni==='41781139')) db.dts.push({ id:uid(), dni:'41781139', categoria:'Juveniles' });
+    db.config.dtsSeeded = true; migrado = true;
   }
 
   if (migrado) await Store.save(db);

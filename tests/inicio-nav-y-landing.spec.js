@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { BASE_URL, launchOptions, entrarComoJugador } = require('./helpers');
+const { BASE_URL, launchOptions, entrarComoJugador, entrarComoDT } = require('./helpers');
 const ok=[],bad=[];
 const t=(n,c,d='')=>{(c?ok:bad).push(n);console.log((c?'PASS  ':'FAIL  ')+n+(d?' → '+d:''));};
 
@@ -39,9 +39,7 @@ t('Ese botón efectivamente vuelve a Inicio', (await pg.locator('h2.screen-title
 
 // ---- DT: nav y landing ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.click('#ac-dt'); await pg.waitForTimeout(300);
-await pg.selectOption('#ac-cat','Juveniles');
-await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await entrarComoDT(pg, 'Juveniles');
 t('DT también aterriza en Inicio', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 const tabsDT = await pg.locator('.tabs button:visible').allInnerTexts();
 t('DT ve 7 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Vs, Cargar',

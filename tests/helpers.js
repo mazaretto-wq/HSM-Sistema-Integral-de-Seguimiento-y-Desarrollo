@@ -35,4 +35,24 @@ async function entrarComoJugador(pg, jugadorId){
   return datos;
 }
 
-module.exports = { BASE_URL, CLAVE, launchOptions, entrarComoJugador };
+/* "Soy DT" ahora pide usuario (DNI) + contraseña, y la categoría la decide
+   el DNI (ver entrar() en index.html: categoriaDelDtPorDni, db.dts), ya no
+   un desplegable. La contraseña es única para todos los DT. Si esa
+   categoría todavía no tiene un DT cargado en db.dts, este helper le crea
+   uno de prueba; si ya tiene (por ejemplo el que se siembra solo la
+   primera vez, en Juveniles), reusa ese mismo DNI. Devuelve el DNI usado. */
+const CLAVE_DT = 'B@sehsm';
+async function entrarComoDT(pg, categoria){
+  const dni = await pg.evaluate((categoria)=>{
+    let d = db.dts.find(x=>x.categoria===categoria);
+    if (!d){ d = { id:uid(), dni:String(10000000+Math.floor(Math.random()*89999999)), categoria }; db.dts.push(d); }
+    return d.dni;
+  }, categoria);
+  await pg.click('#ac-dt'); await pg.waitForTimeout(300);
+  await pg.fill('#ac-dt-dni', dni);
+  await pg.fill('#ac-clave', CLAVE_DT);
+  await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+  return dni;
+}
+
+module.exports = { BASE_URL, CLAVE, CLAVE_DT, launchOptions, entrarComoJugador, entrarComoDT };
