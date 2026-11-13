@@ -15,8 +15,8 @@ await pg.reload(); await pg.waitForTimeout(2200);
 await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 // la app ya siembra sola la base completa del club al no haber jugadores,
-// así que no hace falta pasar por "Datos" (que además ya no tiene solapa visible)
-t('Coordinación ve las 6 solapas (con Vs)', (await pg.locator('.tabs button:visible').count())===6);
+// así que no hace falta pasar por "Datos" para cargarla
+t('Coordinación ve las 7 solapas (con Vs y Datos)', (await pg.locator('.tabs button:visible').count())===7);
 await pg.click('.tabs button:has-text("Categorías")'); await pg.waitForTimeout(300);
 await pg.locator('[data-entrarCat]').first().click(); await pg.waitForTimeout(300);
 await pg.locator('.roster .row[data-jugador]').first().click(); await pg.waitForTimeout(400);

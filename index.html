@@ -893,7 +893,7 @@ function catsPermitidas(){
    usan "Agregar jugador" y "Cargar datos de X" desde dentro de una
    ficha) aunque ya no tengan un botón propio en la barra */
 function navVisiblesActual(){
-  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs']
+  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs','datos']
        : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','vs','cargar']
                    : ['inicio','plantel','rutinas','vs'];
 }

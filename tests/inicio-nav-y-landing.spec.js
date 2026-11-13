@@ -16,8 +16,8 @@ await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 t('Coordinación aterriza en Inicio al loguearse', (await pg.locator('h2.screen-title').innerText())==='INICIO');
 const tabsCoord = await pg.locator('.tabs button:visible').allInnerTexts();
-t('Coordinación ve 6 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Vs',
-  tabsCoord.length===6 && tabsCoord.map(x=>x.toUpperCase()).join('|')==='INICIO|CATEGORÍAS|ENTRENOS|TEST FÍSICOS|RUTINAS|VS',
+t('Coordinación ve 7 solapas: Inicio, Categorías, Entrenos, Test físicos, Rutinas, Vs, Datos',
+  tabsCoord.length===7 && tabsCoord.map(x=>x.toUpperCase()).join('|')==='INICIO|CATEGORÍAS|ENTRENOS|TEST FÍSICOS|RUTINAS|VS|DATOS',
   tabsCoord.join(' | '));
 
 // ---- el roster completo sigue estando, solo que vía Categorías ----
