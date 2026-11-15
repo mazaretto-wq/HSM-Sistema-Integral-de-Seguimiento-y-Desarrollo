@@ -188,6 +188,16 @@ h2.screen-title{font-family:var(--display);font-weight:700;font-size:27px;letter
 .up{color:var(--verde)}.down{color:var(--rojo)}.flat{color:var(--ink-2)}
 .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
+/* ---- fixture: vista calendario ---- */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-dow{font-family:var(--mono);font-size:9.5px;text-align:center;color:var(--ink-2);padding-bottom:4px;text-transform:uppercase}
+.cal-day{min-height:46px;border:1px solid var(--linea);border-radius:7px;padding:3px 3px 4px;background:var(--paper)}
+.cal-day.cal-vacio{border-color:transparent;background:transparent}
+.cal-day.cal-con-partido{background:var(--wash);border-color:var(--naranja)}
+.cal-num{font-family:var(--mono);font-size:10px;color:var(--ink-2);display:block}
+.cal-match{display:block;font-size:8px;line-height:1.25;color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkish{background:none;border:none;padding:0;font-family:var(--mono);font-size:10.5px;color:var(--naranja);text-decoration:underline;cursor:pointer}
+
 /* ---- vs ---- */
 .vs-pickers{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:start;margin-bottom:18px}
 .vs-lado{display:flex;flex-direction:column;gap:6px}
@@ -450,6 +460,7 @@ button.dash-card{cursor:pointer}
   <button data-tab="testfisicos">Test físicos</button>
   <button data-tab="rutinas">Rutinas</button>
   <button data-tab="partidos">Partidos</button>
+  <button data-tab="fixture">Fixture</button>
   <button data-tab="vs">Vs</button>
   <button data-tab="cargar">Cargar</button>
   <button data-tab="datos">Datos</button>
@@ -832,7 +843,7 @@ const fase = id => FASES.find(f=>f.id===id) || {nombre:'—', color:'#999'};
    calma son trabajo físico general, el resto se hace con pelota */
 const grupoDeFase = id => (id==='fisico'||id==='activacion'||id==='vuelta') ? 'fisico' : 'pelota';
 
-let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], dts:[], partidosLinks:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
+let db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[], pizarra:[], rutinas:{}, lesiones:[], dts:[], partidosLinks:[], fixture:[], config:{rol:'Coordinador', categoriaDT:'', categoriaJugador:'', acceso:null} };
 
 /* Respaldo para cuando Firebase no carga. NO es la contraseña de coordinación:
    esa la valida Firebase y no está en este archivo. Esta solo permite editar en
@@ -848,6 +859,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtDni:null, fondoHome:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false, partidosCategoria:null,
+             fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false };
@@ -905,9 +917,9 @@ function catsPermitidas(){
    usan "Agregar jugador" y "Cargar datos de X" desde dentro de una
    ficha) aunque ya no tengan un botón propio en la barra */
 function navVisiblesActual(){
-  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','partidos','vs','datos']
-       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','partidos','vs','cargar']
-                   : ['inicio','plantel','rutinas','partidos','vs'];
+  return esCoord() ? ['inicio','categorias','entrenos','testfisicos','rutinas','partidos','fixture','vs','datos']
+       : esDT()    ? ['inicio','categorias','entrenos','testfisicos','rutinas','partidos','fixture','vs','cargar']
+                   : ['inicio','plantel','rutinas','partidos','fixture','vs'];
 }
 function puedeVer(j){
   const p = catsPermitidas();
@@ -1482,9 +1494,9 @@ function render(){
      desde dentro de una ficha). "navVisibles": lo que de verdad se ve como
      botón en la barra; Plantel/Cargar/Datos quedan accesibles pero fuera
      de la barra para coordinación, Categorías ya lleva a un plantel filtrado */
-  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','partidos','vs','cargar','datos']
-                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','partidos','vs','cargar']
-                             : ['inicio','plantel','rutinas','partidos','vs'];
+  const permitidas = esCoord() ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','partidos','fixture','vs','cargar','datos']
+                 : esDT()    ? ['inicio','plantel','categorias','entrenos','testfisicos','rutinas','partidos','fixture','vs','cargar']
+                             : ['inicio','plantel','rutinas','partidos','fixture','vs'];
   const navVisibles = navVisiblesActual();
   nav.querySelectorAll('button').forEach(b=>{
     b.style.display = navVisibles.includes(b.dataset.tab) ? '' : 'none';
@@ -1509,6 +1521,7 @@ function render(){
   if (view.tab==='testfisicos') return pantallaTestFisicos();
   if (view.tab==='rutinas') return pantallaRutinas();
   if (view.tab==='partidos') return pantallaPartidosLinks();
+  if (view.tab==='fixture') return pantallaFixture();
   if (view.tab==='vs')      return pantallaVs();
   if (view.tab==='cargar')  return pantallaCargar();
   if (view.tab==='datos')   return pantallaDatos();
@@ -1875,6 +1888,140 @@ function pantallaPartidosLinks(){
     </div>`).join('');
   }
   app.innerHTML = h;
+}
+
+/* ---------- FIXTURE: calendario de partidos por categoría. Jugador solo
+   mira; DT y coordinación agendan (rival, fecha, hora). El resultado se
+   completa solo apenas el DT carga los minutos del partido en "Cargar >
+   Partido" (ver guardarPartidoPlantel), sumando los goles de todas las
+   filas de ese partido; si hace falta, el gol del rival también se puede
+   cargar o corregir acá mismo ---------- */
+function categoriaActivaFixture(){
+  if (esDT()) return db.config.categoriaDT;
+  if (esJugador() && db.config.categoriaJugador) return db.config.categoriaJugador;
+  return view.fixtureCategoria || null;
+}
+function fixtureDe(cat){
+  return db.fixture.filter(f=>f.categoria===cat)
+    .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'') || (a.hora||'').localeCompare(b.hora||''));
+}
+/* goles propios de ESE partido puntual, sumando todas las filas que dejó
+   "Cargar > Partido" para esa fecha+categoría+rival; null si todavía no
+   se cargó nada (el partido sigue "programado", no "jugado") */
+function golesPropiosFixture(f){
+  const filas = db.partidos.filter(p=>p.categoria===f.categoria && p.rival===f.rival && p.fecha===f.fecha);
+  if (!filas.length) return null;
+  return filas.reduce((a,p)=>a+(p.goles||0),0);
+}
+function mesMas(ym, delta){
+  const [a,m] = ym.split('-').map(Number);
+  const d = new Date(a, m-1+delta, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function pantallaFixture(){
+  const cat = categoriaActivaFixture();
+  const catFija = esDT() || (esJugador() && db.config.categoriaJugador);
+  let h = `<h2 class="screen-title">Fixture</h2>`;
+  if (!catFija){
+    h += `<p class="screen-note">${esCoord()?'Elegí una categoría para ver o cargar su fixture.':'Elegí la categoría de tu plantel.'}</p>
+      <div class="chips">${CATEGORIAS.map(c=>
+        `<button class="chip" data-fixtureCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
+  } else {
+    h += `<p class="screen-note">Fixture de ${esc(cat)}.</p>`;
+  }
+  if (!cat){
+    h += `<div class="empty"><p>Elegí una categoría arriba.</p></div>`;
+    app.innerHTML = h; return;
+  }
+
+  const vista = view.fixtureVista || 'tabla';
+  h += `<div class="chips">
+    <button class="chip" data-fixtureVista="tabla" aria-pressed="${vista==='tabla'}">Tabla</button>
+    <button class="chip" data-fixtureVista="calendario" aria-pressed="${vista==='calendario'}">Calendario</button>
+  </div>`;
+
+  if (puedeEditar()){
+    h += `<div class="block"><div class="block-title">${icono('cancha')} Cargar partido</div>
+      <div class="field"><label class="label" for="fx-rival">Rival</label>
+        <input type="text" id="fx-rival" placeholder="ej: Club Deportivo Rival"></div>
+      <div class="two">
+        <div class="field"><label class="label" for="fx-fecha">Fecha</label>
+          <input type="date" id="fx-fecha" value="${esc(hoy())}"></div>
+        <div class="field"><label class="label" for="fx-hora">Hora<em>opcional</em></label>
+          <input type="time" id="fx-hora"></div>
+      </div>
+      <button class="btn btn-naranja" id="agregarFixture">Agregar al fixture</button>
+    </div>`;
+  }
+
+  h += vista==='calendario' ? bloqueFixtureCalendario(cat) : bloqueFixtureTabla(cat);
+  app.innerHTML = h;
+}
+function bloqueFixtureTabla(cat){
+  const lista = fixtureDe(cat);
+  if (!lista.length) return `<div class="empty"><p>Todavía no hay partidos programados para ${esc(cat)}.</p></div>`;
+  let h = `<div class="scroll-x"><table class="cmp"><thead><tr>
+    <th>Fecha</th><th>Hora</th><th>Rival</th><th>Resultado</th>${puedeEditar()?'<th></th>':''}
+  </tr></thead><tbody>`;
+  lista.forEach(f=>{
+    const propios = golesPropiosFixture(f);
+    let resultado;
+    if (propios===null){
+      resultado = `<span class="pill">Programado</span>`;
+    } else if (!puedeEditar()){
+      resultado = `<strong>${propios}</strong> - ${f.golesRival??'?'}`;
+    } else if (f.golesRival!=null){
+      resultado = `<strong>${propios}</strong> - ${f.golesRival} <button class="linkish" data-corregirGolesRival="${f.id}">corregir</button>`;
+    } else {
+      resultado = `<strong>${propios}</strong> -
+        <input type="number" inputmode="numeric" min="0" id="gr-${f.id}" placeholder="?" style="width:42px;padding:3px 5px">
+        <button class="linkish" data-guardarGolesRival="${f.id}">Guardar</button>`;
+    }
+    h += `<tr>
+      <td>${fechaCorta(f.fecha)}</td>
+      <td>${f.hora?esc(f.hora):'—'}</td>
+      <td>vs ${esc(f.rival)}</td>
+      <td class="val">${resultado}</td>
+      ${puedeEditar()?`<td><button class="linkish" style="color:var(--rojo)" data-borrarFixture="${f.id}">Eliminar</button></td>`:''}
+    </tr>`;
+  });
+  h += `</tbody></table></div>`;
+  return h;
+}
+function bloqueFixtureCalendario(cat){
+  const ym = view.fixtureMes || hoy().slice(0,7);
+  const [anio, mesNum] = ym.split('-').map(Number);
+  const porDia = {};
+  fixtureDe(cat).forEach(f=>{ if (f.fecha) (porDia[f.fecha] = porDia[f.fecha]||[]).push(f); });
+
+  const diasEnMes = new Date(anio, mesNum, 0).getDate();
+  const diaSemanaInicio = (new Date(anio, mesNum-1, 1).getDay()+6)%7;  /* lunes=0 */
+  const celdas = [...Array(diaSemanaInicio).fill(null), ...Array.from({length:diasEnMes},(_,i)=>i+1)];
+
+  let h = `<div class="block">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <button class="btn btn-ghost" data-fixtureMes="${mesMas(ym,-1)}" style="padding:6px 14px">‹</button>
+      <strong style="font-family:var(--display);text-transform:uppercase">${esc(nombreMes(ym))}</strong>
+      <button class="btn btn-ghost" data-fixtureMes="${mesMas(ym,1)}" style="padding:6px 14px">›</button>
+    </div>
+    <div class="cal-grid">
+      ${['L','M','M','J','V','S','D'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+      ${celdas.map(d=>{
+        if (!d) return `<div class="cal-day cal-vacio"></div>`;
+        const fechaStr = `${anio}-${String(mesNum).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const partidos = porDia[fechaStr] || [];
+        return `<div class="cal-day${partidos.length?' cal-con-partido':''}">
+          <span class="cal-num">${d}</span>
+          ${partidos.map(f=>{
+            const propios = golesPropiosFixture(f);
+            const texto = propios===null ? `vs ${f.rival}${f.hora?' · '+f.hora:''}` : `vs ${f.rival} (${propios}-${f.golesRival??'?'})`;
+            return `<span class="cal-match">${esc(texto)}</span>`;
+          }).join('')}
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  return h;
 }
 
 /* ---------- VS: comparar a dos jugadores (o al mismo en dos temporadas
@@ -3251,6 +3398,8 @@ function formPartido(){
       <div class="field"><label class="label" for="p-rival">Rival<em>opcional</em></label>
         <input type="text" id="p-rival" value="${esc(view.partidoRival||'')}"></div>
     </div>
+    <div class="field"><label class="label" for="p-golesrival">Goles del rival<em>si ya terminó, para el Fixture</em></label>
+      <input type="number" inputmode="numeric" min="0" id="p-golesrival" placeholder="opcional"></div>
     ${!plantel.length ? `<div class="empty"><p>No hay jugadores en ${esc(cat)}.</p></div>` : `
     <div class="block-title">Plantel <span>${plantel.length} jugadores</span></div>
     <div class="scroll-x"><table class="pl-tabla"><thead><tr>
@@ -3275,6 +3424,7 @@ async function guardarPartidoPlantel(){
   const fecha = document.getElementById('p-fecha').value || hoy();
   const rival = document.getElementById('p-rival').value.trim();
   const esquema = document.getElementById('p-esquema').value;
+  const golesRival = leerNum('p-golesrival');
   const plantel = planteldeCategoria(cat);
   if (!plantel.length) return toast('No hay jugadores en '+cat);
 
@@ -3303,6 +3453,15 @@ async function guardarPartidoPlantel(){
   filas.forEach(f=>db.partidos.push({ id:uid(), jugadorId:f.id, fecha, categoria:cat, esquema,
     posicion:f.posicion, rival, jugo:f.minutos>0, goles:f.goles, asistencias:f.asistencias,
     minutos:f.minutos, amarillas:f.amarillas, rojas:f.rojas }));
+
+  /* correlación con el Fixture: si ya estaba programado, le completa el
+     resultado solo; si no existía (se cargó el partido sin haberlo
+     agendado antes), lo crea para que no falte en el Fixture */
+  if (rival){
+    let fx = db.fixture.find(x=>x.categoria===cat && x.rival===rival && x.fecha===fecha);
+    if (!fx){ fx = { id:uid(), categoria:cat, rival, fecha, hora:null, golesRival:null }; db.fixture.push(fx); }
+    if (golesRival!==null) fx.golesRival = golesRival;
+  }
 
   await Store.save(db);
   toast(`Partido guardado · jugaron ${jugaron} de ${filas.length}`);
@@ -4895,6 +5054,41 @@ app.addEventListener('click', async e=>{
     await Store.save(db); toast('Partido eliminado'); return render();
   }
 
+  const chipFixtureCat = t.closest('[data-fixtureCat]');
+  if (chipFixtureCat){ view.fixtureCategoria = chipFixtureCat.dataset.fixturecat; return render(); }
+  const chipFixtureVista = t.closest('[data-fixtureVista]');
+  if (chipFixtureVista){ view.fixtureVista = chipFixtureVista.dataset.fixturevista; return render(); }
+  const chipFixtureMes = t.closest('[data-fixtureMes]');
+  if (chipFixtureMes){ view.fixtureMes = chipFixtureMes.dataset.fixturemes; return render(); }
+  if (t.id==='agregarFixture'){
+    if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
+    return guardarFixture();
+  }
+  const delFixture = t.closest('[data-borrarFixture]');
+  if (delFixture){
+    if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
+    if (!confirm('¿Eliminar este partido del fixture?')) return;
+    db.fixture = db.fixture.filter(f=>f.id!==delFixture.dataset.borrarfixture);
+    await Store.save(db); toast('Partido eliminado del fixture'); return render();
+  }
+  const corregirGR = t.closest('[data-corregirGolesRival]');
+  if (corregirGR && puedeEditar()){
+    const fx = db.fixture.find(f=>f.id===corregirGR.dataset.corregirgolesrival);
+    if (fx) fx.golesRival = null;
+    return render();
+  }
+  const guardarGR = t.closest('[data-guardarGolesRival]');
+  if (guardarGR){
+    if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
+    const id = guardarGR.dataset.guardargolesrival;
+    const el = document.getElementById('gr-'+id);
+    const n = el && el.value!=='' ? Number(el.value) : null;
+    if (n===null || isNaN(n) || n<0) return toast('Ingresá los goles del rival');
+    const fx = db.fixture.find(f=>f.id===id);
+    if (fx){ fx.golesRival = n; await Store.save(db); toast('Resultado guardado'); }
+    return render();
+  }
+
   const tipoEval = t.closest('[data-evalTipo]');
   if (tipoEval){ view.evalTipo = tipoEval.dataset.evaltipo; view.evalFecha = hoy(); window.scrollTo(0,0); return render(); }
   const fisicoEval = t.closest('[data-evalFisico]');
@@ -4964,7 +5158,7 @@ app.addEventListener('click', async e=>{
   }
   if (t.id==='borrarTodo'){
     if (!confirm('Se borra todo. ¿Seguro?')) return;
-    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], dts:[], partidosLinks:[], config:db.config };
+    db = { jugadores:[], tomas:[], evaluaciones:[], partidos:[], lesiones:[], dts:[], partidosLinks:[], fixture:[], config:db.config };
     await Store.save(db); toast('Datos borrados'); return render();
   }
   const csv = t.closest('[data-csv]');
@@ -5038,6 +5232,21 @@ async function guardarPartidoLink(){
   db.partidosLinks.push({ id:uid(), categoria, titulo, link });
   await Store.save(db);
   toast('Partido agregado · '+categoria); render();
+}
+
+async function guardarFixture(){
+  const categoria = categoriaActivaFixture();
+  if (!categoria) return;
+  const rival = document.getElementById('fx-rival').value.trim();
+  const fecha = document.getElementById('fx-fecha').value || hoy();
+  const hora = document.getElementById('fx-hora').value || null;
+  if (!rival) return toast('Ponele el nombre del rival');
+  if (db.fixture.some(f=>f.categoria===categoria && f.rival===rival && f.fecha===fecha)){
+    return toast('Ese partido ya está en el fixture');
+  }
+  db.fixture.push({ id:uid(), categoria, rival, fecha, hora, golesRival:null });
+  await Store.save(db);
+  toast('Agregado al fixture · '+categoria); render();
 }
 
 async function guardarToma(){
