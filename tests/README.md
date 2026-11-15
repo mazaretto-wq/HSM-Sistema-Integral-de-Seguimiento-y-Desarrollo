@@ -68,6 +68,7 @@ node roles-y-permisos.spec.js
 | `acceso-dni-dt.spec.js` | "Soy DT" pide usuario (DNI) + contraseña (la misma para todos) en vez de elegir la categoría de un desplegable; la categoría la decide el DNI, cargado desde Datos > "DT por categoría"; un DNI no cargado o la contraseña mal no dejan entrar; coordinación puede agregar y eliminar DT desde esa pantalla, y eliminar uno le saca el acceso en el momento |
 | `partidos-links.spec.js` | Solapa "Partidos": el primer filtro es la categoría; solo coordinación carga (título + link, que se completa con `https://` si hace falta) o elimina; DT y jugador (identificados) caen directo en la suya, sin selector y sin botón de carga; el más nuevo se ve primero; cada categoría tiene sus propios partidos, sin mezclarse con las demás |
 | `fixture.spec.js` | Solapa "Fixture": el primer filtro es la categoría; a diferencia de Partidos, acá coordinación Y el DT pueden agendar (rival, fecha, hora) o eliminar, el jugador solo mira; vista Tabla y Calendario (con navegación de mes) sobre los mismos datos; el partido agendado se ve "Programado" hasta que el DT carga las estadísticas en Cargar > Partido con el campo "Goles del rival" — ahí el Fixture completa el resultado solo, sumando en vivo los goles cargados de cada jugador (los goles propios nunca se guardan en el fixture) y permite corregir el gol del rival después |
+| `aif-sincronizar.spec.js` | Botón "Sincronizar con AIF" en Fixture (coordinación y DT, no el jugador): trae de `/api/aif` los partidos oficiales de Haras Santa María en esa categoría, agrega los que falten y actualiza hora/gol del rival de los que ya estaban (sin duplicar al sincronizar dos veces); un partido que la AIF ya dio por jugado pero que todavía no se cargó en la app (sin datos de jugadores) se ve como "? - <gol del rival>", no "Programado"; si la AIF corrige un resultado después, la sincronización lo pisa, sin tocar los datos de los jugadores ya cargados; si `/api/aif` falla, avisa con un toast y no cambia nada. Bloquea el service worker de la página (`serviceWorkers:'block'`) porque si no, intercepta el `fetch()` antes que la ruta simulada de Playwright |
 
 ## Si agregás una función nueva a la app
 
@@ -93,3 +94,13 @@ fabricado a mano en `sincronizacion-en-vivo.spec.js`) y, aparte de estas
 pruebas, el algoritmo de compresión (DEFLATE) contra una muestra de datos
 con la forma real de la base, usando el `zlib` de Node: redujo unos
 650 KB de JSON a poco más de 20 KB, con una vuelta exacta al original.
+
+Tampoco hay una prueba end-to-end de `api/aif.js` (la función de Vercel que
+trae el fixture real de aif.org.ar) contra la AIF de verdad: `run-all.js`
+sirve `index.html` con un servidor estático de Python, que no ejecuta
+funciones serverless, así que `aif-sincronizar.spec.js` simula la respuesta
+de `/api/aif` con `page.route`. La lógica de `api/aif.js` en sí (los
+endpoints de la AIF, el mapeo de categoría→torneo/división, el parseo del
+JSONP) sí se probó a mano contra el sitio real en el momento de escribirla,
+para las 5 categorías. Si la AIF cambia su estructura en el futuro, esta
+función podría necesitar ajustes que estas pruebas no van a detectar solas.

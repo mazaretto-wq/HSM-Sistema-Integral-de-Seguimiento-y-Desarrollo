@@ -1941,6 +1941,10 @@ function pantallaFixture(){
   </div>`;
 
   if (puedeEditar()){
+    h += `<button class="btn btn-ghost" id="sincronizarAIF" data-sinccat="${esc(cat)}">${icono('cancha')} Sincronizar con AIF</button>`;
+  }
+
+  if (puedeEditar()){
     h += `<div class="block"><div class="block-title">${icono('cancha')} Cargar partido</div>
       <div class="field"><label class="label" for="fx-rival">Rival</label>
         <input type="text" id="fx-rival" placeholder="ej: Club Deportivo Rival"></div>
@@ -1966,8 +1970,12 @@ function bloqueFixtureTabla(cat){
   lista.forEach(f=>{
     const propios = golesPropiosFixture(f);
     let resultado;
-    if (propios===null){
+    if (propios===null && f.golesRival==null){
       resultado = `<span class="pill">Programado</span>`;
+    } else if (propios===null){
+      // ya se sabe el gol del rival (ej. sincronizado de la AIF) pero
+      // todavía nadie cargó los datos propios del partido
+      resultado = `<span class="pill">? - ${f.golesRival}</span>`;
     } else if (!puedeEditar()){
       resultado = `<strong>${propios}</strong> - ${f.golesRival??'?'}`;
     } else if (f.golesRival!=null){
@@ -2014,7 +2022,9 @@ function bloqueFixtureCalendario(cat){
           <span class="cal-num">${d}</span>
           ${partidos.map(f=>{
             const propios = golesPropiosFixture(f);
-            const texto = propios===null ? `vs ${f.rival}${f.hora?' · '+f.hora:''}` : `vs ${f.rival} (${propios}-${f.golesRival??'?'})`;
+            const texto = propios===null
+              ? (f.golesRival==null ? `vs ${f.rival}${f.hora?' · '+f.hora:''}` : `vs ${f.rival} (?-${f.golesRival})`)
+              : `vs ${f.rival} (${propios}-${f.golesRival??'?'})`;
             return `<span class="cal-match">${esc(texto)}</span>`;
           }).join('')}
         </div>`;
@@ -5064,6 +5074,11 @@ app.addEventListener('click', async e=>{
     if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
     return guardarFixture();
   }
+  const sincAIF = t.closest('[data-sinccat]');
+  if (sincAIF){
+    if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
+    return sincronizarFixtureAIF(sincAIF.dataset.sinccat);
+  }
   const delFixture = t.closest('[data-borrarFixture]');
   if (delFixture){
     if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
@@ -5247,6 +5262,39 @@ async function guardarFixture(){
   db.fixture.push({ id:uid(), categoria, rival, fecha, hora, golesRival:null });
   await Store.save(db);
   toast('Agregado al fixture · '+categoria); render();
+}
+
+/* trae de la AIF (vía /api/aif, que corre en el propio Vercel) el
+   fixture/resultados oficiales de esa categoría y los mezcla con el
+   fixture propio: agrega los partidos que falten, y en los que ya
+   terminaron completa el gol del rival solo. Nunca toca los datos de
+   cada jugador (eso sigue siendo manual, vía Cargar > Partido) */
+async function sincronizarFixtureAIF(cat){
+  toast('Buscando en la AIF…');
+  let datos;
+  try{
+    const r = await fetch(`/api/aif?categoria=${encodeURIComponent(cat)}`);
+    datos = await r.json();
+    if (!r.ok) throw new Error(datos.error || 'la AIF no respondió');
+  }catch(e){
+    toast('No se pudo sincronizar con la AIF: '+e.message);
+    return;
+  }
+  let nuevos = 0;
+  (datos.partidos||[]).forEach(p=>{
+    if (!p.fecha || !p.rival) return;
+    let fx = db.fixture.find(x=>x.categoria===cat && x.rival===p.rival && x.fecha===p.fecha);
+    if (!fx){
+      fx = { id:uid(), categoria:cat, rival:p.rival, fecha:p.fecha, hora:p.hora||null, golesRival:null };
+      db.fixture.push(fx);
+      nuevos++;
+    }
+    if (p.hora) fx.hora = p.hora;
+    if (p.jugado) fx.golesRival = p.golesRival;
+  });
+  await Store.save(db);
+  toast(`Sincronizado con la AIF · ${datos.partidos.length} partido(s), ${nuevos} nuevo(s)`);
+  render();
 }
 
 async function guardarToma(){
