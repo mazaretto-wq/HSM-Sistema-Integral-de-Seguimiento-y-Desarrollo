@@ -18,7 +18,7 @@ await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); awa
 // como caracteres de texto ----
 const sinEmojis = texto => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2300}-\u{23FF}]/u.test(texto);
 
-t('En Inicio (fondo oscuro) no queda ningún emoji de texto, solo íconos de contorno',
+t('En Inicio no queda ningún emoji de texto, solo íconos de contorno',
   sinEmojis(await pg.locator('#app').innerText()), await pg.locator('#app').innerText());
 
 const titulosConIcono = await pg.evaluate(()=>
@@ -30,13 +30,14 @@ const titulosConIcono = await pg.evaluate(()=>
 t('Todos los títulos de bloque en Inicio tienen un ícono de contorno (ninguno quedó sin reemplazar)',
   titulosConIcono.length>0 && titulosConIcono.every(x=>x.tieneIcono), JSON.stringify(titulosConIcono));
 
-// el ícono dentro del panel oscuro de Inicio es blanco (mismo criterio
-// que ya usa el texto ahí), no naranja
-const colorEnOscuro = await pg.evaluate(()=>{
+// Inicio es blanco como el resto de la app (se probó un panel oscuro con
+// foto de fondo y no convenció): el ícono es naranja, igual que en todos
+// lados, no un color aparte
+const colorEnInicio = await pg.evaluate(()=>{
   const svg = document.querySelector('.inicio-dash .block-title svg.icon');
   return svg ? getComputedStyle(svg).stroke : null;
 });
-t('Sobre el fondo oscuro de Inicio, el ícono es blanco', colorEnOscuro === 'rgb(255, 255, 255)', colorEnOscuro);
+t('En Inicio el ícono es naranja, igual que en el resto de la app', colorEnInicio === 'rgb(234, 91, 12)', colorEnInicio);
 
 // ---- los íconos de las tarjetas "Destacados" también son de contorno ----
 t('Las tarjetas de Destacados tienen ícono de contorno (no el emoji de antes)',

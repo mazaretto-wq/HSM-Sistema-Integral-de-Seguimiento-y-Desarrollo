@@ -14,7 +14,7 @@ await pg.reload(); await pg.waitForTimeout(2200);
 await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 
-t('El panel oscuro "Destacados" está presente', (await pg.locator('.inicio-dash').count())===1);
+t('El bloque "Destacados" está presente', (await pg.locator('.inicio-dash').count())===1);
 t('Hay 7 tarjetas en la tira de destacados (goleador, asistidor, contribuidor, participación + 3 tests)',
   (await pg.locator('.dash-card').count())===7);
 const labels = (await pg.locator('.dash-card-label').allInnerTexts()).map(x=>x.trim().toUpperCase());
@@ -26,7 +26,7 @@ await primero.click(); await pg.waitForTimeout(300);
 t('Clickear una tarjeta de destacados abre la ficha del jugador', (await pg.locator('.ficha-name').count())===1);
 await pg.click('[data-back]'); await pg.waitForTimeout(300);
 
-t('Los bloques de ranking de siempre siguen ahí, ahora dentro del panel oscuro',
+t('Los bloques de ranking de siempre siguen ahí, en Inicio',
   (await pg.locator('.inicio-dash .block:has-text("Más goles")').count())===1);
 t('Siguen siendo clickeables y abren la ficha', true);
 await pg.locator('.inicio-dash .block:has-text("Más goles") .row').first().click(); await pg.waitForTimeout(300);
