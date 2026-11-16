@@ -4544,9 +4544,10 @@ function bloqueHistorialAIF(){
   let h = `<div class="block"><div class="block-title">${icono('cancha')} Importar historial AIF</div>
     <p class="screen-note" style="margin-top:0">Trae el plantel ACTUAL de Haras Santa María en la AIF para esta
     categoría y, de cada jugador, su historial temporada a temporada (partidos jugados, minutos, goles, amarillas
-    y rojas). Nunca toca Juveniles, que ya tiene su historial cargado a mano. <strong>No incluye asistencias</strong>
-    (es lo único que la AIF no registra) <strong>ni la temporada ${ANIO_ACTUAL}</strong>: esa se arma sola con lo
-    que cargás en Cargar &gt; Partido, y guardarla acá la duplicaría.</p>
+    y rojas). Nunca toca Juveniles, que ya tiene su historial cargado a mano. <strong>No incluye asistencias</strong>:
+    es lo único que la AIF no registra. La temporada ${ANIO_ACTUAL} no se guarda como historial (eso duplicaría con
+    lo que cargás en Cargar &gt; Partido): en vez de eso, actualiza la base de planilla de la categoría con el total
+    fresco de la AIF hasta hoy.</p>
     <div class="chips">${CATEGORIAS_HIST_AIF.map(c=>
       `<button class="chip" data-histAifCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
 
@@ -4562,7 +4563,7 @@ function bloqueHistorialAIF(){
       carga anterior.</p>
       <div class="scroll-x"><table class="cmp"><thead><tr><th>AIF</th><th>Resumen</th><th>Vincular con</th></tr></thead><tbody>`;
     view.histAifJugadores.forEach(p=>{
-      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].min}min/${p.porAnio[a].goles}g${a===ANIO_ACTUAL?' (no se guarda, es la temporada en curso)':''}`).join(' · ');
+      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].min}min/${p.porAnio[a].goles}g${a===ANIO_ACTUAL?' (actualiza la base de planilla, sin minutos)':''}`).join(' · ');
       const sel = view.histAifVinculos[p.key] || '';
       h += `<tr>
         <td>${esc(p.nombreAif)}</td>
@@ -4642,11 +4643,22 @@ async function guardarHistorialAIF(){
     if (p.idjugadorAif) j.aifId = p.idjugadorAif;
     if (!j.historial) j.historial = [];
     Object.keys(p.porAnio).forEach(anio=>{
-      /* la temporada en curso NUNCA se guarda acá: ya se arma sola con lo
-         cargado en Cargar > Partido más la base de planilla (ver
-         totalesTemporada); guardarla también en el historial la duplicaría */
-      if (String(anio)===ANIO_ACTUAL) return;
       const x = p.porAnio[anio];
+      if (String(anio)===ANIO_ACTUAL){
+        /* la temporada en curso no se guarda en el historial (eso duplicaría
+           con totalesTemporada): se ACTUALIZA la base de planilla de esa
+           categoría con los números frescos de la AIF, que es la misma
+           idea que ya tenía "Planteles por categoría" (un total "hasta
+           acá" para cuando no se carga partido a partido), solo que
+           ahora se puede refrescar en vez de quedar siempre con la foto
+           del día que se cargó. Sin minutos: la base nunca los tuvo */
+        if (!j.base) j.base = [];
+        let b = j.base.find(x=>x.categoria===cat);
+        if (!b){ b = { categoria:cat }; j.base.push(b); }
+        b.pj = x.pj; b.goles = x.goles; b.ta = x.ta; b.tr = x.tr;
+        aniosGuardados++;
+        return;
+      }
       j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria===cat));
       j.historial.push({ anio:String(anio), categoria:cat, pj:x.pj, goles:x.goles, asis:0, min:x.min, ta:x.ta, tr:x.tr });
       aniosGuardados++;

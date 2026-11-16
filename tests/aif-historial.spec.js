@@ -106,9 +106,9 @@ await pg.fill('#hist-aif-hasta', '2021');
 await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(400);
 t('No deja traer con "desde" mayor que "hasta"', (await pg.locator('table.cmp').count())===0);
 
-// ---- la temporada en curso NUNCA se guarda en el historial (se arma
-//      sola con Cargar > Partido + la base de planilla; guardarla acá
-//      la duplicaba - ver migración de limpieza al arrancar) ----
+// ---- la temporada en curso NUNCA se guarda en el historial (duplicaría
+//      con totalesTemporada); en vez de eso, ACTUALIZA la base de
+//      planilla de esa categoría con el total fresco de la AIF ----
 await pg.click('[data-histAifCat="Promocional"]'); await pg.waitForTimeout(200); // el paso anterior había dejado elegida "Cadetes"
 // apellido inventado: el seed ya trae un "VANZINI, Francisco" real en
 // Promocional, y con el mismo nombre se duplicaría en el desplegable
@@ -133,16 +133,16 @@ await pg.fill('#hist-aif-desde', '2025');
 await pg.fill('#hist-aif-hasta', anioActual);
 await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(1200);
 const filaVanzini = await pg.locator('tr:has-text("ZZZTESTVANZINI FRANCISCO")').innerText();
-t('Muestra la temporada en curso en el resumen, pero avisa que no se va a guardar',
-  filaVanzini.includes(`${anioActual}: 22pj/1540min/46g (no se guarda`), filaVanzini);
+t('Muestra la temporada en curso en el resumen, aclarando que actualiza la base de planilla',
+  filaVanzini.includes(`${anioActual}: 22pj/1540min/46g (actualiza la base de planilla`), filaVanzini);
 t('Lo cruza solo con el jugador correcto (nombre único, sin ambigüedad)',
   (await pg.locator('tr:has-text("ZZZTESTVANZINI FRANCISCO") select').inputValue())===idVanzini);
 await pg.click('#guardarHistorialAIF'); await pg.waitForTimeout(500);
 const vanzini = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idVanzini);
 t('Al guardar, la temporada en curso NO se escribe en el historial (solo 2025)',
   (vanzini.historial||[]).length===1 && vanzini.historial[0].anio==='2025', JSON.stringify(vanzini.historial));
-t('La base de planilla del año en curso queda intacta (nunca se tocó)',
-  JSON.stringify(vanzini.base)===JSON.stringify([{categoria:'Promocional', pj:17, goles:38, ta:0, tr:0}]));
+t('En cambio, la base de planilla del año en curso se actualiza con el total fresco de la AIF (22pj/46g, sin minutos)',
+  JSON.stringify(vanzini.base)===JSON.stringify([{categoria:'Promocional', pj:22, goles:46, ta:0, tr:0}]), JSON.stringify(vanzini.base));
 
 // ---- si la AIF no tiene jugadores para esa categoría, avisa y no rompe nada ----
 await pg.unroute(/\/api\/aif-historial/);
