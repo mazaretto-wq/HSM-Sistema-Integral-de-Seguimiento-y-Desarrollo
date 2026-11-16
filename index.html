@@ -1026,6 +1026,25 @@ function historialAnio(j, anio, cat){
 }
 /* la temporada en curso: partidos cargados + planilla + lo del año que vino agregado */
 const ANIO_ACTUAL = String(new Date().getFullYear());
+/* saca del historial cualquier fila puesta a mano con el año en curso
+   EXACTO (nunca una fila legítima como "2026 Apertura": archivarTemporada
+   se niega a correr para el año en curso, así que ese string nunca lo
+   escribe nada más que "Importar historial AIF", y esa herramienta ya no
+   lo hace). Hace falta correrlo no solo una vez al abrir la app, sino
+   también cada vez que se vuelve a leer la nube (por ejemplo al iniciar
+   sesión, ver entrar()): si el arreglo de acá nunca llegó a subirse
+   porque en ese momento todavía no había sesión iniciada, un login
+   posterior pisaría la corrección con la copia vieja de la nube */
+function limpiarHistorialAnioEnCurso(baseDb){
+  let cambio = false;
+  (baseDb.jugadores||[]).forEach(j=>{
+    if (!j.historial) return;
+    const antes = j.historial.length;
+    j.historial = j.historial.filter(h=>String(h.anio)!==ANIO_ACTUAL);
+    if (j.historial.length!==antes) cambio = true;
+  });
+  return cambio;
+}
 function totalesTemporada(id, cat){
   const j = db.jugadores.find(x=>x.id===id);
   const t = totalesConBase(id,cat), a = historialAnio(j, ANIO_ACTUAL, cat);
@@ -1447,7 +1466,14 @@ async function entrar(rol){
     }
     /* con sesión abierta ya podemos leer; si la nube está vacía, subimos lo de acá */
     const nube = await fbLeer();
-    if (nube) { db = Object.assign(db, nube, {config: Object.assign(db.config, nube.config||{})}); }
+    if (nube) {
+      db = Object.assign(db, nube, {config: Object.assign(db.config, nube.config||{})});
+      /* esta lectura puede traer una copia de la nube más vieja que la
+         limpieza que ya se hizo al abrir la app (si esa limpieza todavía
+         no había llegado a subirse porque recién ahora hay sesión): se
+         vuelve a aplicar acá para no pisarla con el dato corrupto */
+      if (limpiarHistorialAnioEnCurso(db)) await Store.save(db);
+    }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
   }
   /* la cuenta compartida de jugadores ya quedó autenticada; falta saber
@@ -5892,21 +5918,13 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
     db.config.dtsSeeded = true; migrado = true;
   }
   /* "Importar historial AIF" guardaba por error también la temporada en
-     curso (ANIO_ACTUAL) en el historial: como esa temporada ya se arma
-     sola con lo cargado en Cargar > Partido + la base de planilla, el año
-     en curso se duplicaba (ver totalesTemporada). Esto saca esas filas
-     puntuales con el año en curso EXACTO (nunca el string real "2026" lo
-     escribe nada más: archivarTemporada se niega a correr para el año en
-     curso, así que no hay riesgo de borrar un historial legítimo) */
-  if (!db.config.limpiezaHistorialAnioActualAif){
-    db.jugadores.forEach(j=>{
-      if (!j.historial) return;
-      const antes = j.historial.length;
-      j.historial = j.historial.filter(h=>String(h.anio)!==ANIO_ACTUAL);
-      if (j.historial.length!==antes) migrado = true;
-    });
-    db.config.limpiezaHistorialAnioActualAif = true; migrado = true;
-  }
+     curso en el historial, duplicándola con lo que ya suma totalesTemporada
+     (ver limpiarHistorialAnioEnCurso). Corre siempre (no solo "una vez"):
+     si esto todavía no se había podido subir a la nube porque en ese
+     momento no había sesión iniciada, un login posterior volvería a bajar
+     la copia vieja y pisaría la corrección (ver el mismo llamado en
+     entrar()) */
+  if (limpiarHistorialAnioEnCurso(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,

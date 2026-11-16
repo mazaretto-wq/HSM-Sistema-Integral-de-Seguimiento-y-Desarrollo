@@ -164,13 +164,12 @@ await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(800);
 t('Si la AIF no responde bien, avisa con un toast y no rompe nada',
   (await pg.locator('text=No se pudo traer el historial').count())>=1 && (await pg.locator('#traerHistorialAIF').count())===1);
 
-// ---- migración de limpieza: a quien ya le haya quedado mal (con la
-//      versión vieja, antes de este arreglo) una fila del historial con
-//      el año en curso puesto a mano, se la saca sola al reabrir la app ----
+// ---- limpieza de filas con el año en curso puesto a mano (de la versión
+//      vieja, antes de este arreglo): corre SIEMPRE al abrir la app, no
+//      solo "una vez" (si no, una nube que todavía tiene el dato corrupto
+//      -por ejemplo porque la limpieza anterior nunca llegó a subirse-
+//      lo volvería a traer y no se corregiría nunca) ----
 await pg.evaluate(async (id)=>{
-  // simula un dispositivo donde esta limpieza todavía no corrió (la versión
-  // vieja, antes de este arreglo, dejó una fila puesta a mano con el año en curso)
-  delete db.config.limpiezaHistorialAnioActualAif;
   const j = db.jugadores.find(x=>x.id===id);
   j.historial.push({ anio: ANIO_ACTUAL, categoria:'Promocional', pj:22, goles:46, asis:0, min:1540, ta:0, tr:0 });
   j.historial.push({ anio: ANIO_ACTUAL+' Apertura', categoria:'Promocional', pj:5, goles:1, asis:0, min:300, ta:0, tr:0 });
@@ -184,6 +183,13 @@ t('Pero no toca una fila legítima tipo "2026 Apertura" (no es el año exacto)',
   vanziniTrasReabrir.historial.some(h=>h.anio===anioActual+' Apertura'), JSON.stringify(vanziniTrasReabrir.historial));
 t('La fila de 2025 (la que sí correspondía guardar) sigue estando',
   vanziniTrasReabrir.historial.some(h=>h.anio==='2025'));
+
+// ---- y corre de nuevo sin problema si se repite (abrir dos veces seguidas
+//      no debe romper nada ni sacar filas que ya estaban bien) ----
+await pg.reload(); await pg.waitForTimeout(2000);
+const vanziniSegundaVez = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idVanzini);
+t('Correr la limpieza de nuevo no cambia nada más (es segura de repetir)',
+  JSON.stringify(vanziniSegundaVez.historial)===JSON.stringify(vanziniTrasReabrir.historial));
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
