@@ -44,8 +44,8 @@ const idAwada = await pg.evaluate(()=>{
 await pg.click('.tabs button:has-text("Datos")'); await pg.waitForTimeout(300);
 t('El bloque "Importar historial AIF" está en Datos', (await pg.locator('.block-title:has-text("Importar historial AIF")').count())===1);
 const chipsHistAif = (await pg.locator('[data-histAifCat]').allInnerTexts()).map(x=>x.toUpperCase());
-t('Las categorías del filtro son las 4 permitidas, Juveniles no aparece',
-  JSON.stringify(chipsHistAif)===JSON.stringify(['PROMOCIONAL','CADETES','JUVENILES B','SELECCIÓN']), chipsHistAif.join(' | '));
+t('Las categorías del filtro son las 5, incluida Juveniles (en modo distinto: nunca pisa lo ya cargado)',
+  JSON.stringify(chipsHistAif)===JSON.stringify(['PROMOCIONAL','CADETES','JUVENILES','JUVENILES B','SELECCIÓN']), chipsHistAif.join(' | '));
 t('Promocional arranca elegida por default', (await pg.locator('[data-histAifCat="Promocional"][aria-pressed="true"]').count())===1);
 const anioActual = await pg.evaluate(()=>ANIO_ACTUAL);
 t('El "hasta" por default es el año anterior al actual (nunca la temporada en curso)',
@@ -307,6 +307,55 @@ t('Al jugador que ya tenía una foto propia no se la pisa',
   conFotoDespues==='data:image/png;base64,YA_TENIA_UNA', conFotoDespues);
 t('El toast avisa cuántas fotos nuevas se agregaron',
   (await pg.locator('text=/1 foto nueva/').count())>=1);
+
+// ---- Juveniles: modo especial, nunca pisa lo ya cargado ----
+await pg.click('.tabs button:has-text("Datos")'); await pg.waitForTimeout(300);
+await pg.click('[data-histAifCat="Juveniles"]'); await pg.waitForTimeout(200);
+const idJuv = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTJUV', nombre:'Hueco', categorias:['Juveniles'],
+    historial: [{ anio:'2024', categoria:'Juveniles', pj:10, min:600, goles:3, asis:1, ta:1, tr:0 }],
+  });
+  render();
+  return id;
+});
+await pg.unroute(/\/api\/aif-historial/);
+await pg.route(/\/api\/aif-historial/, route => route.fulfill({
+  status:200, contentType:'application/json', body: JSON.stringify({
+    categoria:'Juveniles', jugadores: [
+      { idjugadorAif:'601', nombreAif:'ZZZTESTJUV HUECO', porAnio: {
+        '2023': {pj:15, min:900, goles:2, ta:1, tr:0},
+        '2024': {pj:18, min:1100, goles:5, ta:2, tr:0},
+        [anioActual]: {pj:20, min:1200, goles:4, ta:1, tr:0},
+      }},
+    ]
+  })
+}));
+await pg.fill('#hist-aif-desde', '2023'); await pg.fill('#hist-aif-hasta', anioActual);
+await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(1200);
+const filaJuv = await pg.locator('tr:has-text("ZZZTESTJUV HUECO")').innerText();
+t('2023 (hueco total en Juveniles) se muestra como "se agrega tal cual"',
+  filaJuv.includes('2023: 15pj/900min/2g (sin nada cargado: se agrega tal cual como Juveniles)'), filaJuv);
+t('2024 (ya tenía algo cargado) muestra la resta y que queda sin categoría',
+  filaJuv.includes('2024: 18pj/1100min/5g − ya en Juveniles (10pj/600min/3g) = 8pj/500min/2g sin categoría'), filaJuv);
+t(`${anioActual} (año en curso) avisa que no se toca acá`,
+  filaJuv.includes(`${anioActual}: 20pj/1200min/4g (año en curso: no se toca acá)`), filaJuv);
+
+await pg.click('#guardarHistorialAIF'); await pg.waitForTimeout(600);
+const juv = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idJuv);
+t('2023 queda agregado como Juveniles con el total crudo de la AIF',
+  juv.historial.some(h=>h.anio==='2023' && h.categoria==='Juveniles' && h.pj===15 && h.min===900 && h.goles===2 && h.ta===1 && h.tr===0),
+  JSON.stringify(juv.historial));
+t('2024 (el que ya estaba cargado) no se tocó para nada',
+  juv.historial.some(h=>h.anio==='2024' && h.categoria==='Juveniles' && h.pj===10 && h.min===600 && h.goles===3 && h.asis===1 && h.ta===1 && h.tr===0));
+t('2024 además queda una fila sin categoría con la diferencia (8pj/500min/2g/1ta)',
+  juv.historial.some(h=>h.anio==='2024' && h.categoria==='otra' && h.pj===8 && h.min===500 && h.goles===2 && h.ta===1 && h.tr===0),
+  JSON.stringify(juv.historial));
+t(`No se guardó nada para ${anioActual} (el año en curso no se toca con esta herramienta)`,
+  !juv.historial.some(h=>String(h.anio)===anioActual));
+t('La base de planilla no se tocó (Juveniles nunca pasa por la base)',
+  !juv.base || !juv.base.length, JSON.stringify(juv.base));
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 

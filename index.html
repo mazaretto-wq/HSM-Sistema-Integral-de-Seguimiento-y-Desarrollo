@@ -4709,10 +4709,19 @@ async function guardarEjercicio(){
 /* ---------- DATOS ---------- */
 /* ---------- Importar historial AIF: trae de aif.org.ar (vía /api/aif-historial,
    que corre en el propio Vercel) los partidos/goles/tarjetas de temporadas
-   viejas, categoría por categoría. Nunca toca Juveniles (ya tiene su
-   historial cargado a mano). La AIF no tiene minutos ni asistencias, así
-   que esos dos campos siempre quedan en 0 y hay que completarlos a mano. */
-const CATEGORIAS_HIST_AIF = CATEGORIAS.filter(c=>c!=='Juveniles');
+   viejas, categoría por categoría. La AIF no tiene minutos ni asistencias,
+   así que esos dos campos siempre quedan en 0 y hay que completarlos a mano.
+
+   Juveniles es distinta a las demás: su historial ya está cargado a mano
+   y aprobado, así que acá NUNCA se pisa un año que ya tiene algo cargado
+   (por poco que sea). Lo que hace en cambio (ver guardarHistorialAIF):
+   - año sin nada cargado en Juveniles (hueco total): se agrega tal cual
+     como Juveniles, con el total crudo de la AIF.
+   - año que ya tiene algo cargado en Juveniles: se le resta ese total a
+     lo que dice la AIF, y la diferencia queda como una fila sin nombre de
+     categoría (puede ser de otra categoría que todavía no se importó).
+   - año en curso: nunca se toca (eso se carga aparte, a mano). */
+const CATEGORIAS_HIST_AIF = [...CATEGORIAS];
 const normNombreAif = s => (s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
   .replace(/,/g,' ').replace(/\s+/g,' ').trim();
 function candidatosHistAif(cat){
@@ -4758,11 +4767,14 @@ function bloqueHistorialAIF(){
   let h = `<div class="block"><div class="block-title">${icono('cancha')} Importar historial AIF</div>
     <p class="screen-note" style="margin-top:0">Trae el plantel ACTUAL de Haras Santa María en la AIF para esta
     categoría y, de cada jugador, su historial temporada a temporada (partidos jugados, minutos, goles, amarillas
-    y rojas). Nunca toca Juveniles, que ya tiene su historial cargado a mano. <strong>No incluye asistencias</strong>:
-    es lo único que la AIF no registra. La temporada ${ANIO_ACTUAL} no se guarda como historial (eso duplicaría con
-    lo que cargás en Cargar &gt; Partido): en vez de eso, actualiza la base de planilla de la categoría con el total
-    fresco de la AIF hasta hoy. De paso, completa la foto de perfil de los jugadores que todavía no tienen
-    ninguna cargada (nunca pisa una que ya subiste a mano).</p>
+    y rojas). <strong>No incluye asistencias</strong>: es lo único que la AIF no registra.
+    ${cat==='Juveniles' ? `Como el historial de Juveniles ya está cargado a mano y aprobado, acá nunca se pisa un
+    año que ya tiene algo cargado: si un año no tiene nada, se agrega tal cual; si ya tiene algo, la diferencia
+    queda sin nombre de categoría. La temporada ${ANIO_ACTUAL} no se toca con esta herramienta (eso se carga aparte).`
+    : `La temporada ${ANIO_ACTUAL} no se guarda como historial (eso duplicaría con lo que cargás en Cargar &gt;
+    Partido): en vez de eso, actualiza la base de planilla de la categoría con el total fresco de la AIF hasta hoy.`}
+    De paso, completa la foto de perfil de los jugadores que todavía no tienen ninguna cargada (nunca pisa una que
+    ya subiste a mano).</p>
     <div class="chips">${CATEGORIAS_HIST_AIF.map(c=>
       `<button class="chip" data-histAifCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
 
@@ -4783,6 +4795,15 @@ function bloqueHistorialAIF(){
       const resumen = p.anios.map(a=>{
         const datos = p.porAnio[a];
         const base = `${a}: ${datos.pj}pj/${datos.min}min/${datos.goles}g`;
+        if (cat==='Juveniles'){
+          if (a===ANIO_ACTUAL) return base + ' (año en curso: no se toca acá)';
+          if (!jugadorSel) return base;
+          const yaJuveniles = datosYaEnJuveniles(jugadorSel, a);
+          const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
+          if (!hayJuveniles) return `${base} (sin nada cargado: se agrega tal cual como Juveniles)`;
+          const dif = restarJuveniles(datos, yaJuveniles);
+          return `${base} − ya en Juveniles (${yaJuveniles.pj}pj/${yaJuveniles.min}min/${yaJuveniles.goles}g) = ${dif.pj}pj/${dif.min}min/${dif.goles}g sin categoría (puede ser de otra que no se importó)`;
+        }
         const enCurso = a===ANIO_ACTUAL ? ' (actualiza la base de planilla, sin minutos)' : '';
         if (!jugadorSel) return base + enCurso;
         /* si este jugador también tiene cargado Juveniles ese año, se le
@@ -4870,6 +4891,32 @@ async function guardarHistorialAIF(){
     if (p.idjugadorAif) j.aifId = p.idjugadorAif;
     if (!j.historial) j.historial = [];
     Object.keys(p.porAnio).forEach(anio=>{
+      if (cat==='Juveniles'){
+        /* Juveniles nunca se pisa: si el año no tiene nada cargado, se
+           agrega tal cual; si ya tiene algo (aunque sea poco), la
+           diferencia frente al total de la AIF queda sin nombre de
+           categoría (puede ser de otra categoría que no se importó
+           todavía) en vez de tocar lo que ya está aprobado. El año en
+           curso nunca se toca acá (se carga aparte, a mano). */
+        if (String(anio)===ANIO_ACTUAL) return;
+        const yaJuveniles = datosYaEnJuveniles(j, anio);
+        const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
+        if (!hayJuveniles){
+          j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria==='Juveniles'));
+          j.historial.push({ anio:String(anio), categoria:'Juveniles', pj:p.porAnio[anio].pj, goles:p.porAnio[anio].goles,
+            asis:0, min:p.porAnio[anio].min, ta:p.porAnio[anio].ta, tr:p.porAnio[anio].tr });
+          aniosGuardados++;
+        } else {
+          const dif = restarJuveniles(p.porAnio[anio], yaJuveniles);
+          if (dif.pj || dif.min || dif.goles || dif.ta || dif.tr){
+            j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria==='otra'));
+            j.historial.push({ anio:String(anio), categoria:'otra', pj:dif.pj, goles:dif.goles,
+              asis:0, min:dif.min, ta:dif.ta, tr:dif.tr });
+            aniosGuardados++;
+          }
+        }
+        return;
+      }
       /* si este jugador también tiene Juveniles cargado ese año, se le
          resta (ver bloqueHistorialAIF, donde se muestra la misma cuenta
          antes de guardar): lo de Juveniles ya está aprobado, así que acá

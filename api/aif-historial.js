@@ -3,8 +3,11 @@
    categoría (vía el equipo de la temporada en curso) y, jugador por
    jugador, su historial completo temporada a temporada (partidos
    jugados, minutos, goles, amarillas, rojas) y, de paso, la foto de
-   carnet que tiene cargada en la AIF (si tiene). No incluye Juveniles
-   (esa categoría ya tiene su propio historial cargado a mano).
+   carnet que tiene cargada en la AIF (si tiene). Incluye Juveniles: esa
+   categoría ya tiene su propio historial cargado a mano, pero el front
+   (ver guardarHistorialAIF en index.html) la trata distinto a las demás
+   -nunca pisa un año que ya tiene algo cargado, solo completa huecos o
+   deja la diferencia sin categoría- así que acá no hace falta excluirla.
 
    A diferencia del fixture/resultados (api/aif.js), esto usa la ficha
    de cada jugador en la AIF (equipos/jugadores/?id_jugador=X), que SÍ
@@ -27,11 +30,7 @@ async function fotoDeAif(idjugador){
   return imagen ? `${FOTOS_BASE}/${imagen}` : null;
 }
 
-/* Juveniles queda afuera a propósito: ese historial ya está cargado a
-   mano y no hay que pisarlo con los datos (sin asistencias) de la AIF */
-const CATEGORIAS_HISTORIAL = Object.fromEntries(
-  Object.entries(CATEGORIAS_AIF).filter(([cat]) => cat!=='Juveniles')
-);
+const CATEGORIAS_HISTORIAL = CATEGORIAS_AIF;
 
 async function traerIdEquipo(cfg, idtemporada){
   const equipos = await jsonpLista('jsequipos.php', { idtemporada, idcategoria: cfg.idcategoria, iddivision: cfg.iddivision });
