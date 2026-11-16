@@ -1,161 +1,82 @@
-/* Trae de la AIF el historial de UNA categoría en UNA temporada puntual:
-   por cada jugador de Haras Santa María que encuentre, cuántos partidos
-   jugó, goles, amarillas y rojas. No incluye Juveniles (esa categoría
-   ya tiene su propio historial cargado a mano, no hay que tocarlo).
+/* Trae de la AIF el historial de los jugadores ACTUALES del plantel de
+   una categoría: primero el plantel de Haras Santa María en esa
+   categoría (vía el equipo de la temporada en curso) y, jugador por
+   jugador, su historial completo temporada a temporada (partidos
+   jugados, minutos, goles, amarillas, rojas). No incluye Juveniles
+   (esa categoría ya tiene su propio historial cargado a mano).
 
-   A diferencia de api/aif.js (fixture de la temporada EN CURSO, con
-   división fija), acá se recorren TODAS las divisiones de esa categoría
-   en esa temporada, porque en 6 años para atrás no se puede asumir que
-   el equipo siempre jugó en la misma ("Primera A").
+   A diferencia del fixture/resultados (api/aif.js), esto usa la ficha
+   de cada jugador en la AIF (equipos/jugadores/?id_jugador=X), que SÍ
+   trae los minutos jugados por temporada — el fixture partido a partido
+   no los tiene. Lo único que la AIF nunca da son las asistencias.
 
-   La AIF no da los minutos jugados de cada uno (solo quién jugó, no
-   cuánto rato) ni las asistencias: por eso esos dos campos siempre
-   vuelven en 0, para que quien revise sepa que faltan y los complete. */
+   Mucho más rápido que recorrer partido por partido: un pedido para el
+   plantel + uno por jugador (bastante menos de un minuto en total para
+   todo un plantel), así que no hace falta trocearlo por torneo/año. */
 
 const { jsonp, jsonpLista, enSerie, CATEGORIAS_AIF } = require('./_lib/aifClient');
 
 /* Juveniles queda afuera a propósito: ese historial ya está cargado a
-   mano y no hay que pisarlo con los datos (incompletos) de la AIF */
+   mano y no hay que pisarlo con los datos (sin asistencias) de la AIF */
 const CATEGORIAS_HISTORIAL = Object.fromEntries(
   Object.entries(CATEGORIAS_AIF).filter(([cat]) => cat!=='Juveniles')
 );
 
-function normNombre(s){
-  return (s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
-    .replace(/,/g,' ').replace(/\s+/g,' ').trim();
+async function traerIdEquipo(cfg, idtemporada){
+  const equipos = await jsonpLista('jsequipos.php', { idtemporada, idcategoria: cfg.idcategoria, iddivision: cfg.iddivision });
+  const match = equipos.find(e => (e.equipo||'').replace(/^\d+\s*-\s*/,'').trim() === cfg.equipo);
+  return match ? match.id : null;
 }
 
-/* un año entero (varias divisiones × varios torneos × ~10 fechas, con 3
-   pedidos extra por partido) tarda demasiado para una sola invocación:
-   se mide en minutos, no en segundos. Por eso esto se separa en dos
-   pasos que el cliente encadena: primero "listarTorneosDe" (rápido, solo
-   descubre qué torneos hay esa temporada) y después UN pedido de
-   "traerHistorialDe" POR TORNEO, que es lo que de verdad recorre
-   partido por partido y sí entra cómodo en el límite de un ratito. */
-async function listarTorneosDe(categoriaApp, anio){
+async function traerHistorialDe(categoriaApp, desde, hasta){
   const cfg = CATEGORIAS_HISTORIAL[categoriaApp];
   if (!cfg) throw new Error(`Categoría no reconocida para historial: ${categoriaApp}`);
 
   const temporadas = await jsonpLista('jstemporadas.php', {});
-  const temporada = temporadas.find(t => String(t.temporada)===String(anio));
-  if (!temporada) return [];
+  const temporadaActual = temporadas.reduce((max,t)=> Number(t.id)>Number(max.id)?t:max);
 
-  const divisiones = await jsonpLista('jsdivisiones.php', { idtemporada: temporada.id, idcategoria: cfg.idcategoria });
-  const torneos = [];
-  await enSerie(divisiones, async (div) => {
-    const deEsaDivision = await jsonpLista('jstorneos.php', {
-      idtemporada: temporada.id, idcategoria: cfg.idcategoria, iddivision: div.id
+  const idequipo = await traerIdEquipo(cfg, temporadaActual.id);
+  if (!idequipo) return { categoria: categoriaApp, jugadores: [] }; // ese equipo no existe esta temporada en la AIF
+
+  const plantel = await jsonpLista('jsequiposplantel.php', { idequipo });
+
+  const jugadores = await enSerie(plantel, async (p) => {
+    const historial = await jsonpLista('jsjugadorestadisticatemporada' + 'todas.php', { idjugador: p.id });
+    const porAnio = {};
+    historial.forEach(h => {
+      const anio = Number(h.temporada);
+      if (!anio || (desde && anio<desde) || (hasta && anio>hasta)) return;
+      porAnio[h.temporada] = {
+        pj: Number(h.pj||0), min: Number(h.minutos||0),
+        goles: Number(h.goles||0), ta: Number(h.amonestaciones||0), tr: Number(h.expulsiones||0)
+      };
     });
-    deEsaDivision.forEach(t => torneos.push({ idtorneo: t.id, nombre: t.torneo, division: div.division }));
-  });
-  return torneos;
-}
-
-async function traerHistorialDe(categoriaApp, anio, idtorneo){
-  const cfg = CATEGORIAS_HISTORIAL[categoriaApp];
-  if (!cfg) throw new Error(`Categoría no reconocida para historial: ${categoriaApp}`);
-
-  const porPersona = {};
-  let partidosEncontrados = 0;
-
-  /* junta por idjugador cuando lo hay; si no, por nombre normalizado (ver
-     notas en el script de investigación: formación/goles dan idjugador
-     confiable, pero los que entran de cambio solo traen el nombre) */
-  const obtenerPersona = (nombreCrudo, idjugador) => {
-    const nombreNorm = normNombre(nombreCrudo);
-    if (idjugador){
-      const keyId = 'id:'+idjugador;
-      if (porPersona[keyId]) return porPersona[keyId];
-      const porNombre = Object.entries(porPersona).find(([,p])=>normNombre(p.nombre)===nombreNorm);
-      if (porNombre){
-        const [keyViejo, p] = porNombre;
-        delete porPersona[keyViejo];
-        p.idjugador = idjugador;
-        porPersona[keyId] = p;
-        return p;
-      }
-      return (porPersona[keyId] = { nombre:nombreCrudo, idjugador, partidos:new Set(), goles:0, ta:0, tr:0 });
-    }
-    const porNombre = Object.values(porPersona).find(p=>normNombre(p.nombre)===nombreNorm);
-    if (porNombre) return porNombre;
-    const keyNombre = 'nombre:'+nombreNorm;
-    return (porPersona[keyNombre] = { nombre:nombreCrudo, idjugador:null, partidos:new Set(), goles:0, ta:0, tr:0 });
-  };
-
-  const fechas = await jsonpLista('jsfechastorneo.php', { idtorneo });
-  await enSerie(fechas, async (fecha) => {
-    const filas = await jsonpLista('jsfixturetorneo.php', { idtorneo, idfecha: fecha.id });
-    await enSerie(filas, async (f) => {
-      const esLocal = (f.equipolocal||'').trim() === cfg.equipo;
-      const esVisitante = (f.equipovisitante||'').trim() === cfg.equipo;
-      if (!esLocal && !esVisitante) return;
-      if (f.esfinalizado !== '1') return; // solo partidos ya jugados/confirmados
-      partidosEncontrados++;
-      const localiaBuscada = esLocal ? 'local' : 'visitante';
-      const ordenBuscado = esLocal ? '1' : '2';
-
-      const formacion = await jsonpLista('jsresultadosformacion.php', { idfixture: f.id });
-      formacion.filter(x=>x.orden===ordenBuscado).forEach(x=>{
-        obtenerPersona(x.jugador, x.idjugador).partidos.add(f.id);
-      });
-
-      const cambios = await jsonpLista('jsresultadosformacioncambios.php', { idfixture: f.id });
-      cambios.filter(x=>x.orden===ordenBuscado).forEach(x=>{
-        obtenerPersona(x.jugadorentra, null).partidos.add(f.id);
-      });
-
-      const detalle = await jsonpLista('jsfixturedetalle.php', { idfixture: f.id, idtorneo });
-      detalle.filter(x=>x.localia===localiaBuscada).forEach(x=>{
-        const p = obtenerPersona((x.jugador||'').replace(',', ' '), x.idjugador);
-        p.partidos.add(f.id);
-        p.goles += Number(x.goles||0);
-        p.ta += Number(x.amonestados||0) + Number(x.dobleamarilla||0);
-        p.tr += Number(x.expulsados||0) + Number(x.dobleamarilla||0);
-      });
-    });
+    return { idjugadorAif: p.id, apellido: p.apellido, nombre: p.nombre,
+      nombreAif: `${p.apellido} ${p.nombre}`, porAnio };
   });
 
-  const jugadores = Object.values(porPersona).map(p => ({
-    idjugadorAif: p.idjugador, nombreAif: p.nombre,
-    pj: p.partidos.size, goles: p.goles, ta: p.ta, tr: p.tr
-  })).sort((a,b)=>b.pj-a.pj);
-
-  return { categoria: categoriaApp, anio: String(anio), partidosEncontrados, jugadores };
+  return { categoria: categoriaApp, idequipo, jugadores: jugadores.filter(j=>Object.keys(j.porAnio).length) };
 }
 
-/* dos modos, según venga o no "idtorneo":
-   - sin idtorneo: devuelve la LISTA de torneos de esa categoría/año (rápido)
-   - con idtorneo: recorre ESE torneo partido por partido (lo que tarda) */
 module.exports = async (req, res) => {
   const categoria = (req.query.categoria || '').trim();
-  const anio = (req.query.anio || '').trim();
-  const idtorneo = (req.query.idtorneo || '').trim();
+  const desde = req.query.desde ? Number(req.query.desde) : null;
+  const hasta = req.query.hasta ? Number(req.query.hasta) : null;
   if (!CATEGORIAS_HISTORIAL[categoria]){
     res.status(400).json({ error: 'categoria inválida', categorias: Object.keys(CATEGORIAS_HISTORIAL) });
     return;
   }
-  if (!/^\d{4}$/.test(anio)){
-    res.status(400).json({ error: 'año inválido' });
-    return;
-  }
   try{
-    if (!idtorneo){
-      const torneos = await listarTorneosDe(categoria, anio);
-      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
-      res.status(200).json({ categoria, anio, torneos });
-      return;
-    }
-    const resultado = await traerHistorialDe(categoria, anio, idtorneo);
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+    const resultado = await traerHistorialDe(categoria, desde, hasta);
+    res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=86400');
     res.status(200).json(resultado);
   }catch(e){
     res.status(502).json({ error: 'No se pudo leer la AIF', detalle: String(e && e.message || e) });
   }
 };
 
-module.exports.listarTorneosDe = listarTorneosDe;
 module.exports.traerHistorialDe = traerHistorialDe;
 module.exports.CATEGORIAS_HISTORIAL = CATEGORIAS_HISTORIAL;
-/* un torneo puede tener ~10 fechas con 3 pedidos extra cada partido:
-   normalmente entra en un rato, pero por las dudas queda con margen */
+/* un plantel de ~25 jugadores es un pedido por jugador + un par de
+   pedidos para resolver el equipo: unos 15-20s en total */
 module.exports.config = { maxDuration: 60 };

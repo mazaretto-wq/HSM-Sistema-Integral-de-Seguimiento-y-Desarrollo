@@ -4516,10 +4516,10 @@ function sugerirCandidatoAif(nombreAif, idjugadorAif, candidatos){
 function bloqueHistorialAIF(){
   const cat = view.histAifCategoria;
   let h = `<div class="block"><div class="block-title">${icono('cancha')} Importar historial AIF</div>
-    <p class="screen-note" style="margin-top:0">Trae de la AIF los partidos jugados, goles, amarillas y rojas
-    de temporadas viejas, categoría por categoría (nunca toca Juveniles, que ya tiene su historial cargado
-    a mano). <strong>No incluye minutos ni asistencias</strong>: la AIF no los registra, hay que completarlos
-    a mano si hacen falta.</p>
+    <p class="screen-note" style="margin-top:0">Trae el plantel ACTUAL de Haras Santa María en la AIF para esta
+    categoría y, de cada jugador, su historial temporada a temporada (partidos jugados, minutos, goles, amarillas
+    y rojas). Nunca toca Juveniles, que ya tiene su historial cargado a mano. <strong>No incluye asistencias</strong>:
+    es lo único que la AIF no registra.</p>
     <div class="chips">${CATEGORIAS_HIST_AIF.map(c=>
       `<button class="chip" data-histAifCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
 
@@ -4530,11 +4530,12 @@ function bloqueHistorialAIF(){
 
   if (view.histAifEstado==='revisar' && view.histAifJugadores){
     const candidatos = candidatosHistAif(cat);
-    h += `<p class="screen-note">Encontré ${view.histAifJugadores.length} jugadores en la AIF para ${esc(cat)}.
-      Vinculá cada uno con tu plantel (o "Ignorar") y guardá. ✓ = ya estaba vinculado de una carga anterior.</p>
+    h += `<p class="screen-note">Encontré ${view.histAifJugadores.length} jugadores en el plantel actual de la AIF
+      para ${esc(cat)}. Vinculá cada uno con tu plantel (o "Ignorar") y guardá. ✓ = ya estaba vinculado de una
+      carga anterior.</p>
       <div class="scroll-x"><table class="cmp"><thead><tr><th>AIF</th><th>Resumen</th><th>Vincular con</th></tr></thead><tbody>`;
     view.histAifJugadores.forEach(p=>{
-      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].goles}g`).join(' · ');
+      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].min}min/${p.porAnio[a].goles}g`).join(' · ');
       const sel = view.histAifVinculos[p.key] || '';
       h += `<tr>
         <td>${esc(p.nombreAif)}</td>
@@ -4558,8 +4559,8 @@ function bloqueHistorialAIF(){
       <div class="field"><label class="label" for="hist-aif-hasta">Hasta</label>
         <input type="number" id="hist-aif-hasta" value="${esc(view.histAifHasta)}" min="2014" max="2026"></div>
     </div>
-    <p class="screen-note" style="margin-top:-10px">Puede tardar varios minutos: la AIF es lenta y hay que
-    pedirle los datos de a uno.</p>
+    <p class="screen-note" style="margin-top:-10px">Trae primero el plantel actual y después el historial de
+    cada uno: para un plantel de 20-25 jugadores tarda entre 10 y 20 segundos.</p>
     <button class="btn btn-naranja" id="traerHistorialAIF">Traer de la AIF</button>
   </div>`;
   return h;
@@ -4570,32 +4571,14 @@ async function traerHistorialAIF(){
   const hasta = Number(document.getElementById('hist-aif-hasta').value) || view.histAifHasta;
   if (desde > hasta) return toast('El año "desde" no puede ser mayor que "hasta"');
   view.histAifDesde = desde; view.histAifHasta = hasta;
-  view.histAifEstado = 'cargando'; view.histAifProgreso = 'Buscando temporadas…'; render();
+  view.histAifEstado = 'cargando';
+  view.histAifProgreso = 'Trayendo el plantel actual y el historial de cada jugador…'; render();
 
-  const porPersona = {};
-  const upsertAnio = (idjugadorAif, nombreAif, anio, datos) => {
-    const key = idjugadorAif ? 'id:'+idjugadorAif : 'nombre:'+normNombreAif(nombreAif);
-    if (!porPersona[key]) porPersona[key] = { idjugadorAif, nombreAif, porAnio:{} };
-    const p = porPersona[key];
-    if (idjugadorAif && !p.idjugadorAif) p.idjugadorAif = idjugadorAif;
-    const a = p.porAnio[anio] || (p.porAnio[anio] = {pj:0,goles:0,ta:0,tr:0});
-    a.pj += datos.pj; a.goles += datos.goles; a.ta += datos.ta; a.tr += datos.tr;
-  };
-
+  let data;
   try{
-    for (let anio=desde; anio<=hasta; anio++){
-      view.histAifProgreso = `Buscando torneos de ${anio}…`; render();
-      const rList = await fetch(`/api/aif-historial?categoria=${encodeURIComponent(cat)}&anio=${anio}`);
-      const dList = await rList.json();
-      if (!rList.ok) throw new Error(dList.error || 'la AIF no respondió');
-      for (const t of (dList.torneos||[])){
-        view.histAifProgreso = `${anio} · ${t.nombre} (${t.division})…`; render();
-        const r = await fetch(`/api/aif-historial?categoria=${encodeURIComponent(cat)}&anio=${anio}&idtorneo=${t.idtorneo}`);
-        const d = await r.json();
-        if (!r.ok){ console.warn('torneo de la AIF falló, se sigue con el resto', anio, t, d.error); continue; }
-        (d.jugadores||[]).forEach(j=> upsertAnio(j.idjugadorAif, j.nombreAif, anio, j));
-      }
-    }
+    const r = await fetch(`/api/aif-historial?categoria=${encodeURIComponent(cat)}&desde=${desde}&hasta=${hasta}`);
+    data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'la AIF no respondió');
   }catch(e){
     view.histAifEstado = null; view.histAifProgreso = '';
     toast('No se pudo traer el historial: '+e.message);
@@ -4603,10 +4586,10 @@ async function traerHistorialAIF(){
   }
 
   const candidatos = candidatosHistAif(cat);
-  const lista = Object.entries(porPersona).map(([key,p])=>{
-    const anios = Object.keys(p.porAnio).sort();
-    return { key, idjugadorAif:p.idjugadorAif, nombreAif:p.nombreAif, porAnio:p.porAnio,
-      anios, totalPj: anios.reduce((a,x)=>a+p.porAnio[x].pj,0) };
+  const lista = (data.jugadores||[]).map(j=>{
+    const anios = Object.keys(j.porAnio).sort();
+    return { key:'id:'+j.idjugadorAif, idjugadorAif:j.idjugadorAif, nombreAif:j.nombreAif, porAnio:j.porAnio,
+      anios, totalPj: anios.reduce((a,x)=>a+j.porAnio[x].pj,0) };
   }).sort((a,b)=>b.totalPj-a.totalPj);
 
   view.histAifJugadores = lista;
@@ -4634,7 +4617,7 @@ async function guardarHistorialAIF(){
     Object.keys(p.porAnio).forEach(anio=>{
       const x = p.porAnio[anio];
       j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria===cat));
-      j.historial.push({ anio:String(anio), categoria:cat, pj:x.pj, goles:x.goles, asis:0, min:0, ta:x.ta, tr:x.tr });
+      j.historial.push({ anio:String(anio), categoria:cat, pj:x.pj, goles:x.goles, asis:0, min:x.min, ta:x.ta, tr:x.tr });
       aniosGuardados++;
     });
     jugadoresTocados++;
