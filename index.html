@@ -863,7 +863,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false,
-             histAifCategoria:'Promocional', histAifDesde:2023, histAifHasta:2026,
+             histAifCategoria:'Promocional', histAifDesde:2023, histAifHasta:new Date().getFullYear()-1,
              histAifEstado:null, histAifProgreso:'', histAifJugadores:null, histAifVinculos:{} };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
@@ -4518,8 +4518,9 @@ function bloqueHistorialAIF(){
   let h = `<div class="block"><div class="block-title">${icono('cancha')} Importar historial AIF</div>
     <p class="screen-note" style="margin-top:0">Trae el plantel ACTUAL de Haras Santa María en la AIF para esta
     categoría y, de cada jugador, su historial temporada a temporada (partidos jugados, minutos, goles, amarillas
-    y rojas). Nunca toca Juveniles, que ya tiene su historial cargado a mano. <strong>No incluye asistencias</strong>:
-    es lo único que la AIF no registra.</p>
+    y rojas). Nunca toca Juveniles, que ya tiene su historial cargado a mano. <strong>No incluye asistencias</strong>
+    (es lo único que la AIF no registra) <strong>ni la temporada ${ANIO_ACTUAL}</strong>: esa se arma sola con lo
+    que cargás en Cargar &gt; Partido, y guardarla acá la duplicaría.</p>
     <div class="chips">${CATEGORIAS_HIST_AIF.map(c=>
       `<button class="chip" data-histAifCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
 
@@ -4535,7 +4536,7 @@ function bloqueHistorialAIF(){
       carga anterior.</p>
       <div class="scroll-x"><table class="cmp"><thead><tr><th>AIF</th><th>Resumen</th><th>Vincular con</th></tr></thead><tbody>`;
     view.histAifJugadores.forEach(p=>{
-      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].min}min/${p.porAnio[a].goles}g`).join(' · ');
+      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].min}min/${p.porAnio[a].goles}g${a===ANIO_ACTUAL?' (no se guarda, es la temporada en curso)':''}`).join(' · ');
       const sel = view.histAifVinculos[p.key] || '';
       h += `<tr>
         <td>${esc(p.nombreAif)}</td>
@@ -4615,6 +4616,10 @@ async function guardarHistorialAIF(){
     if (p.idjugadorAif) j.aifId = p.idjugadorAif;
     if (!j.historial) j.historial = [];
     Object.keys(p.porAnio).forEach(anio=>{
+      /* la temporada en curso NUNCA se guarda acá: ya se arma sola con lo
+         cargado en Cargar > Partido más la base de planilla (ver
+         totalesTemporada); guardarla también en el historial la duplicaría */
+      if (String(anio)===ANIO_ACTUAL) return;
       const x = p.porAnio[anio];
       j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria===cat));
       j.historial.push({ anio:String(anio), categoria:cat, pj:x.pj, goles:x.goles, asis:0, min:x.min, ta:x.ta, tr:x.tr });
@@ -5885,6 +5890,22 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
   if (!db.config.dtsSeeded){
     if (!db.dts.some(d=>d.dni==='41781139')) db.dts.push({ id:uid(), dni:'41781139', categoria:'Juveniles' });
     db.config.dtsSeeded = true; migrado = true;
+  }
+  /* "Importar historial AIF" guardaba por error también la temporada en
+     curso (ANIO_ACTUAL) en el historial: como esa temporada ya se arma
+     sola con lo cargado en Cargar > Partido + la base de planilla, el año
+     en curso se duplicaba (ver totalesTemporada). Esto saca esas filas
+     puntuales con el año en curso EXACTO (nunca el string real "2026" lo
+     escribe nada más: archivarTemporada se niega a correr para el año en
+     curso, así que no hay riesgo de borrar un historial legítimo) */
+  if (!db.config.limpiezaHistorialAnioActualAif){
+    db.jugadores.forEach(j=>{
+      if (!j.historial) return;
+      const antes = j.historial.length;
+      j.historial = j.historial.filter(h=>String(h.anio)!==ANIO_ACTUAL);
+      if (j.historial.length!==antes) migrado = true;
+    });
+    db.config.limpiezaHistorialAnioActualAif = true; migrado = true;
   }
   if (migrado) await Store.save(db);
 

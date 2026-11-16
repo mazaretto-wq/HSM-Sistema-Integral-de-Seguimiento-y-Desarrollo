@@ -47,8 +47,10 @@ const chipsHistAif = (await pg.locator('[data-histAifCat]').allInnerTexts()).map
 t('Las categorías del filtro son las 4 permitidas, Juveniles no aparece',
   JSON.stringify(chipsHistAif)===JSON.stringify(['PROMOCIONAL','CADETES','JUVENILES B','SELECCIÓN']), chipsHistAif.join(' | '));
 t('Promocional arranca elegida por default', (await pg.locator('[data-histAifCat="Promocional"][aria-pressed="true"]').count())===1);
-t('El rango de años por default es 2023-2026 (para no pisar el año en curso sin querer)',
-  (await pg.locator('#hist-aif-desde').inputValue())==='2023' && (await pg.locator('#hist-aif-hasta').inputValue())==='2026');
+const anioActual = await pg.evaluate(()=>ANIO_ACTUAL);
+t('El "hasta" por default es el año anterior al actual (nunca la temporada en curso)',
+  (await pg.locator('#hist-aif-desde').inputValue())==='2023' && (await pg.locator('#hist-aif-hasta').inputValue())===String(Number(anioActual)-1),
+  await pg.locator('#hist-aif-hasta').inputValue());
 
 await pg.fill('#hist-aif-desde', '2021');
 await pg.fill('#hist-aif-hasta', '2022');
@@ -104,6 +106,44 @@ await pg.fill('#hist-aif-hasta', '2021');
 await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(400);
 t('No deja traer con "desde" mayor que "hasta"', (await pg.locator('table.cmp').count())===0);
 
+// ---- la temporada en curso NUNCA se guarda en el historial (se arma
+//      sola con Cargar > Partido + la base de planilla; guardarla acá
+//      la duplicaba - ver migración de limpieza al arrancar) ----
+await pg.click('[data-histAifCat="Promocional"]'); await pg.waitForTimeout(200); // el paso anterior había dejado elegida "Cadetes"
+// apellido inventado: el seed ya trae un "VANZINI, Francisco" real en
+// Promocional, y con el mismo nombre se duplicaría en el desplegable
+const idVanzini = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({ id, apellido:'ZZZTESTVANZINI', nombre:'Francisco', categorias:['Promocional'], base:[{categoria:'Promocional', pj:17, goles:38, ta:0, tr:0}] });
+  render();
+  return id;
+});
+await pg.unroute(/\/api\/aif-historial/);
+await pg.route(/\/api\/aif-historial/, route => route.fulfill({
+  status:200, contentType:'application/json', body: JSON.stringify({
+    categoria:'Promocional', jugadores: [
+      { idjugadorAif:'333', nombreAif:'ZZZTESTVANZINI FRANCISCO', porAnio: {
+        '2025': {pj:19, min:1330, goles:0, ta:3, tr:0},
+        [anioActual]: {pj:22, min:1540, goles:46, ta:0, tr:0},
+      }},
+    ]
+  })
+}));
+await pg.fill('#hist-aif-desde', '2025');
+await pg.fill('#hist-aif-hasta', anioActual);
+await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(1200);
+const filaVanzini = await pg.locator('tr:has-text("ZZZTESTVANZINI FRANCISCO")').innerText();
+t('Muestra la temporada en curso en el resumen, pero avisa que no se va a guardar',
+  filaVanzini.includes(`${anioActual}: 22pj/1540min/46g (no se guarda`), filaVanzini);
+t('Lo cruza solo con el jugador correcto (nombre único, sin ambigüedad)',
+  (await pg.locator('tr:has-text("ZZZTESTVANZINI FRANCISCO") select').inputValue())===idVanzini);
+await pg.click('#guardarHistorialAIF'); await pg.waitForTimeout(500);
+const vanzini = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idVanzini);
+t('Al guardar, la temporada en curso NO se escribe en el historial (solo 2025)',
+  (vanzini.historial||[]).length===1 && vanzini.historial[0].anio==='2025', JSON.stringify(vanzini.historial));
+t('La base de planilla del año en curso queda intacta (nunca se tocó)',
+  JSON.stringify(vanzini.base)===JSON.stringify([{categoria:'Promocional', pj:17, goles:38, ta:0, tr:0}]));
+
 // ---- si la AIF no tiene jugadores para esa categoría, avisa y no rompe nada ----
 await pg.unroute(/\/api\/aif-historial/);
 await pg.route(/\/api\/aif-historial/, route => route.fulfill({
@@ -123,6 +163,27 @@ await pg.route(/\/api\/aif-historial/, route => route.fulfill({
 await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(800);
 t('Si la AIF no responde bien, avisa con un toast y no rompe nada',
   (await pg.locator('text=No se pudo traer el historial').count())>=1 && (await pg.locator('#traerHistorialAIF').count())===1);
+
+// ---- migración de limpieza: a quien ya le haya quedado mal (con la
+//      versión vieja, antes de este arreglo) una fila del historial con
+//      el año en curso puesto a mano, se la saca sola al reabrir la app ----
+await pg.evaluate(async (id)=>{
+  // simula un dispositivo donde esta limpieza todavía no corrió (la versión
+  // vieja, antes de este arreglo, dejó una fila puesta a mano con el año en curso)
+  delete db.config.limpiezaHistorialAnioActualAif;
+  const j = db.jugadores.find(x=>x.id===id);
+  j.historial.push({ anio: ANIO_ACTUAL, categoria:'Promocional', pj:22, goles:46, asis:0, min:1540, ta:0, tr:0 });
+  j.historial.push({ anio: ANIO_ACTUAL+' Apertura', categoria:'Promocional', pj:5, goles:1, asis:0, min:300, ta:0, tr:0 });
+  await Store.save(db);
+}, idVanzini);
+await pg.reload(); await pg.waitForTimeout(2000);
+const vanziniTrasReabrir = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idVanzini);
+t('Al reabrir, la limpieza automática saca la fila con el año en curso puesto a mano',
+  !vanziniTrasReabrir.historial.some(h=>h.anio===anioActual), JSON.stringify(vanziniTrasReabrir.historial));
+t('Pero no toca una fila legítima tipo "2026 Apertura" (no es el año exacto)',
+  vanziniTrasReabrir.historial.some(h=>h.anio===anioActual+' Apertura'), JSON.stringify(vanziniTrasReabrir.historial));
+t('La fila de 2025 (la que sí correspondía guardar) sigue estando',
+  vanziniTrasReabrir.historial.some(h=>h.anio==='2025'));
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
