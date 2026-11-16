@@ -2,7 +2,8 @@
    una categoría: primero el plantel de Haras Santa María en esa
    categoría (vía el equipo de la temporada en curso) y, jugador por
    jugador, su historial completo temporada a temporada (partidos
-   jugados, minutos, goles, amarillas, rojas). No incluye Juveniles
+   jugados, minutos, goles, amarillas, rojas) y, de paso, la foto de
+   carnet que tiene cargada en la AIF (si tiene). No incluye Juveniles
    (esa categoría ya tiene su propio historial cargado a mano).
 
    A diferencia del fixture/resultados (api/aif.js), esto usa la ficha
@@ -14,7 +15,17 @@
    plantel + uno por jugador (bastante menos de un minuto en total para
    todo un plantel), así que no hace falta trocearlo por torneo/año. */
 
-const { jsonp, jsonpLista, enSerie, CATEGORIAS_AIF } = require('./_lib/aifClient');
+const { jsonp, jsonpLista, enSerie, CATEGORIAS_AIF, JSON_BASE } = require('./_lib/aifClient');
+
+/* la AIF sirve la foto de carnet de cada jugador (no es una foto de
+   equipo: es la que cada uno sube para habilitarse) en una ruta relativa
+   a la misma base, pero por fuera de /json/ */
+const FOTOS_BASE = JSON_BASE.replace(/\/json$/, '');
+async function fotoDeAif(idjugador){
+  const datos = await jsonpLista('jsjugador.php', { idjugador });
+  const imagen = datos[0] && datos[0].imagen;
+  return imagen ? `${FOTOS_BASE}/${imagen}` : null;
+}
 
 /* Juveniles queda afuera a propósito: ese historial ya está cargado a
    mano y no hay que pisarlo con los datos (sin asistencias) de la AIF */
@@ -51,8 +62,10 @@ async function traerHistorialDe(categoriaApp, desde, hasta){
         goles: Number(h.goles||0), ta: Number(h.amonestaciones||0), tr: Number(h.expulsiones||0)
       };
     });
+    let foto = null;
+    try { foto = await fotoDeAif(p.id); } catch (e) { /* sin foto: no es motivo para fallar el historial */ }
     return { idjugadorAif: p.id, apellido: p.apellido, nombre: p.nombre,
-      nombreAif: `${p.apellido} ${p.nombre}`, porAnio };
+      nombreAif: `${p.apellido} ${p.nombre}`, porAnio, foto };
   });
 
   return { categoria: categoriaApp, idequipo, jugadores: jugadores.filter(j=>Object.keys(j.porAnio).length) };

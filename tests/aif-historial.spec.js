@@ -273,6 +273,41 @@ const legacySegundaVez = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id)
 t('Correr esta migración de nuevo no vuelve a restar (sería restar dos veces)',
   JSON.stringify(legacySegundaVez.historial)===JSON.stringify(legacyTrasReabrir.historial), JSON.stringify(legacySegundaVez.historial));
 
+// ---- de paso, completa la foto de los jugadores vinculados que todavía
+//      no tienen ninguna, sin pisar la de los que ya tienen una propia ----
+await pg.click('#ac-coord'); await pg.waitForTimeout(300);
+await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await pg.click('.tabs button:has-text("Datos")'); await pg.waitForTimeout(300);
+await pg.click('[data-histAifCat="Promocional"]'); await pg.waitForTimeout(200);
+const fotoAif = new URL('tests/assets/foto_test.png', BASE_URL).toString();
+const { idSinFoto, idConFoto } = await pg.evaluate(()=>{
+  const idSinFoto = uid(), idConFoto = uid();
+  db.jugadores.push({ id:idSinFoto, apellido:'ZZZTESTFOTOSIN', nombre:'Nueva', categorias:['Promocional'] });
+  db.jugadores.push({ id:idConFoto, apellido:'ZZZTESTFOTOCON', nombre:'Previa', categorias:['Promocional'], foto:'data:image/png;base64,YA_TENIA_UNA' });
+  return { idSinFoto, idConFoto };
+});
+await pg.unroute(/\/api\/aif-historial/);
+await pg.route(/\/api\/aif-historial/, route => route.fulfill({
+  status:200, contentType:'application/json', body: JSON.stringify({
+    categoria:'Promocional', jugadores: [
+      { idjugadorAif:'501', nombreAif:'ZZZTESTFOTOSIN NUEVA', foto: fotoAif, porAnio: { '2025': {pj:5, min:300, goles:1, ta:0, tr:0} } },
+      { idjugadorAif:'502', nombreAif:'ZZZTESTFOTOCON PREVIA', foto: fotoAif, porAnio: { '2025': {pj:5, min:300, goles:1, ta:0, tr:0} } },
+    ]
+  })
+}));
+await pg.fill('#hist-aif-desde', '2025'); await pg.fill('#hist-aif-hasta', '2025');
+await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(1000);
+// la vinculación automática por nombre exacto ya se prueba en otro bloque (AWADA, FELIPE más arriba)
+await pg.click('#guardarHistorialAIF'); await pg.waitForTimeout(1500);
+const sinFotoDespues = await pg.evaluate((id)=>fotoDe(db.jugadores.find(x=>x.id===id)), idSinFoto);
+t('Al jugador sin foto se le completa (sube a Storage o, sin nube, queda en este dispositivo)',
+  !!sinFotoDespues, JSON.stringify(sinFotoDespues));
+const conFotoDespues = await pg.evaluate((id)=>db.jugadores.find(x=>x.id===id).foto, idConFoto);
+t('Al jugador que ya tenía una foto propia no se la pisa',
+  conFotoDespues==='data:image/png;base64,YA_TENIA_UNA', conFotoDespues);
+t('El toast avisa cuántas fotos nuevas se agregaron',
+  (await pg.locator('text=/1 foto nueva/').count())>=1);
+
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);
