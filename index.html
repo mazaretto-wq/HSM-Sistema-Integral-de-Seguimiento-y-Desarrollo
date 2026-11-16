@@ -2630,12 +2630,33 @@ function fichaJugador(){
         <div class="stat"><div class="stat-label">Minutos</div><div class="stat-value">${miles(T.minutos)}<small>'</small></div></div>
         <div class="stat"><div class="stat-label">Goles</div><div class="stat-value" style="color:var(--naranja)">${T.goles}</div></div>
         <div class="stat"><div class="stat-label">Asistencias</div><div class="stat-value">${T.asistencias}</div></div>
-        <div class="stat"><div class="stat-label">Tarjetas</div><div class="stat-value">${T.amarillas}<small>A</small> / ${T.rojas}<small>R</small></div></div>
+        <div class="stat"><div class="stat-label">Tarjetas</div><div class="stat-value"><i class="card-mark card-y"></i>${T.amarillas} <i class="card-mark card-r"></i>${T.rojas}</div></div>
       </div></div>`;
 
+    /* La temporada en curso suma todas las categorías del jugador juntas
+       (T), sin saber cuánto puso cada una. La única que sí se puede separar
+       con confianza es Juveniles (datos verificados): si el jugador también
+       juega otra categoría se muestra aparte, una fila de Juveniles con su
+       propio total y el resto (lo que no es de Juveniles) sin nombre de
+       categoría, porque no se sabe de cuál de las demás es. */
+    const juvTotal = cats.includes('Juveniles') ? totalesTemporada(j.id, 'Juveniles') : null;
+    const hayJuv = juvTotal && (juvTotal.pj||juvTotal.minutos||juvTotal.goles||juvTotal.asistencias||juvTotal.amarillas||juvTotal.rojas);
+    const resto = hayJuv ? {
+      pj: Math.max(0,T.pj-juvTotal.pj), goles: Math.max(0,T.goles-juvTotal.goles),
+      asistencias: Math.max(0,T.asistencias-juvTotal.asistencias), minutos: Math.max(0,T.minutos-juvTotal.minutos),
+      amarillas: Math.max(0,T.amarillas-juvTotal.amarillas), rojas: Math.max(0,T.rojas-juvTotal.rojas),
+    } : null;
+    const hayResto = resto && (resto.pj||resto.minutos||resto.goles||resto.asistencias||resto.amarillas||resto.rojas);
+    const filaActual = (hayJuv && cats.length>1)
+      ? [{ anio: ANIO_ACTUAL, categoria:'Juveniles', ...juvTotal }, ...(hayResto ? [{ anio: ANIO_ACTUAL, categoria:'—', ...resto }] : [])]
+      : [{ anio: ANIO_ACTUAL, categoria: cats.length===1 ? cats[0] : '—',
+          pj:T.pj, goles:T.goles, asistencias:T.asistencias, minutos:T.minutos, amarillas:T.amarillas, rojas:T.rojas }];
     const filasHist = [
-      { anio: ANIO_ACTUAL, categoria: cats.join(' · ') || '—', pj:T.pj, goles:T.goles, asistencias:T.asistencias, minutos:T.minutos, amarillas:T.amarillas, rojas:T.rojas },
-      ...hist.slice().reverse().map(x=>({ anio:x.anio, categoria:x.categoria || cats.join(' · ') || '—',
+      ...filaActual,
+      /* igual que arriba: si no se sabe de qué categoría es una fila vieja,
+         no se le inventa un nombre (antes caía en el mismo cartel de "todas
+         juntas", que confundía más de lo que aclaraba) */
+      ...hist.slice().reverse().map(x=>({ anio:x.anio, categoria:x.categoria || '—',
         pj:x.pj||0, goles:x.goles||0, asistencias:x.asis||0, minutos:x.min||0, amarillas:x.ta||0, rojas:x.tr||0 }))
     ];
     h += `<div class="perfil-2col">
@@ -2645,7 +2666,7 @@ function fichaJugador(){
         ${filasHist.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>
           <td class="val">${f.pj}</td><td class="val">${miles(f.minutos)}</td>
           <td class="val" style="color:var(--naranja)">${f.goles}</td><td class="val">${f.asistencias}</td>
-          <td class="val">${f.amarillas}A/${f.rojas}R</td></tr>`).join('')}
+          <td class="val"><i class="card-mark card-y"></i>${f.amarillas} <i class="card-mark card-r"></i>${f.rojas}</td></tr>`).join('')}
         </tbody></table></div>
         ${historialAnio(j, ANIO_ACTUAL).pj ? `<p class="screen-note" style="margin-top:8px">La temporada ${ANIO_ACTUAL} incluye partidos cargados como total del torneo, sin detalle partido a partido.</p>` : ''}
       </div>

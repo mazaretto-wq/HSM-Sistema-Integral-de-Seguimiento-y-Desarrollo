@@ -41,6 +41,31 @@ await pg.click('.roster .row[data-jugador]'); await pg.waitForTimeout(400);
 t('Jugador también ve el tablero de General', (await pg.locator('.perfil-grid').count())===1);
 t('Jugador no ve botones de edición', (await pg.locator('[data-editar],[data-borrar]').count())===0);
 
+// ---- jugador en dos categorías a la vez (Juveniles + Cadetes): la
+//      temporada en curso tiene que separar lo de Juveniles (verificado) del
+//      resto (sin nombre de categoría, porque no se sabe cuál es) ----
+await pg.evaluate(()=>{ db.config.acceso='coordinacion'; db.config.rol=null; });
+const idDual = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTFICHA', nombre:'Dual', categorias:['Cadetes','Juveniles'],
+    base: [{ categoria:'Juveniles', pj:5, goles:2, ta:1, tr:0 }, { categoria:'Cadetes', pj:8, goles:3, ta:0, tr:1 }],
+  });
+  view.jugadorId = id; view.fichaTab = 'general';
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+const filasDual = await pg.locator('.cmp tbody tr').allInnerTexts();
+t('La temporada en curso aparece separada: una fila de Juveniles con lo suyo (5pj/2g)',
+  filasDual.some(f=>f.includes('Juveniles') && f.includes('5') && f.includes('2')), JSON.stringify(filasDual));
+t('...y otra sin nombre de categoría con el resto (8pj/3g, lo que no es de Juveniles)',
+  filasDual.some(f=>f.includes('—') && f.includes('8') && f.includes('3')), JSON.stringify(filasDual));
+t('Las tarjetas se muestran con iconos de color, no como texto "A/R"',
+  (await pg.locator('.cmp tbody tr .card-mark.card-y').count())>0 && (await pg.locator('.cmp tbody tr .card-mark.card-r').count())>0
+    && !filasDual.some(f=>/\d+A\/\d+R/.test(f)), JSON.stringify(filasDual));
+await pg.goto(BASE_URL); // limpia el jugador de prueba antes de cerrar
+
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);
