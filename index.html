@@ -1045,6 +1045,43 @@ function limpiarHistorialAnioEnCurso(baseDb){
   });
   return cambio;
 }
+/* Corrección puntual pedida y aprobada por coordinación: Ramiro Pereyra recién
+   empezó a jugar Selección este año (ANIO_ACTUAL); antes solo jugaba Juveniles.
+   Su historial 2021-2025 estaba cargado sin categoría puesta (por eso la ficha
+   lo mostraba con la leyenda de respaldo "Juveniles · Selección", tomada de sus
+   categorías actuales, no de ese dato viejo) y con totales incompletos. Como no
+   jugó Selección esos años, el total de la AIF de cada año es 100% Juveniles:
+   se reemplaza por el total real de la AIF, ya tageado como Juveniles. No es la
+   herramienta general de "Importar historial AIF" (que nunca toca Juveniles):
+   es una corrección manual de una sola vez, para este jugador puntual. Segura
+   de correr de nuevo: si ya quedó igual, no cambia nada. */
+function corregirHistorialPereyra(baseDb){
+  const j = (baseDb.jugadores||[]).find(x=>
+    (x.apellido||'').trim().toUpperCase()==='PEREYRA' &&
+    (x.nombre||'').trim().toUpperCase().startsWith('RAMIRO'));
+  if (!j) return false;
+  const correctos = {
+    '2021': { pj:23, min:1380, goles:0, ta:2, tr:0 },
+    '2022': { pj:19, min:1330, goles:4, ta:0, tr:0 },
+    '2023': { pj:21, min:1470, goles:9, ta:1, tr:0 },
+    '2024': { pj:23, min:1542, goles:0, ta:3, tr:0 },
+    '2025': { pj:46, min:3379, goles:7, ta:7, tr:0 },
+  };
+  let cambio = false;
+  if (!j.aifId){ j.aifId = '19603'; cambio = true; }
+  if (!j.historial) j.historial = [];
+  Object.keys(correctos).forEach(anio=>{
+    const d = correctos[anio];
+    const actual = j.historial.find(h=>String(h.anio)===anio);
+    const yaOk = actual && actual.categoria==='Juveniles' && actual.pj===d.pj && actual.min===d.min &&
+      actual.goles===d.goles && actual.ta===d.ta && actual.tr===d.tr;
+    if (yaOk) return;
+    j.historial = j.historial.filter(h=>String(h.anio)!==anio);
+    j.historial.push({ anio, categoria:'Juveniles', pj:d.pj, goles:d.goles, asis:(actual&&actual.asis)||0, min:d.min, ta:d.ta, tr:d.tr });
+    cambio = true;
+  });
+  return cambio;
+}
 function totalesTemporada(id, cat){
   const j = db.jugadores.find(x=>x.id===id);
   const t = totalesConBase(id,cat), a = historialAnio(j, ANIO_ACTUAL, cat);
@@ -1472,7 +1509,8 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      if (limpiarHistorialAnioEnCurso(db)) await Store.save(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db);
+      if (corregido) await Store.save(db);
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
   }
@@ -5987,7 +6025,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
