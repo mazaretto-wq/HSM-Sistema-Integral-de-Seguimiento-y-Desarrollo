@@ -1011,10 +1011,15 @@ function fechaMasDias(fecha, dias){
   return d.toISOString().slice(0,10);
 }
 const fechaCorta = f => f ? f.slice(8,10)+'/'+f.slice(5,7)+'/'+f.slice(0,4) : '—';
+/* la base de planilla nació solo con pj/goles/ta/tr (lo que da la AIF, sin
+   minutos ni asistencias); min/asis son opcionales encima de eso, para
+   cuando la base viene de un informe propio del club que sí los tiene
+   (ver cargarInformeJuvenilesPdf2026) */
 function baseCat(j, cat){
   const filas = (j && j.base || []).filter(b=>!cat||cat==='Todas'||b.categoria===cat);
-  return filas.reduce((a,b)=>({pj:a.pj+(b.pj||0), goles:a.goles+(b.goles||0),
-    amarillas:a.amarillas+(b.ta||0), rojas:a.rojas+(b.tr||0)}),{pj:0,goles:0,amarillas:0,rojas:0});
+  return filas.reduce((a,b)=>({pj:a.pj+(b.pj||0), goles:a.goles+(b.goles||0), minutos:a.minutos+(b.min||0),
+    asistencias:a.asistencias+(b.asis||0), amarillas:a.amarillas+(b.ta||0), rojas:a.rojas+(b.tr||0)}),
+    {pj:0,goles:0,minutos:0,asistencias:0,amarillas:0,rojas:0});
 }
 /* filas del historial de un año concreto */
 function historialAnio(j, anio, cat){
@@ -1123,6 +1128,66 @@ function migrarHistorialSinCategoriaComoJuveniles(baseDb){
   });
   return cambio;
 }
+/* Informe de la temporada 2026 de Juveniles que pasó coordinación (afuera
+   de la AIF, de su propio seguimiento: trae minutos Y asistencias, que la
+   AIF nunca da). Es el total real de la temporada; lo que ya está cargado
+   partido a partido en la app está incompleto. Para no duplicar lo que SÍ
+   está cargado, se guarda la DIFERENCIA en la base de planilla de
+   Juveniles (partidos cargados + esa diferencia = el total del informe).
+   Nunca toca partidos ya cargados ni pisa otra cosa de Juveniles.
+   Corrección puntual de una sola vez, misma idea que corregirHistorialPereyra:
+   si algún nombre no matchea, no rompe nada, ese jugador simplemente no se
+   actualiza (hay que revisarlo a mano). */
+function cargarInformeJuvenilesPdf2026(baseDb){
+  const DATOS = [
+    ['Awada','Felipe', 8,422,4,2,4,2],
+    ['Besze','Facundo', 15,898,3,3,3,0],
+    ['Besze','Santiago', 9,720,0,0,2,1],
+    ['Bibbo','Mateo', 20,1495,4,2,8,0],
+    ['Bulacio','Santino', 10,575,4,1,4,3],
+    ['Caceres','Bautista', 22,1275,1,0,0,0],
+    ['De Cicco','Benjamin', 12,715,0,1,1,0],
+    ['De Cicco','Tomas', 19,1245,0,1,1,0],
+    ['Mirave','Facundo', 19,1348,1,7,12,0],
+    ['Moncalvo','Pedro', 18,1330,6,8,0,0],
+    ['Pereyra','Ramiro', 13,628,0,0,2,0],
+    ['Recalde','Facundo', 16,1280,3,3,3,1],
+    ['Retamar','Bautista', 14,1012,10,2,1,0],
+    ['Sanes','Felipe', 20,1425,10,5,5,0],
+    ['Sar','Benjamin', 20,1545,6,2,5,1],
+    ['Sar','Santiago', 5,400,0,0,2,1],
+    ['Schiango','Lorenzo', 15,1085,0,0,1,0],
+    ['Tonso','Ignacio', 6,337,0,0,0,0],
+    ['Verdes','Santiago', 20,1050,0,1,1,0],
+    ['Vinzon','Mateo', 13,860,1,1,6,1],
+    ['Vittar','Juan', 17,1060,1,1,2,0],
+  ];
+  let cambio = false;
+  DATOS.forEach(([apellido,nombre,pj,min,goles,asis,ta,tr])=>{
+    const norm = normNombreAif(apellido+' '+nombre);
+    const j = (baseDb.jugadores||[]).find(x=>normNombreAif((x.apellido||'')+' '+(x.nombre||''))===norm);
+    if (!j) return;
+    if (!(j.categorias||[]).includes('Juveniles')){ j.categorias = [...(j.categorias||[]), 'Juveniles']; cambio = true; }
+    const yaCargado = totales(j.id, 'Juveniles');
+    const falta = {
+      pj:    Math.max(0, pj    - yaCargado.pj),
+      min:   Math.max(0, min   - yaCargado.minutos),
+      goles: Math.max(0, goles - yaCargado.goles),
+      asis:  Math.max(0, asis  - yaCargado.asistencias),
+      ta:    Math.max(0, ta    - yaCargado.amarillas),
+      tr:    Math.max(0, tr    - yaCargado.rojas),
+    };
+    if (!j.base) j.base = [];
+    let b = j.base.find(x=>x.categoria==='Juveniles');
+    const yaOk = b && b.pj===falta.pj && b.min===falta.min && b.goles===falta.goles
+      && b.asis===falta.asis && b.ta===falta.ta && b.tr===falta.tr;
+    if (yaOk) return;
+    if (!b){ b = { categoria:'Juveniles' }; j.base.push(b); }
+    b.pj=falta.pj; b.min=falta.min; b.goles=falta.goles; b.asis=falta.asis; b.ta=falta.ta; b.tr=falta.tr;
+    cambio = true;
+  });
+  return cambio;
+}
 function totalesTemporada(id, cat){
   const j = db.jugadores.find(x=>x.id===id);
   const t = totalesConBase(id,cat), a = historialAnio(j, ANIO_ACTUAL, cat);
@@ -1134,8 +1199,8 @@ function totalesTemporada(id, cat){
 function totalesConBase(id, cat){
   const j = db.jugadores.find(x=>x.id===id);
   const t = totales(id,cat), b = baseCat(j,cat);
-  return {...t, pj:t.pj+b.pj, goles:t.goles+b.goles,
-    amarillas:t.amarillas+b.amarillas, rojas:t.rojas+b.rojas};
+  return {...t, pj:t.pj+b.pj, goles:t.goles+b.goles, minutos:t.minutos+b.minutos,
+    asistencias:t.asistencias+b.asistencias, amarillas:t.amarillas+b.amarillas, rojas:t.rojas+b.rojas};
 }
 function totales(id, cat){
   return partidosDe(id,cat).reduce((a,p)=>({
@@ -1550,7 +1615,7 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db) | cargarInformeJuvenilesPdf2026(db);
       if (corregido) await Store.save(db);
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
@@ -6129,7 +6194,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
