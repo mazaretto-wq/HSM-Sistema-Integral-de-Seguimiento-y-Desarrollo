@@ -1168,7 +1168,14 @@ function cargarInformeJuvenilesPdf2026(baseDb){
     const j = (baseDb.jugadores||[]).find(x=>normNombreAif((x.apellido||'')+' '+(x.nombre||''))===norm);
     if (!j) return;
     if (!(j.categorias||[]).includes('Juveniles')){ j.categorias = [...(j.categorias||[]), 'Juveniles']; cambio = true; }
-    const yaCargado = totales(j.id, 'Juveniles');
+    /* lo que ya suma antes de tocar la base: partidos cargados uno por uno
+       MÁS cualquier año parcial ya cerrado (tipo "2026 Apertura"). La base
+       en sí NO entra acá: a esta se la va a reemplazar entera. */
+    const partidos = totales(j.id, 'Juveniles'), parcial = historialAnio(j, ANIO_ACTUAL, 'Juveniles');
+    const yaCargado = {
+      pj: partidos.pj+parcial.pj, minutos: partidos.minutos+parcial.minutos, goles: partidos.goles+parcial.goles,
+      asistencias: partidos.asistencias+parcial.asistencias, amarillas: partidos.amarillas+parcial.amarillas, rojas: partidos.rojas+parcial.rojas,
+    };
     const falta = {
       pj:    Math.max(0, pj    - yaCargado.pj),
       min:   Math.max(0, min   - yaCargado.minutos),

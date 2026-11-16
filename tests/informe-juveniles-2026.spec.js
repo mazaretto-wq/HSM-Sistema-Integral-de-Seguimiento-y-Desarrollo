@@ -15,6 +15,7 @@ const PDF = {
   AWADA_Felipe:    {pj:8,  min:422,  goles:4,  asis:2, ta:4,  tr:2},
   BESZE_Santiago:  {pj:9,  min:720,  goles:0,  asis:0, ta:2,  tr:1},
   BIBBO_Mateo:     {pj:20, min:1495, goles:4,  asis:2, ta:8,  tr:0},
+  SANES_Felipe:    {pj:20, min:1425, goles:10, asis:5, ta:5,  tr:0},
 };
 
 (async()=>{
@@ -28,15 +29,37 @@ await pg.reload(); await pg.waitForTimeout(2500); // siembra la base real del cl
 await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 
-// lo que el seed YA tenía cargado uno por uno para cada uno, antes de tocar nada
+// lo que el seed YA tenía cargado para cada uno (partidos sueltos MÁS
+// cualquier temporada parcial ya cerrada tipo "2026 Apertura"), antes de
+// tocar nada
 const yaCargado = await pg.evaluate(()=>{
+  const suma = (id) => {
+    const j = db.jugadores.find(x=>x.id===id);
+    const p = totales(id,'Juveniles'), h = historialAnio(j, ANIO_ACTUAL, 'Juveniles');
+    return { pj:p.pj+h.pj, minutos:p.minutos+h.minutos, goles:p.goles+h.goles,
+      asistencias:p.asistencias+h.asistencias, amarillas:p.amarillas+h.amarillas, rojas:p.rojas+h.rojas };
+  };
   const porNombre = (ap,no) => db.jugadores.find(j=>j.apellido===ap && j.nombre===no);
   return {
-    AWADA_Felipe:   totales(porNombre('AWADA','Felipe').id, 'Juveniles'),
-    BESZE_Santiago: totales(porNombre('BESZE','Santiago').id, 'Juveniles'),
-    BIBBO_Mateo:    totales(porNombre('BIBBO','Mateo').id, 'Juveniles'),
+    AWADA_Felipe:   suma(porNombre('AWADA','Felipe').id),
+    BESZE_Santiago: suma(porNombre('BESZE','Santiago').id),
+    BIBBO_Mateo:    suma(porNombre('BIBBO','Mateo').id),
+    SANES_Felipe:   suma(porNombre('SANES','Felipe').id),
   };
 });
+
+/* Sanes Felipe: le agrego una temporada parcial ya cerrada (tipo "2026
+   Apertura") en el historial, tagueada Juveniles. Es la MISMA plata que
+   un bug real dejó sin restar: contaba los partidos cargados uno por uno
+   pero no estos años parciales, así que a Retamar (en producción) le
+   terminó sumando de más. */
+const idSanes = await pg.evaluate(()=>{
+  const j = db.jugadores.find(x=>x.apellido==='SANES' && x.nombre==='Felipe');
+  j.historial = j.historial || [];
+  j.historial.push({ anio:`${ANIO_ACTUAL} Apertura`, categoria:'Juveniles', pj:6, min:420, goles:3, asis:1, ta:1, tr:0 });
+  return j.id;
+});
+const parcialSanes = { pj:6, minutos:420, goles:3, asistencias:1, amarillas:1, rojas:0 };
 
 // a Bibbo le agrego 2 partidos más encima de lo que ya tenía el seed, para probar que la resta es sobre el total real
 const idBibbo = await pg.evaluate(()=>{
@@ -85,6 +108,21 @@ const faltaBibbo = resta(PDF.BIBBO_Mateo, cargadoBibboTotal);
 t('A Bibbo Mateo (con partidos del seed MÁS los 2 que le agregué) la base le completa solo lo que sigue faltando',
   JSON.stringify(bibbo.base.find(x=>x.categoria==='Juveniles'))===JSON.stringify({categoria:'Juveniles', ...faltaBibbo}),
   JSON.stringify(bibbo.base)+' vs esperado '+JSON.stringify(faltaBibbo));
+const sanes = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idSanes);
+const cargadoSanesTotal = {
+  pj: yaCargado.SANES_Felipe.pj+parcialSanes.pj, minutos: yaCargado.SANES_Felipe.minutos+parcialSanes.minutos,
+  goles: yaCargado.SANES_Felipe.goles+parcialSanes.goles, asistencias: yaCargado.SANES_Felipe.asistencias+parcialSanes.asistencias,
+  amarillas: yaCargado.SANES_Felipe.amarillas+parcialSanes.amarillas, rojas: yaCargado.SANES_Felipe.rojas+parcialSanes.rojas,
+};
+const faltaSanes = resta(PDF.SANES_Felipe, cargadoSanesTotal);
+t('A Sanes Felipe (con una temporada parcial ya cerrada tipo "2026 Apertura") la base también descuenta ESO, no solo los partidos sueltos',
+  JSON.stringify(sanes.base.find(x=>x.categoria==='Juveniles'))===JSON.stringify({categoria:'Juveniles', ...faltaSanes}),
+  JSON.stringify(sanes.base)+' vs esperado '+JSON.stringify(faltaSanes));
+const anioActual = await pg.evaluate(()=>ANIO_ACTUAL);
+t('Esa temporada parcial de Sanes sigue intacta (no se tocó)',
+  sanes.historial.some(h=>h.anio===`${anioActual} Apertura` && h.categoria==='Juveniles' && h.pj===6 && h.min===420),
+  JSON.stringify(sanes.historial));
+
 await pg.reload(); await pg.waitForTimeout(2500);
 const awada2 = await pg.evaluate(()=>db.jugadores.find(j=>j.apellido==='AWADA' && j.nombre==='Felipe'));
 t('Correr esta corrección de nuevo no cambia nada más (es segura de repetir)',
