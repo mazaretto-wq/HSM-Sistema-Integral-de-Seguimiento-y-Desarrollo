@@ -144,6 +144,57 @@ t('Al guardar, la temporada en curso NO se escribe en el historial (solo 2025)',
 t('En cambio, la base de planilla del año en curso se actualiza con el total fresco de la AIF (22pj/46g, sin minutos)',
   JSON.stringify(vanzini.base)===JSON.stringify([{categoria:'Promocional', pj:22, goles:46, ta:0, tr:0}]), JSON.stringify(vanzini.base));
 
+// ---- un jugador que TAMBIÉN juega en Juveniles (ya aprobado, no se toca):
+//      al importar otra categoría, el total de la AIF (que es de la
+//      persona, no de la categoría) se resta contra lo que ya está en
+//      Juveniles, y se guarda solo la diferencia ----
+await pg.click('[data-histAifCat="Promocional"]'); await pg.waitForTimeout(200);
+const idDual = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTDUAL', nombre:'Categoria', categorias:['Promocional','Juveniles'],
+    // Juveniles del año pasado, ya cargado y aprobado a mano
+    historial: [{ anio:'2025', categoria:'Juveniles', pj:7, min:500, goles:3, asis:1, ta:1, tr:0 }],
+    // Juveniles de la temporada en curso: un poco de base + un poco de historial parcial (p.ej. "Apertura" ya cerrado)
+    base: [{ categoria:'Juveniles', pj:4, goles:2, ta:0, tr:0 }],
+  });
+  const j = db.jugadores.find(x=>x.id===id);
+  j.historial.push({ anio: ANIO_ACTUAL+' Apertura', categoria:'Juveniles', pj:3, min:200, goles:1, asis:0, ta:0, tr:0 });
+  render();
+  return id;
+});
+await pg.unroute(/\/api\/aif-historial/);
+await pg.route(/\/api\/aif-historial/, route => route.fulfill({
+  status:200, contentType:'application/json', body: JSON.stringify({
+    categoria:'Promocional', jugadores: [
+      { idjugadorAif:'444', nombreAif:'ZZZTESTDUAL CATEGORIA', porAnio: {
+        '2025': {pj:10, min:700, goles:5, ta:1, tr:0},
+        [anioActual]: {pj:15, min:1000, goles:8, ta:1, tr:1},
+      }},
+    ]
+  })
+}));
+await pg.fill('#hist-aif-desde', '2025');
+await pg.fill('#hist-aif-hasta', anioActual);
+await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(1200);
+const filaDual = await pg.locator('tr:has-text("ZZZTESTDUAL CATEGORIA")').innerText();
+t('La revisión muestra la cuenta completa: total AIF − ya en Juveniles = lo que corresponde a Promocional (año pasado)',
+  filaDual.includes('2025: 10pj/700min/5g − ya en Juveniles (7pj/500min/3g) = 3pj/200min/2g para Promocional'), filaDual);
+t('Y lo mismo para la temporada en curso (acá la base de Juveniles ya suma lo de ese año: 4+3=7pj, 2+1=3g)',
+  filaDual.includes(`${anioActual}: 15pj/1000min/8g − ya en Juveniles (7pj/200min/3g) = 8pj/800min/5g para Promocional`), filaDual);
+await pg.click('#guardarHistorialAIF'); await pg.waitForTimeout(500);
+const dual = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idDual);
+t('Al guardar, el historial de Promocional 2025 queda con la DIFERENCIA, no el total crudo de la AIF',
+  dual.historial.some(h=>h.categoria==='Promocional' && h.anio==='2025' && h.pj===3 && h.min===200 && h.goles===2 && h.ta===0 && h.tr===0),
+  JSON.stringify(dual.historial));
+t('El historial de Juveniles (ya aprobado) no se tocó para nada',
+  dual.historial.some(h=>h.categoria==='Juveniles' && h.anio==='2025' && h.pj===7 && h.min===500 && h.goles===3));
+t('La base de planilla de Promocional (temporada en curso) también queda con la diferencia (8pj/5g/1ta/1tr)',
+  JSON.stringify(dual.base.find(b=>b.categoria==='Promocional'))===JSON.stringify({categoria:'Promocional', pj:8, goles:5, ta:1, tr:1}),
+  JSON.stringify(dual.base));
+t('La base de Juveniles tampoco se tocó',
+  JSON.stringify(dual.base.find(b=>b.categoria==='Juveniles'))===JSON.stringify({categoria:'Juveniles', pj:4, goles:2, ta:0, tr:0}));
+
 // ---- si la AIF no tiene jugadores para esa categoría, avisa y no rompe nada ----
 await pg.unroute(/\/api\/aif-historial/);
 await pg.route(/\/api\/aif-historial/, route => route.fulfill({

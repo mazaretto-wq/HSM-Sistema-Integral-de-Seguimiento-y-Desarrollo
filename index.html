@@ -4539,6 +4539,31 @@ function sugerirCandidatoAif(nombreAif, idjugadorAif, candidatos){
   const porNombre = candidatos.find(j=>normNombreAif((j.apellido||'')+' '+(j.nombre||''))===norm);
   return porNombre ? porNombre.id : '';
 }
+/* un jugador puede jugar en más de una categoría a la vez (típicamente
+   Juveniles + alguna otra). La AIF no separa por categoría: el total que
+   trae por temporada es de la PERSONA, sumando todo lo que jugó ese año.
+   Como Juveniles ya tiene su historial cargado a mano y aprobado, al
+   importar cualquier OTRA categoría hay que restarle a ese total lo que
+   ya está cargado en Juveniles, y guardar solo la diferencia (lo que de
+   verdad corresponde a la categoría que se está importando). */
+function datosYaEnJuveniles(jugador, anio){
+  if (String(anio)===ANIO_ACTUAL){
+    const t = totalesTemporada(jugador.id, 'Juveniles');
+    return { pj:t.pj||0, min:t.minutos||0, goles:t.goles||0, ta:t.amarillas||0, tr:t.rojas||0 };
+  }
+  const fila = (jugador.historial||[]).find(h=>h.categoria==='Juveniles' && String(h.anio)===String(anio));
+  return fila ? { pj:fila.pj||0, min:fila.min||0, goles:fila.goles||0, ta:fila.ta||0, tr:fila.tr||0 }
+              : { pj:0, min:0, goles:0, ta:0, tr:0 };
+}
+function restarJuveniles(datosAif, yaJuveniles){
+  return {
+    pj:    Math.max(0, datosAif.pj    - yaJuveniles.pj),
+    min:   Math.max(0, datosAif.min   - yaJuveniles.min),
+    goles: Math.max(0, datosAif.goles - yaJuveniles.goles),
+    ta:    Math.max(0, datosAif.ta    - yaJuveniles.ta),
+    tr:    Math.max(0, datosAif.tr    - yaJuveniles.tr),
+  };
+}
 function bloqueHistorialAIF(){
   const cat = view.histAifCategoria;
   let h = `<div class="block"><div class="block-title">${icono('cancha')} Importar historial AIF</div>
@@ -4563,8 +4588,22 @@ function bloqueHistorialAIF(){
       carga anterior.</p>
       <div class="scroll-x"><table class="cmp"><thead><tr><th>AIF</th><th>Resumen</th><th>Vincular con</th></tr></thead><tbody>`;
     view.histAifJugadores.forEach(p=>{
-      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].min}min/${p.porAnio[a].goles}g${a===ANIO_ACTUAL?' (actualiza la base de planilla, sin minutos)':''}`).join(' · ');
       const sel = view.histAifVinculos[p.key] || '';
+      const jugadorSel = (sel && sel!=='ignorar') ? db.jugadores.find(x=>x.id===sel) : null;
+      const resumen = p.anios.map(a=>{
+        const datos = p.porAnio[a];
+        const base = `${a}: ${datos.pj}pj/${datos.min}min/${datos.goles}g`;
+        const enCurso = a===ANIO_ACTUAL ? ' (actualiza la base de planilla, sin minutos)' : '';
+        if (!jugadorSel) return base + enCurso;
+        /* si este jugador también tiene cargado Juveniles ese año, se le
+           resta: lo de Juveniles ya está aprobado, lo que sobra es lo que
+           de verdad corresponde a esta categoría */
+        const yaJuveniles = datosYaEnJuveniles(jugadorSel, a);
+        const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
+        if (!hayJuveniles) return base + enCurso;
+        const dif = restarJuveniles(datos, yaJuveniles);
+        return `${base} − ya en Juveniles (${yaJuveniles.pj}pj/${yaJuveniles.min}min/${yaJuveniles.goles}g) = ${dif.pj}pj/${dif.min}min/${dif.goles}g para ${cat}${enCurso}`;
+      }).join(' · ');
       h += `<tr>
         <td>${esc(p.nombreAif)}</td>
         <td style="font-size:11px">${esc(resumen)}</td>
@@ -4631,19 +4670,23 @@ async function traerHistorialAIF(){
 async function guardarHistorialAIF(){
   const cat = view.histAifCategoria;
   const lista = view.histAifJugadores || [];
-  const elegido = {};
-  document.querySelectorAll('select[data-histAifVincular]').forEach(el=>{ elegido[el.dataset.histaifvincular] = el.value; });
 
   let jugadoresTocados = 0, aniosGuardados = 0, sinVincular = 0;
   lista.forEach(p=>{
-    const jid = elegido[p.key];
+    const jid = view.histAifVinculos[p.key];
     if (!jid || jid==='ignorar'){ sinVincular++; return; }
     const j = db.jugadores.find(x=>x.id===jid);
     if (!j) return;
     if (p.idjugadorAif) j.aifId = p.idjugadorAif;
     if (!j.historial) j.historial = [];
     Object.keys(p.porAnio).forEach(anio=>{
-      const x = p.porAnio[anio];
+      /* si este jugador también tiene Juveniles cargado ese año, se le
+         resta (ver bloqueHistorialAIF, donde se muestra la misma cuenta
+         antes de guardar): lo de Juveniles ya está aprobado, así que acá
+         solo se guarda lo que sobra, no el total crudo de la AIF */
+      const yaJuveniles = datosYaEnJuveniles(j, anio);
+      const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
+      const x = hayJuveniles ? restarJuveniles(p.porAnio[anio], yaJuveniles) : p.porAnio[anio];
       if (String(anio)===ANIO_ACTUAL){
         /* la temporada en curso no se guarda en el historial (eso duplicaría
            con totalesTemporada): se ACTUALIZA la base de planilla de esa
@@ -4863,6 +4906,14 @@ app.addEventListener('change', async e=>{
     const validos = planteldeCategoria(view.draft.categoria).map(j=>j.id);
     view.draft.asistentes = (view.draft.asistentes||[]).filter(id=>validos.includes(id));
     render();
+  }
+  if (e.target.hasAttribute('data-histAifVincular')){
+    /* se guarda en view (no alcanza con leerlo del DOM al guardar):
+       el resumen tiene que recalcularse ya mismo si el jugador elegido
+       también juega en Juveniles, para restarle lo que ahí ya está
+       cargado (ver datosYaEnJuveniles/restarJuveniles) */
+    view.histAifVinculos[e.target.dataset.histaifvincular] = e.target.value;
+    return render();
   }
 });
 
