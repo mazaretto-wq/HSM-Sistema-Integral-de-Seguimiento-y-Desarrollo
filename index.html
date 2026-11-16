@@ -862,7 +862,9 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
-             lesionForm:false };
+             lesionForm:false,
+             histAifCategoria:'Promocional', histAifDesde:2023, histAifHasta:2026,
+             histAifEstado:null, histAifProgreso:'', histAifJugadores:null, histAifVinculos:{} };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
   'Septiembre','Octubre','Noviembre','Diciembre'];
 const nombreMes = ym => { const [a,m] = ym.split('-'); return MESES[Number(m)-1]+' '+a; };
@@ -4490,6 +4492,160 @@ async function guardarEjercicio(){
 }
 
 /* ---------- DATOS ---------- */
+/* ---------- Importar historial AIF: trae de aif.org.ar (vía /api/aif-historial,
+   que corre en el propio Vercel) los partidos/goles/tarjetas de temporadas
+   viejas, categoría por categoría. Nunca toca Juveniles (ya tiene su
+   historial cargado a mano). La AIF no tiene minutos ni asistencias, así
+   que esos dos campos siempre quedan en 0 y hay que completarlos a mano. */
+const CATEGORIAS_HIST_AIF = CATEGORIAS.filter(c=>c!=='Juveniles');
+const normNombreAif = s => (s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+  .replace(/,/g,' ').replace(/\s+/g,' ').trim();
+function candidatosHistAif(cat){
+  return db.jugadores.filter(j=>(j.categorias||[]).includes(cat))
+    .sort((a,b)=>(a.apellido||'').localeCompare(b.apellido||''));
+}
+function sugerirCandidatoAif(nombreAif, idjugadorAif, candidatos){
+  if (idjugadorAif){
+    const porAifId = candidatos.find(j=>j.aifId===idjugadorAif);
+    if (porAifId) return porAifId.id;
+  }
+  const norm = normNombreAif(nombreAif);
+  const porNombre = candidatos.find(j=>normNombreAif((j.apellido||'')+' '+(j.nombre||''))===norm);
+  return porNombre ? porNombre.id : '';
+}
+function bloqueHistorialAIF(){
+  const cat = view.histAifCategoria;
+  let h = `<div class="block"><div class="block-title">${icono('cancha')} Importar historial AIF</div>
+    <p class="screen-note" style="margin-top:0">Trae de la AIF los partidos jugados, goles, amarillas y rojas
+    de temporadas viejas, categoría por categoría (nunca toca Juveniles, que ya tiene su historial cargado
+    a mano). <strong>No incluye minutos ni asistencias</strong>: la AIF no los registra, hay que completarlos
+    a mano si hacen falta.</p>
+    <div class="chips">${CATEGORIAS_HIST_AIF.map(c=>
+      `<button class="chip" data-histAifCat="${esc(c)}" aria-pressed="${cat===c}">${esc(c)}</button>`).join('')}</div>`;
+
+  if (view.histAifEstado==='cargando'){
+    h += `<p class="screen-note"><strong>Trayendo…</strong> ${esc(view.histAifProgreso)}</p></div>`;
+    return h;
+  }
+
+  if (view.histAifEstado==='revisar' && view.histAifJugadores){
+    const candidatos = candidatosHistAif(cat);
+    h += `<p class="screen-note">Encontré ${view.histAifJugadores.length} jugadores en la AIF para ${esc(cat)}.
+      Vinculá cada uno con tu plantel (o "Ignorar") y guardá. ✓ = ya estaba vinculado de una carga anterior.</p>
+      <div class="scroll-x"><table class="cmp"><thead><tr><th>AIF</th><th>Resumen</th><th>Vincular con</th></tr></thead><tbody>`;
+    view.histAifJugadores.forEach(p=>{
+      const resumen = p.anios.map(a=>`${a}: ${p.porAnio[a].pj}pj/${p.porAnio[a].goles}g`).join(' · ');
+      const sel = view.histAifVinculos[p.key] || '';
+      h += `<tr>
+        <td>${esc(p.nombreAif)}</td>
+        <td style="font-size:11px">${esc(resumen)}</td>
+        <td><select data-histAifVincular="${esc(p.key)}">
+          <option value="">Elegir…</option>
+          <option value="ignorar" ${sel==='ignorar'?'selected':''}>Ignorar</option>
+          ${candidatos.map(j=>`<option value="${j.id}" ${sel===j.id?'selected':''}>${esc(j.apellido)}, ${esc(j.nombre)}${j.aifId?' ✓':''}</option>`).join('')}
+        </select></td>
+      </tr>`;
+    });
+    h += `</tbody></table></div>
+      <div class="gap"></div><button class="btn btn-naranja" id="guardarHistorialAIF">Guardar vinculados</button>
+      <div class="gap"></div><button class="btn btn-ghost" id="cancelarHistorialAIF">Cancelar</button></div>`;
+    return h;
+  }
+
+  h += `<div class="two">
+      <div class="field"><label class="label" for="hist-aif-desde">Desde</label>
+        <input type="number" id="hist-aif-desde" value="${esc(view.histAifDesde)}" min="2014" max="2026"></div>
+      <div class="field"><label class="label" for="hist-aif-hasta">Hasta</label>
+        <input type="number" id="hist-aif-hasta" value="${esc(view.histAifHasta)}" min="2014" max="2026"></div>
+    </div>
+    <p class="screen-note" style="margin-top:-10px">Puede tardar varios minutos: la AIF es lenta y hay que
+    pedirle los datos de a uno.</p>
+    <button class="btn btn-naranja" id="traerHistorialAIF">Traer de la AIF</button>
+  </div>`;
+  return h;
+}
+async function traerHistorialAIF(){
+  const cat = view.histAifCategoria;
+  const desde = Number(document.getElementById('hist-aif-desde').value) || view.histAifDesde;
+  const hasta = Number(document.getElementById('hist-aif-hasta').value) || view.histAifHasta;
+  if (desde > hasta) return toast('El año "desde" no puede ser mayor que "hasta"');
+  view.histAifDesde = desde; view.histAifHasta = hasta;
+  view.histAifEstado = 'cargando'; view.histAifProgreso = 'Buscando temporadas…'; render();
+
+  const porPersona = {};
+  const upsertAnio = (idjugadorAif, nombreAif, anio, datos) => {
+    const key = idjugadorAif ? 'id:'+idjugadorAif : 'nombre:'+normNombreAif(nombreAif);
+    if (!porPersona[key]) porPersona[key] = { idjugadorAif, nombreAif, porAnio:{} };
+    const p = porPersona[key];
+    if (idjugadorAif && !p.idjugadorAif) p.idjugadorAif = idjugadorAif;
+    const a = p.porAnio[anio] || (p.porAnio[anio] = {pj:0,goles:0,ta:0,tr:0});
+    a.pj += datos.pj; a.goles += datos.goles; a.ta += datos.ta; a.tr += datos.tr;
+  };
+
+  try{
+    for (let anio=desde; anio<=hasta; anio++){
+      view.histAifProgreso = `Buscando torneos de ${anio}…`; render();
+      const rList = await fetch(`/api/aif-historial?categoria=${encodeURIComponent(cat)}&anio=${anio}`);
+      const dList = await rList.json();
+      if (!rList.ok) throw new Error(dList.error || 'la AIF no respondió');
+      for (const t of (dList.torneos||[])){
+        view.histAifProgreso = `${anio} · ${t.nombre} (${t.division})…`; render();
+        const r = await fetch(`/api/aif-historial?categoria=${encodeURIComponent(cat)}&anio=${anio}&idtorneo=${t.idtorneo}`);
+        const d = await r.json();
+        if (!r.ok){ console.warn('torneo de la AIF falló, se sigue con el resto', anio, t, d.error); continue; }
+        (d.jugadores||[]).forEach(j=> upsertAnio(j.idjugadorAif, j.nombreAif, anio, j));
+      }
+    }
+  }catch(e){
+    view.histAifEstado = null; view.histAifProgreso = '';
+    toast('No se pudo traer el historial: '+e.message);
+    return render();
+  }
+
+  const candidatos = candidatosHistAif(cat);
+  const lista = Object.entries(porPersona).map(([key,p])=>{
+    const anios = Object.keys(p.porAnio).sort();
+    return { key, idjugadorAif:p.idjugadorAif, nombreAif:p.nombreAif, porAnio:p.porAnio,
+      anios, totalPj: anios.reduce((a,x)=>a+p.porAnio[x].pj,0) };
+  }).sort((a,b)=>b.totalPj-a.totalPj);
+
+  view.histAifJugadores = lista;
+  view.histAifVinculos = {};
+  lista.forEach(p=>{ view.histAifVinculos[p.key] = sugerirCandidatoAif(p.nombreAif, p.idjugadorAif, candidatos); });
+  view.histAifEstado = lista.length ? 'revisar' : null;
+  view.histAifProgreso = '';
+  if (!lista.length) toast(`La AIF no tiene datos de ${cat} entre ${desde} y ${hasta}`);
+  render();
+}
+async function guardarHistorialAIF(){
+  const cat = view.histAifCategoria;
+  const lista = view.histAifJugadores || [];
+  const elegido = {};
+  document.querySelectorAll('select[data-histAifVincular]').forEach(el=>{ elegido[el.dataset.histaifvincular] = el.value; });
+
+  let jugadoresTocados = 0, aniosGuardados = 0, sinVincular = 0;
+  lista.forEach(p=>{
+    const jid = elegido[p.key];
+    if (!jid || jid==='ignorar'){ sinVincular++; return; }
+    const j = db.jugadores.find(x=>x.id===jid);
+    if (!j) return;
+    if (p.idjugadorAif) j.aifId = p.idjugadorAif;
+    if (!j.historial) j.historial = [];
+    Object.keys(p.porAnio).forEach(anio=>{
+      const x = p.porAnio[anio];
+      j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria===cat));
+      j.historial.push({ anio:String(anio), categoria:cat, pj:x.pj, goles:x.goles, asis:0, min:0, ta:x.ta, tr:x.tr });
+      aniosGuardados++;
+    });
+    jugadoresTocados++;
+  });
+
+  await Store.save(db);
+  view.histAifEstado = null; view.histAifJugadores = null; view.histAifVinculos = {};
+  toast(`Historial de ${cat} guardado · ${jugadoresTocados} jugadores, ${aniosGuardados} temporadas (${sinVincular} sin vincular)`);
+  render();
+}
+
 function pantallaDatos(){
   const c = db.config;
   app.innerHTML = `<h2 class="screen-title">Datos</h2>
@@ -4536,6 +4692,7 @@ function pantallaDatos(){
       categorías y PJ/goles/tarjetas de planilla. No toca Juveniles.</p>
       <div class="gap"></div><button class="btn ${faltaCargar().planteles?'btn-naranja':'btn-ghost'}" id="cargarPlanteles">${faltaCargar().planteles?'Cargar planteles':'Ya cargado · volver a cargar'}</button>
     </div>
+    ${bloqueHistorialAIF()}
     <div class="block"><div class="block-title">Exportar</div>
       <button class="btn btn-ghost" data-csv="jugadores">CSV de jugadores</button><div class="gap"></div>
       <button class="btn btn-ghost" data-csv="evaluaciones">CSV de evaluaciones</button><div class="gap"></div>
@@ -5182,6 +5339,22 @@ app.addEventListener('click', async e=>{
     const sel = document.getElementById('archivar-anio');
     if (!sel || !sel.value) return;
     return archivarTemporada(sel.value);
+  }
+
+  const chipHistAifCat = t.closest('[data-histAifCat]');
+  if (chipHistAifCat){
+    view.histAifCategoria = chipHistAifCat.dataset.histaifcat;
+    view.histAifEstado = null; view.histAifJugadores = null; view.histAifVinculos = {};
+    return render();
+  }
+  if (t.id==='traerHistorialAIF') return traerHistorialAIF();
+  if (t.id==='guardarHistorialAIF'){
+    if (!confirm('¿Guardar el historial vinculado? Reemplaza, para cada jugador vinculado, lo que ya tuviera cargado en esos mismos años y categoría.')) return;
+    return guardarHistorialAIF();
+  }
+  if (t.id==='cancelarHistorialAIF'){
+    view.histAifEstado = null; view.histAifJugadores = null; view.histAifVinculos = {};
+    return render();
   }
 });
 
