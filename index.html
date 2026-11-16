@@ -1082,6 +1082,47 @@ function corregirHistorialPereyra(baseDb){
   });
   return cambio;
 }
+/* Caso general del mismo problema que Pereyra: hay filas de historial de
+   antes de que existiera la columna "categoría" (de cuando la app todavía
+   no distinguía entre categorías) que quedaron sin ese dato. La ficha las
+   mostraba con una leyenda de respaldo (todas las categorías actuales del
+   jugador juntas, tipo "Cadetes · Juveniles · Selección"), y como la
+   herramienta de importar historial busca literalmente categoria==='Juveniles'
+   para restar, esas filas sin etiqueta no se reconocían: la fila de la otra
+   categoría quedaba con el total crudo de la AIF, sin restar nada.
+
+   Lo verificado (cargado a mano, antes de que existiera esta distinción) es
+   Juveniles: para cualquier jugador que hoy esté en esa categoría, una fila
+   vieja sin categoría puesta es de Juveniles. Al etiquetarla, de paso se
+   recalculan las demás filas de ESE MISMO año restándoles lo que ahora se
+   sabe que es Juveniles (si antes no se pudo restar, por la razón de arriba,
+   hoy tienen el total crudo guardado). Corre siempre: no vuelve a tocar nada
+   una vez que ya quedó etiquetado (usa eso mismo para no repetir la resta). */
+function migrarHistorialSinCategoriaComoJuveniles(baseDb){
+  let cambio = false;
+  (baseDb.jugadores||[]).forEach(j=>{
+    if (!j.historial || !(j.categorias||[]).includes('Juveniles')) return;
+    const aniosRetageados = new Set();
+    j.historial.forEach(h=>{
+      if (!h.categoria){
+        h.categoria = 'Juveniles';
+        aniosRetageados.add(String(h.anio));
+        cambio = true;
+      }
+    });
+    aniosRetageados.forEach(anio=>{
+      const filaJuv = j.historial.find(h=>String(h.anio)===anio && h.categoria==='Juveniles');
+      if (!filaJuv) return;
+      const yaJuveniles = { pj:filaJuv.pj||0, min:filaJuv.min||0, goles:filaJuv.goles||0, ta:filaJuv.ta||0, tr:filaJuv.tr||0 };
+      j.historial.filter(h=>String(h.anio)===anio && h.categoria!=='Juveniles').forEach(otra=>{
+        const dif = restarJuveniles(otra, yaJuveniles);
+        otra.pj = dif.pj; otra.min = dif.min; otra.goles = dif.goles; otra.ta = dif.ta; otra.tr = dif.tr;
+        cambio = true;
+      });
+    });
+  });
+  return cambio;
+}
 function totalesTemporada(id, cat){
   const j = db.jugadores.find(x=>x.id===id);
   const t = totalesConBase(id,cat), a = historialAnio(j, ANIO_ACTUAL, cat);
@@ -1509,7 +1550,7 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db);
       if (corregido) await Store.save(db);
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
@@ -6025,7 +6066,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,

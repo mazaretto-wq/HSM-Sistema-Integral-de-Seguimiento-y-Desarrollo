@@ -242,6 +242,37 @@ const vanziniSegundaVez = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id
 t('Correr la limpieza de nuevo no cambia nada más (es segura de repetir)',
   JSON.stringify(vanziniSegundaVez.historial)===JSON.stringify(vanziniTrasReabrir.historial));
 
+// ---- filas viejas de historial sin categoría puesta (de antes de que
+//      existiera esa columna): para un jugador que hoy está en Juveniles, se
+//      etiquetan solas como Juveniles, y de paso se recalculan las demás
+//      categorías de ese mismo año restándoles lo que ahora se sabe que es
+//      Juveniles (si antes no se pudo restar por falta de etiqueta, habían
+//      quedado con el total crudo de la AIF) ----
+const idLegacy = await pg.evaluate(async ()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTLEGACY', nombre:'Multi', categorias:['Cadetes','Juveniles'],
+    historial: [
+      { anio:'2024', pj:10, min:600, goles:3, asis:2, ta:1, tr:0 }, // vieja, sin categoría: es de Juveniles
+      { anio:'2024', categoria:'Cadetes', pj:33, min:2013, goles:14, asis:0, ta:4, tr:0 }, // quedó con el total crudo de la AIF
+    ],
+  });
+  await Store.save(db);
+  return id;
+});
+await pg.reload(); await pg.waitForTimeout(2000);
+const legacyTrasReabrir = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idLegacy);
+t('La fila vieja sin categoría queda etiquetada como Juveniles, con sus valores intactos',
+  legacyTrasReabrir.historial.some(h=>h.anio==='2024' && h.categoria==='Juveniles' && h.pj===10 && h.min===600 && h.goles===3 && h.asis===2 && h.ta===1 && h.tr===0),
+  JSON.stringify(legacyTrasReabrir.historial));
+t('La fila de Cadetes de ese mismo año queda con la diferencia (33-10pj/2013-600min/14-3g/4-1ta), no el total crudo',
+  legacyTrasReabrir.historial.some(h=>h.anio==='2024' && h.categoria==='Cadetes' && h.pj===23 && h.min===1413 && h.goles===11 && h.ta===3 && h.tr===0),
+  JSON.stringify(legacyTrasReabrir.historial));
+await pg.reload(); await pg.waitForTimeout(2000);
+const legacySegundaVez = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idLegacy);
+t('Correr esta migración de nuevo no vuelve a restar (sería restar dos veces)',
+  JSON.stringify(legacySegundaVez.historial)===JSON.stringify(legacyTrasReabrir.historial), JSON.stringify(legacySegundaVez.historial));
+
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);
