@@ -2649,14 +2649,14 @@ function fichaJugador(){
     const hayResto = resto && (resto.pj||resto.minutos||resto.goles||resto.asistencias||resto.amarillas||resto.rojas);
     const filaActual = (hayJuv && cats.length>1)
       ? [{ anio: ANIO_ACTUAL, categoria:'Juveniles', ...juvTotal }, ...(hayResto ? [{ anio: ANIO_ACTUAL, categoria:'—', ...resto }] : [])]
-      : [{ anio: ANIO_ACTUAL, categoria: cats.length===1 ? cats[0] : '—',
+      : [{ anio: ANIO_ACTUAL, categoria: (cats.length===1 && cats[0]==='Juveniles') ? 'Juveniles' : '—',
           pj:T.pj, goles:T.goles, asistencias:T.asistencias, minutos:T.minutos, amarillas:T.amarillas, rojas:T.rojas }];
     const filasHist = [
       ...filaActual,
-      /* igual que arriba: si no se sabe de qué categoría es una fila vieja,
-         no se le inventa un nombre (antes caía en el mismo cartel de "todas
-         juntas", que confundía más de lo que aclaraba) */
-      ...hist.slice().reverse().map(x=>({ anio:x.anio, categoria:x.categoria || '—',
+      /* solo Juveniles es dato verificado (cargado a mano); cualquier otra
+         categoría, aunque esté etiquetada, no se nombra: no se quiere dar
+         la misma confianza a un dato importado que a uno verificado */
+      ...hist.slice().reverse().map(x=>({ anio:x.anio, categoria: x.categoria==='Juveniles' ? 'Juveniles' : '—',
         pj:x.pj||0, goles:x.goles||0, asistencias:x.asis||0, minutos:x.min||0, amarillas:x.ta||0, rojas:x.tr||0 }))
     ];
     h += `<div class="perfil-2col">

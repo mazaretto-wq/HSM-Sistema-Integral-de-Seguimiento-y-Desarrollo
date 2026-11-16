@@ -64,7 +64,27 @@ t('...y otra sin nombre de categoría con el resto (8pj/3g, lo que no es de Juve
 t('Las tarjetas se muestran con iconos de color, no como texto "A/R"',
   (await pg.locator('.cmp tbody tr .card-mark.card-y').count())>0 && (await pg.locator('.cmp tbody tr .card-mark.card-r').count())>0
     && !filasDual.some(f=>/\d+A\/\d+R/.test(f)), JSON.stringify(filasDual));
-await pg.goto(BASE_URL); // limpia el jugador de prueba antes de cerrar
+
+// ---- aunque una fila de historial SÍ tenga una categoría conocida que no es
+//      Juveniles (por ejemplo, ya etiquetada "Cadetes" por una importación
+//      de la AIF), no se nombra: solo Juveniles es dato verificado ----
+const idSoloCadetes = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTSOLOCAD', nombre:'Unica', categorias:['Cadetes'],
+    historial: [{ anio:'2024', categoria:'Cadetes', pj:20, min:1200, goles:5, asis:1, ta:1, tr:0 }],
+  });
+  view.jugadorId = id; view.fichaTab = 'general';
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+const filasSolo = await pg.locator('.cmp tbody tr').allInnerTexts();
+t('La fila de 2024, aunque está etiquetada "Cadetes", no muestra ese nombre (solo Juveniles se nombra)',
+  filasSolo.some(f=>f.includes('2024') && f.includes('20') && !f.includes('Cadetes')), JSON.stringify(filasSolo));
+t('Tampoco la temporada en curso, para un jugador de una sola categoría que no es Juveniles',
+  filasSolo.some(f=>f.includes(new Date().getFullYear().toString()) && !f.includes('Cadetes')), JSON.stringify(filasSolo));
+await pg.goto(BASE_URL); // limpia los jugadores de prueba antes de cerrar
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
