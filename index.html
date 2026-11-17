@@ -3599,6 +3599,22 @@ function formEvaluacion(){
     <button class="btn btn-naranja" data-guardar="evaluacion">Guardar</button><div style="height:26px"></div>`;
 }
 
+/* fila de totales de "Cargar partido": se recalcula al vuelo con cada
+   tecla, tocando el DOM directo (no render()) para no perder el foco
+   del campo que se está escribiendo */
+function actualizarTotalesPartido(){
+  const filas = document.querySelectorAll('.pl-tabla tbody tr[data-fila]');
+  if (!filas.length) return;
+  const sumar = campo => [...document.querySelectorAll(`.pl-tabla [data-campo="${campo}"]`)]
+    .reduce((a,el)=>a+(Number(el.value)||0), 0);
+  const jugaron = [...document.querySelectorAll('.pl-tabla [data-campo="minutos"]')].filter(el=>Number(el.value)>0).length;
+  const set = (id,v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('pl-tot-jugaron', `${jugaron} jugaron`);
+  set('pl-tot-goles', sumar('goles'));
+  set('pl-tot-asistencias', sumar('asistencias'));
+  set('pl-tot-amarillas', sumar('amarillas'));
+  set('pl-tot-rojas', sumar('rojas'));
+}
 function formPartido(){
   const cats = catsPermitidas();
   /* arranca en la última que cargaste; si es la primera vez, en la que venías mirando */
@@ -3641,7 +3657,13 @@ function formPartido(){
         <td><select data-jug="${j.id}" data-campo="posicion"><option value="">—</option>${
           POSICIONES.map(x=>`<option ${x===posPrincipal(j)?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
       </tr>`).join('')}
-    </tbody></table></div>
+    </tbody>
+    <tfoot><tr style="font-weight:600">
+      <td>Totales</td><td id="pl-tot-jugaron">0 jugaron</td>
+      <td id="pl-tot-goles">0</td><td id="pl-tot-asistencias">0</td>
+      <td id="pl-tot-amarillas">0</td><td id="pl-tot-rojas">0</td><td></td>
+    </tr></tfoot>
+    </table></div>
     <p class="screen-note" style="margin-top:10px">El puesto viene con la posición principal de cada uno;
     cambialo si jugó en otro lado. Eso alimenta "Dónde jugó" en la ficha.</p>
     <div class="gap"></div>
@@ -5206,6 +5228,9 @@ app.addEventListener('input', e=>{
   }
   if (e.target.hasAttribute('data-testValor')){
     view.testValores[e.target.getAttribute('data-testValor')] = e.target.value;
+  }
+  if (e.target.closest('.pl-tabla') && ['goles','asistencias','amarillas','rojas','minutos'].includes(e.target.dataset.campo)){
+    actualizarTotalesPartido();
   }
 });
 
