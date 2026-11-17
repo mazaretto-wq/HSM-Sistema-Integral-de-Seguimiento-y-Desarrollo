@@ -858,6 +858,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtDni:null, fondoHome:null,
+             evolucionOcultas:{}, evolucionActivo:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false, partidosCategoria:null,
              fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
@@ -1396,14 +1397,21 @@ function pctFisicoCategoria(item, valor, roster){
 }
 /* gráfico de líneas (SVG, sin librerías) para minutos/goles/asistencias
    año a año; puntos ya vienen ordenados cronológicamente */
-function svgEvolucion(puntos){
+function svgEvolucion(puntos, opts){
+  const ocultas = (opts && opts.ocultas) || {}, activo = opts && opts.activo;
+  const campos = ['minutos','goles','asistencias'].filter(c=>!ocultas[c]);
   const W=600, H=210, mL=34, mR=10, mT=10, mB=26;
-  const max = Math.max(1, ...puntos.map(p=>Math.max(p.minutos,p.goles,p.asistencias)));
+  const max = Math.max(1, ...puntos.map(p=>Math.max(...campos.map(c=>p[c]), 0)));
   const x = i => puntos.length>1 ? mL + i/(puntos.length-1)*(W-mL-mR) : (W-mL-mR)/2+mL;
   const y = v => H-mB - (v/max)*(H-mT-mB);
   const linea = (campo,color) => {
+    if (ocultas[campo]) return '';
     const pts = puntos.map((p,i)=>`${x(i)},${y(p[campo])}`).join(' ');
-    const circs = puntos.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p[campo])}" r="3.5" fill="${color}"/>`).join('');
+    const circs = puntos.map((p,i)=>{
+      const esActivo = String(p.anio)===activo;
+      return `<circle cx="${x(i)}" cy="${y(p[campo])}" r="${esActivo?5.5:3.5}" fill="${color}"
+        ${esActivo?'stroke="#fff" stroke-width="1.5"':''}/>`;
+    }).join('');
     return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${circs}`;
   };
   const grillas = [0,.25,.5,.75,1].map(f=>{
@@ -1411,12 +1419,22 @@ function svgEvolucion(puntos){
     return `<line x1="${mL}" y1="${yy}" x2="${W-mR}" y2="${yy}" stroke="var(--linea)" stroke-width="1"/>
       <text x="${mL-6}" y="${yy+3}" font-size="9" fill="var(--ink-2)" text-anchor="end" font-family="var(--mono)">${miles(v)}</text>`;
   }).join('');
-  const ejeX = puntos.map((p,i)=>`<text x="${x(i)}" y="${H-8}" font-size="10" fill="var(--ink-2)" text-anchor="middle" font-family="var(--mono)">${esc(p.anio)}</text>`).join('');
+  const ejeX = puntos.map((p,i)=>`<text x="${x(i)}" y="${H-8}" font-size="10"
+      fill="${String(p.anio)===activo?'var(--naranja)':'var(--ink-2)'}" text-anchor="middle"
+      font-family="var(--mono)" font-weight="${String(p.anio)===activo?'700':'400'}">${esc(p.anio)}</text>`).join('');
+  /* una franja invisible más ancha detrás de cada columna de año, para
+     que sea más fácil de tocar en el celular sin agrandar los puntos */
+  const anchoFranja = puntos.length>1 ? (W-mL-mR)/(puntos.length-1) : (W-mL-mR);
+  const hitAreas = puntos.map((p,i)=>
+    `<rect x="${x(i)-anchoFranja/2}" y="${mT}" width="${anchoFranja}" height="${H-mT-mB}" fill="transparent" style="cursor:pointer"
+      data-ev-punto="${esc(p.anio)}"><title>${esc(p.anio)}: ${miles(p.minutos)} min · ${p.goles} goles · ${p.asistencias} asist.</title></rect>`
+  ).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
     ${grillas}${ejeX}
     ${linea('minutos','var(--ink-2)')}
     ${linea('goles','var(--naranja)')}
     ${linea('asistencias','var(--verde)')}
+    ${hitAreas}
   </svg>`;
 }
 /* telaraña con las habilidades técnico-tácticas (escala 0-10, un eje por
@@ -2702,15 +2720,34 @@ function fichaJugador(){
         ${historialAnio(j, ANIO_ACTUAL).pj ? `<p class="screen-note" style="margin-top:8px">La temporada ${ANIO_ACTUAL} incluye partidos cargados como total del torneo, sin detalle partido a partido.</p>` : ''}
       </div>
       <div class="block"><div class="block-title">${icono('subiendo')} Evolución de rendimiento</div>
-        ${hist.length ? `
-          <div class="chart-leyenda">
-            <span><i style="background:var(--ink-2)"></i>Minutos</span>
-            <span><i style="background:var(--naranja)"></i>Goles</span>
-            <span><i style="background:var(--verde)"></i>Asistencias</span>
+        ${hist.length ? (()=>{
+          /* un jugador puede tener más de una fila de historial para el
+             mismo año (una por categoría, más lo que quedó sin nombre de
+             categoría): se suman en un solo punto por año, si no el
+             gráfico repite el año en el eje X y queda en zigzag */
+          const porAnio = {};
+          hist.forEach(x=>{
+            const k = String(x.anio);
+            if (!porAnio[k]) porAnio[k] = { anio:k, minutos:0, goles:0, asistencias:0 };
+            porAnio[k].minutos += x.min||0; porAnio[k].goles += x.goles||0; porAnio[k].asistencias += x.asis||0;
+          });
+          const puntos = [...Object.values(porAnio).sort((a,b)=>a.anio.localeCompare(b.anio)),
+            {anio:ANIO_ACTUAL, minutos:T.minutos, goles:T.goles, asistencias:T.asistencias}];
+          const LINEAS = [['minutos','var(--ink-2)','Minutos'],['goles','var(--naranja)','Goles'],['asistencias','var(--verde)','Asistencias']];
+          const activo = puntos.find(p=>String(p.anio)===view.evolucionActivo);
+          return `<div class="chart-leyenda">
+            ${LINEAS.map(([campo,color,nombre])=>{
+              const oculta = !!view.evolucionOcultas[campo];
+              return `<span data-ev-toggle="${campo}" style="cursor:pointer;${oculta?'opacity:.4':''}">
+                <i style="background:${color}"></i>${nombre}</span>`;
+            }).join('')}
           </div>
-          ${svgEvolucion([...hist.map(x=>({anio:x.anio, minutos:x.min||0, goles:x.goles||0, asistencias:x.asis||0})),
-            {anio:ANIO_ACTUAL, minutos:T.minutos, goles:T.goles, asistencias:T.asistencias}])}
-        ` : `<div class="empty"><p>Hace falta cargar alguna temporada anterior para poder comparar.</p></div>`}
+          ${svgEvolucion(puntos, {ocultas:view.evolucionOcultas, activo:view.evolucionActivo})}
+          ${activo ? `<p class="screen-note" style="margin-top:4px">
+            <strong>${esc(activo.anio)}</strong>: ${miles(activo.minutos)} min · ${activo.goles} goles · ${activo.asistencias} asist.
+            <button class="linkish" data-ev-punto="${esc(activo.anio)}" style="margin-left:6px">cerrar</button></p>`
+          : `<p class="screen-note" style="margin-top:4px">Tocá un punto para ver el detalle de esa temporada.</p>`}`;
+        })() : `<div class="empty"><p>Hace falta cargar alguna temporada anterior para poder comparar.</p></div>`}
       </div>
     </div>`;
 
@@ -5302,6 +5339,19 @@ app.addEventListener('click', async e=>{
   if (irFichaTab){ view.fichaTab=irFichaTab.dataset.irfichatab; view.lesionForm=false; window.scrollTo(0,0); return render(); }
   const chipMetrica = t.closest('[data-fichaMetric]');
   if (chipMetrica){ view.fichaDetalleMetric=chipMetrica.dataset.fichametric; return render(); }
+
+  const evToggle = t.closest('[data-ev-toggle]');
+  if (evToggle){
+    const campo = evToggle.dataset.evToggle;
+    view.evolucionOcultas[campo] = !view.evolucionOcultas[campo];
+    return render();
+  }
+  const evPunto = t.closest('[data-ev-punto]');
+  if (evPunto){
+    const anio = evPunto.dataset.evPunto;
+    view.evolucionActivo = view.evolucionActivo===anio ? null : anio;
+    return render();
+  }
 
   const chipForm = t.closest('.chip[data-form]');
   if (chipForm){ view.formacion=chipForm.dataset.form; view.slotAbierto=null; return render(); }

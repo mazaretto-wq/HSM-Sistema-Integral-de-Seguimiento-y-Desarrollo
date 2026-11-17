@@ -84,6 +84,49 @@ t('La fila de 2024, aunque está etiquetada "Cadetes", no muestra ese nombre (so
   filasSolo.some(f=>f.includes('2024') && f.includes('20') && !f.includes('Cadetes')), JSON.stringify(filasSolo));
 t('Tampoco la temporada en curso, para un jugador de una sola categoría que no es Juveniles',
   filasSolo.some(f=>f.includes(new Date().getFullYear().toString()) && !f.includes('Cadetes')), JSON.stringify(filasSolo));
+// ---- gráfico de Evolución de rendimiento: un jugador con dos filas de
+//      historial para el MISMO año (una por categoría) no debe repetir
+//      ese año en el eje X; además, la leyenda se puede tocar para
+//      prender/apagar cada línea, y los puntos para ver el detalle ----
+const idChart = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTCHART', nombre:'Dup', categorias:['Juveniles','Cadetes'],
+    historial: [
+      { anio:'2024', categoria:'Juveniles', pj:10, min:600, goles:2, asis:1, ta:0, tr:0 },
+      { anio:'2024', categoria:'otra', pj:5, min:300, goles:1, asis:0, ta:0, tr:0 },
+      { anio:'2023', categoria:'Juveniles', pj:8, min:500, goles:1, asis:0, ta:0, tr:0 },
+    ],
+  });
+  view.jugadorId = id; view.fichaTab = 'general';
+  view.evolucionOcultas = {}; view.evolucionActivo = null;
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+t('El año 2024 (dos filas de historial, una por categoría) aparece UNA sola vez en el eje X del gráfico',
+  (await pg.locator('.block:has-text("Evolución de rendimiento") svg text').filter({hasText:'2024'}).count())===1);
+await pg.click('.block:has-text("Evolución de rendimiento") rect[data-ev-punto="2024"]');
+await pg.waitForTimeout(200);
+const detalle2024 = await pg.locator('.block:has-text("Evolución de rendimiento") p.screen-note').innerText();
+t('Tocar el punto de 2024 muestra el detalle sumado de las dos filas (900 min, 3 goles, 1 asist.)',
+  detalle2024.includes('900') && detalle2024.includes('3 goles') && detalle2024.includes('1 asist'), detalle2024);
+await pg.click('.block:has-text("Evolución de rendimiento") button[data-ev-punto="2024"]');
+await pg.waitForTimeout(200);
+t('"cerrar" vuelve a ocultar el detalle',
+  (await pg.locator('.block:has-text("Evolución de rendimiento") p.screen-note').innerText()).includes('Tocá un punto'));
+
+await pg.click('.block:has-text("Evolución de rendimiento") [data-ev-toggle="minutos"]');
+await pg.waitForTimeout(200);
+t('Tocar "Minutos" en la leyenda la apaga (queda marcada como oculta)',
+  await pg.evaluate(()=>!!view.evolucionOcultas.minutos));
+t('La leyenda de Minutos se ve atenuada mientras está apagada',
+  (await pg.locator('[data-ev-toggle="minutos"]').getAttribute('style')||'').includes('opacity'));
+await pg.click('.block:has-text("Evolución de rendimiento") [data-ev-toggle="minutos"]');
+await pg.waitForTimeout(200);
+t('Tocarla de nuevo la vuelve a prender',
+  await pg.evaluate(()=>!view.evolucionOcultas.minutos));
+
 await pg.goto(BASE_URL); // limpia los jugadores de prueba antes de cerrar
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
