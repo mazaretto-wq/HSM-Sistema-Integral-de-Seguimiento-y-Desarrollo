@@ -1077,6 +1077,36 @@ function limpiarHistorialDuplicado(baseDb){
   });
   return cambio;
 }
+/* Antes de la corrección de datosYaRegistradosAmbiguos, "Importar historial
+   AIF" en modo Juveniles podía crear una fila "otra" que duplicaba (con los
+   MISMOS números) una fila de otra categoría ya cargada para ese mismo año
+   (ej. Cadetes): como entonces solo contaba filas sin categoría puesta, no
+   veía que ese total ya estaba explicado por la fila de Cadetes, y agregaba
+   el total entero de la AIF de nuevo como "otra" al lado. Reportado con
+   Retamar (2022 a 2025, Cadetes y otra con los mismos pj/min/goles/tarjetas
+   cada año). Esto saca esas filas "otra" sobrantes: para cualquier jugador,
+   si hay una fila "otra" y otra fila de ese mismo año con una categoría
+   puntual (no Juveniles, no "otra") y los mismos números, la "otra" sobra.
+   Segura de correr de nuevo: si ya no hay ninguna así, no cambia nada. */
+function limpiarHistorialOtraDuplicaCategoria(baseDb){
+  let cambio = false;
+  const mismosNumeros = (a,b) => (Number(a.pj)||0)===(Number(b.pj)||0) && (Number(a.min)||0)===(Number(b.min)||0) &&
+    (Number(a.goles)||0)===(Number(b.goles)||0) && (Number(a.asis)||0)===(Number(b.asis)||0) &&
+    (Number(a.ta)||0)===(Number(b.ta)||0) && (Number(a.tr)||0)===(Number(b.tr)||0);
+  (baseDb.jugadores||[]).forEach(j=>{
+    if (!j.historial || j.historial.length<2) return;
+    const original = j.historial;
+    const limpio = original.filter(h=>{
+      if (h.categoria!=='otra') return true;
+      const duplicaCategoriaPuntual = original.some(o=>o!==h && String(o.anio)===String(h.anio) &&
+        o.categoria && o.categoria!=='otra' && o.categoria!=='Juveniles' && mismosNumeros(o,h));
+      if (duplicaCategoriaPuntual){ cambio = true; return false; }
+      return true;
+    });
+    j.historial = limpio;
+  });
+  return cambio;
+}
 /* Corrección puntual pedida y aprobada por coordinación: Ramiro Pereyra recién
    empezó a jugar Selección este año (ANIO_ACTUAL); antes solo jugaba Juveniles.
    Su historial 2021-2025 estaba cargado sin categoría puesta (por eso la ficha
@@ -1625,7 +1655,7 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
       if (corregido) await Store.save(db);
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
@@ -4823,17 +4853,18 @@ function datosYaEnJuveniles(jugador, anio){
 }
 /* Filas de historial de antes de que existiera la columna "categoría":
    son de ALGUNA categoría, pero no se sabe de cuál (por eso nunca se les
-   adivina el nombre, ver datosYaEnJuveniles). Para la herramienta de
-   Juveniles, que solo quiere traer lo que todavía no está registrado DE
-   NINGUNA forma, hay que contarlas igual que si fueran Juveniles: si no,
-   se les agrega al lado una fila nueva con el mismo total, duplicando el
-   año (ambas se ven sin categoría en la ficha, pero juntas suman el
-   doble). Para las demás categorías (Cadetes, Promocional, Selección)
-   esto no aplica: ahí si puede haber de verdad más de una categoría
-   coexistiendo el mismo año, y no hay forma automática de saber si una
-   fila ambigua es de esa categoría o de otra. */
+   adivina el nombre, ver datosYaEnJuveniles). La AIF da UN solo total por
+   año por jugador, sin separar por categoría: si ese jugador ya tiene
+   CUALQUIER fila de historial para ese año que no sea Juveniles (sin
+   categoría, o con una categoría puntual como Cadetes, de una importación
+   anterior), ya hay algo registrado que explica parte (o todo) de ese
+   total. Si no se cuenta acá, se le agrega al lado una fila nueva "otra"
+   con el mismo total (o muy parecido), duplicando el año en los hechos
+   (reportado con Retamar: quedó una fila "Cadetes" y otra "otra" con los
+   mismos números, duplicando también sus totales de carrera). Por eso
+   cuenta TODO lo que no sea Juveniles, tenga categoría puesta o no. */
 function datosYaRegistradosAmbiguos(jugador, anio){
-  return (jugador.historial||[]).filter(h=>!h.categoria && String(h.anio)===String(anio))
+  return (jugador.historial||[]).filter(h=>h.categoria!=='Juveniles' && String(h.anio)===String(anio))
     .reduce((a,h)=>({pj:a.pj+(h.pj||0), min:a.min+(h.min||0), goles:a.goles+(h.goles||0), ta:a.ta+(h.ta||0), tr:a.tr+(h.tr||0)}),
       {pj:0,min:0,goles:0,ta:0,tr:0});
 }
@@ -4981,14 +5012,14 @@ async function guardarHistorialAIF(){
     Object.keys(p.porAnio).forEach(anio=>{
       if (cat==='Juveniles'){
         /* Juveniles nunca se escribe acá, ni siquiera cuando el año no
-           tiene nada cargado: a lo que dice la AIF se le resta lo que ya
-           está cargado como Juveniles ese año MÁS lo que haya en filas
-           ambiguas sin categoría (datosYaRegistradosAmbiguos: son de
-           ALGUNA categoría, no se sabe cuál, pero ya están contadas en
-           algún lado, así que no hay que agregarles una fila nueva al
-           lado con el mismo total). La diferencia SIEMPRE queda sin
-           nombre de categoría, para que se revise a mano. El año en
-           curso nunca se toca acá. */
+           tiene nada cargado: a lo que dice la AIF (un solo total por año,
+           sin separar por categoría) se le resta lo que ya está cargado
+           como Juveniles ese año MÁS cualquier otra fila ya registrada
+           para ese año, tenga categoría puesta o no (datosYaRegistradosAmbiguos:
+           ya están contadas en algún lado, así que no hay que agregarles
+           una fila nueva al lado con el mismo total). La diferencia
+           SIEMPRE queda sin nombre de categoría, para que se revise a
+           mano. El año en curso nunca se toca acá. */
         if (String(anio)===ANIO_ACTUAL) return;
         const ambiguo = datosYaRegistradosAmbiguos(j, anio), juv = datosYaEnJuveniles(j, anio);
         const yaRegistrado = { pj:juv.pj+ambiguo.pj, min:juv.min+ambiguo.min, goles:juv.goles+ambiguo.goles, ta:juv.ta+ambiguo.ta, tr:juv.tr+ambiguo.tr };
@@ -6347,7 +6378,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,

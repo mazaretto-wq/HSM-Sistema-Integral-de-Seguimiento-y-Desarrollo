@@ -290,6 +290,12 @@ const idJuv = await pg.evaluate(()=>{
          todavía jugaba Cadetes (antes de subir a Juveniles) — no es de
          Juveniles, y nunca se le tiene que decir que lo es */
       { anio:'2022', pj:19, min:1300, goles:6, asis:3, ta:2, tr:0 },
+      /* 2021: fila YA cargada con una categoría puntual (Cadetes), de una
+         importación anterior de ESA categoría. La AIF da un solo total por
+         año, sin separar por categoría: este total ya está 100% explicado
+         por esta fila (reportado con Retamar, que quedó con "Cadetes" y
+         "otra" duplicados con los mismos números para varios años) */
+      { anio:'2021', categoria:'Cadetes', pj:21, min:1470, goles:34, asis:0, ta:0, tr:0 },
     ],
   });
   render();
@@ -300,6 +306,7 @@ await pg.route(/\/api\/aif-historial/, route => route.fulfill({
   status:200, contentType:'application/json', body: JSON.stringify({
     categoria:'Juveniles', jugadores: [
       { idjugadorAif:'601', nombreAif:'ZZZTESTJUV HUECO', porAnio: {
+        '2021': {pj:21, min:1470, goles:34, ta:0, tr:0},
         '2022': {pj:19, min:1300, goles:6, ta:2, tr:0},
         '2023': {pj:15, min:900, goles:2, ta:1, tr:0},
         '2024': {pj:18, min:1100, goles:5, ta:2, tr:0},
@@ -308,9 +315,11 @@ await pg.route(/\/api\/aif-historial/, route => route.fulfill({
     ]
   })
 }));
-await pg.fill('#hist-aif-desde', '2022'); await pg.fill('#hist-aif-hasta', anioActual);
+await pg.fill('#hist-aif-desde', '2021'); await pg.fill('#hist-aif-hasta', anioActual);
 await pg.click('#traerHistorialAIF'); await pg.waitForTimeout(1200);
 const filaJuv = await pg.locator('tr:has-text("ZZZTESTJUV HUECO")').innerText();
+t('2021 (ya hay una fila de Cadetes con ese mismo total) muestra la resta contra ESO, no solo contra Juveniles',
+  filaJuv.includes('2021: 21pj/1470min/34g − ya registrado (21pj/1470min/34g) = 0pj/0min/0g sin categoría'), filaJuv);
 t('2022 (ya hay una fila ambigua sin categoría con ese mismo total) muestra la resta contra ESO, no solo contra Juveniles',
   filaJuv.includes('2022: 19pj/1300min/6g − ya registrado (19pj/1300min/6g) = 0pj/0min/0g sin categoría'), filaJuv);
 t('2023 (nada cargado todavía) se muestra sin categoría, no como Juveniles',
@@ -322,6 +331,13 @@ t(`${anioActual} (año en curso) avisa que no se toca acá`,
 
 await pg.click('#guardarHistorialAIF'); await pg.waitForTimeout(600);
 const juv = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idJuv);
+t('La fila de 2021 de Cadetes sigue intacta, con sus datos de siempre',
+  juv.historial.some(h=>h.anio==='2021' && h.categoria==='Cadetes' && h.pj===21 && h.min===1470 && h.goles===34),
+  JSON.stringify(juv.historial));
+t('Y no se le agrega una fila "otra" al lado para 2021: el total de la AIF ya está cubierto por la fila de Cadetes (el bug de Retamar)',
+  !juv.historial.some(h=>h.anio==='2021' && h.categoria==='otra'), JSON.stringify(juv.historial));
+t('2021 sigue siendo UNA sola fila (no Cadetes + otra duplicados con los mismos números)',
+  juv.historial.filter(h=>h.anio==='2021').length===1, JSON.stringify(juv.historial));
 t('La fila vieja de 2022 (que en realidad era de Cadetes, antes de subir a Juveniles) sigue sin categoría, intacta: nunca se le dice que es Juveniles',
   juv.historial.some(h=>h.anio==='2022' && !h.categoria && h.pj===19 && h.min===1300 && h.goles===6 && h.asis===3 && h.ta===2 && h.tr===0),
   JSON.stringify(juv.historial));
