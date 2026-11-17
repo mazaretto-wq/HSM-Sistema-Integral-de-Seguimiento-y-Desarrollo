@@ -1051,6 +1051,26 @@ function limpiarHistorialAnioEnCurso(baseDb){
   });
   return cambio;
 }
+/* Filas de historial exactamente repetidas (mismo año, categoría y todos
+   los números iguales): se encontraron en varios jugadores, parecen venir
+   de corridas viejas de "Importar historial AIF" antes de alguna de las
+   correcciones anteriores. Como son exactamente iguales, no hay ninguna
+   duda ni dato que perder al dejar solo una copia. Corre siempre, para
+   cualquier jugador, no solo para quien lo reportó. */
+function limpiarHistorialDuplicado(baseDb){
+  let cambio = false;
+  (baseDb.jugadores||[]).forEach(j=>{
+    if (!j.historial || j.historial.length<2) return;
+    const vistos = new Set(), limpio = [];
+    j.historial.forEach(h=>{
+      const clave = JSON.stringify([h.anio, h.categoria||'', h.pj||0, h.min||0, h.goles||0, h.asis||0, h.ta||0, h.tr||0]);
+      if (vistos.has(clave)){ cambio = true; return; }
+      vistos.add(clave); limpio.push(h);
+    });
+    j.historial = limpio;
+  });
+  return cambio;
+}
 /* Corrección puntual pedida y aprobada por coordinación: Ramiro Pereyra recién
    empezó a jugar Selección este año (ANIO_ACTUAL); antes solo jugaba Juveniles.
    Su historial 2021-2025 estaba cargado sin categoría puesta (por eso la ficha
@@ -1599,7 +1619,7 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
       if (corregido) await Store.save(db);
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
@@ -2722,7 +2742,16 @@ function fichaJugador(){
           <td class="val">${f.pj}</td><td class="val">${miles(f.minutos)}</td>
           <td class="val" style="color:var(--naranja)">${f.goles}</td><td class="val">${f.asistencias}</td>
           <td class="val"><i class="card-mark card-y"></i>${f.amarillas} <i class="card-mark card-r"></i>${f.rojas}</td></tr>`).join('')}
-        </tbody></table></div>
+        </tbody>
+        ${filasHist.length>1 ? (()=>{
+          const tot = filasHist.reduce((a,f)=>({pj:a.pj+f.pj, goles:a.goles+f.goles, asistencias:a.asistencias+f.asistencias,
+            amarillas:a.amarillas+f.amarillas, rojas:a.rojas+f.rojas}), {pj:0,goles:0,asistencias:0,amarillas:0,rojas:0});
+          return `<tfoot><tr style="font-weight:600"><td colspan="2">Totales</td>
+            <td class="val">${tot.pj}</td><td class="val"></td>
+            <td class="val" style="color:var(--naranja)">${tot.goles}</td><td class="val">${tot.asistencias}</td>
+            <td class="val"><i class="card-mark card-y"></i>${tot.amarillas} <i class="card-mark card-r"></i>${tot.rojas}</td></tr></tfoot>`;
+        })() : ''}
+        </table></div>
         ${historialAnio(j, ANIO_ACTUAL).pj ? `<p class="screen-note" style="margin-top:8px">La temporada ${ANIO_ACTUAL} incluye partidos cargados como total del torneo, sin detalle partido a partido.</p>` : ''}
       </div>
       <div class="block"><div class="block-title">${icono('subiendo')} Evolución de rendimiento</div>
@@ -6304,7 +6333,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,

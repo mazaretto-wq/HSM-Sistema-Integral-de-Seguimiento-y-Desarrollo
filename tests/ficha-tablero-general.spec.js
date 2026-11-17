@@ -164,6 +164,31 @@ await pg.waitForTimeout(200);
 t('Tocarla de nuevo la vuelve a prender',
   await pg.evaluate(()=>!view.evolucionOcultas.minutos));
 
+// ---- fila de totales al pie de "Historial de temporadas" (PJ/Goles/Asist./Tarj., sin sumar minutos) ----
+const idTotales = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTTOTALES', nombre:'Suma', categorias:['Juveniles'],
+    historial: [
+      { anio:'2024', categoria:'Juveniles', pj:10, min:600, goles:3, asis:1, ta:1, tr:0 },
+      { anio:'2023', categoria:'Juveniles', pj:8, min:500, goles:2, asis:0, ta:0, tr:1 },
+    ],
+  });
+  view.jugadorId = id; view.fichaTab = 'general';
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+// la temporada en curso (sin nada cargado) suma 0; total esperado: PJ 18, goles 5, asist 1, amarillas 1, rojas 1
+const filaTotales = await pg.locator('.block:has-text("Historial de temporadas") tfoot tr').innerText();
+t('La fila de totales suma PJ, Goles, Asistencias y Tarjetas de todas las temporadas listadas',
+  filaTotales.includes('Totales') && /\b18\b/.test(filaTotales) && /\b5\b/.test(filaTotales) && /\b1\b/.test(filaTotales),
+  filaTotales);
+const totalesDetalle = await pg.locator('.block:has-text("Historial de temporadas") tfoot tr td').allInnerTexts();
+t('Las celdas de la fila de totales son: Totales / PJ=18 / Min en blanco / Goles=5 / Asist.=1 / tarjetas 1A 1R',
+  totalesDetalle[0]==='Totales' && totalesDetalle[1]==='18' && totalesDetalle[2]==='' && totalesDetalle[3]==='5' && totalesDetalle[4]==='1',
+  JSON.stringify(totalesDetalle));
+
 await pg.goto(BASE_URL); // limpia los jugadores de prueba antes de cerrar
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
