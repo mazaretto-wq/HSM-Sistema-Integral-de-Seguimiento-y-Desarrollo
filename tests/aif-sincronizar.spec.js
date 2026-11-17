@@ -27,13 +27,13 @@ await pg.reload(); await pg.waitForTimeout(1500);
 
 // ---- jugador: no ve el botón de sincronizar ----
 await entrarComoJugador(pg);
-await pg.click('.tabs button:has-text("Fixture")'); await pg.waitForTimeout(300);
+await pg.click('.tabs button:has-text("Partidos")'); await pg.waitForTimeout(300);
 t('El jugador no tiene el botón "Sincronizar con AIF"', (await pg.locator('#sincronizarAIF').count())===0);
 
 // ---- DT: sincroniza su categoría ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
 await entrarComoDT(pg, 'Juveniles');
-await pg.click('.tabs button:has-text("Fixture")'); await pg.waitForTimeout(300);
+await pg.click('.tabs button:has-text("Partidos")'); await pg.waitForTimeout(300);
 t('El DT ve el botón "Sincronizar con AIF"', (await pg.locator('#sincronizarAIF').count())===1);
 await pg.click('#sincronizarAIF'); await pg.waitForTimeout(800);
 

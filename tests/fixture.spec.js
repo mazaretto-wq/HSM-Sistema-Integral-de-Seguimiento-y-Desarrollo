@@ -13,15 +13,15 @@ await pg.reload(); await pg.waitForTimeout(1500);
 await pg.click('#ac-coord'); await pg.waitForTimeout(300);
 await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
 
-t('"Fixture" aparece en la barra para coordinación', (await pg.locator('.tabs button:has-text("Fixture")').count())===1);
-await pg.click('.tabs button:has-text("Fixture")'); await pg.waitForTimeout(300);
+t('"Partidos" aparece en la barra para coordinación (fixture y link, todo junto)', (await pg.locator('.tabs button:has-text("Partidos")').count())===1);
+await pg.click('.tabs button:has-text("Partidos")'); await pg.waitForTimeout(300);
 t('Coordinación ve el selector de categorías (el primer filtro)', (await pg.locator('[data-fixtureCat]').count())===5);
 t('Sin elegir categoría, pide elegir una', (await pg.locator('.empty').count())===1);
 
 // ---- agendar un partido para Juveniles (coordinación) ----
 await pg.click('[data-fixtureCat="Juveniles"]'); await pg.waitForTimeout(300);
 t('Arranca en vista Tabla por default', (await pg.locator('[data-fixtureVista="tabla"][aria-pressed="true"]').count())===1);
-t('Coordinación tiene el formulario para cargar un partido (puede cargar, no solo coord en Partidos)', (await pg.locator('#agregarFixture').count())===1);
+t('Coordinación tiene el formulario para agendar un partido', (await pg.locator('#agregarFixture').count())===1);
 t('Arranca sin partidos agendados para Juveniles', (await pg.locator('.empty:has-text("no hay partidos programados")').count())===1);
 
 await pg.fill('#fx-rival', 'Club Deportivo Rival');
@@ -37,11 +37,30 @@ await pg.fill('#fx-fecha', '2026-12-05');
 await pg.click('#agregarFixture'); await pg.waitForTimeout(300);
 t('Efectivamente rechaza el duplicado', (await pg.evaluate(()=>db.fixture.length))===1);
 
+// ---- link para ver ESE partido puntual (ex solapa "Partidos", ahora
+//      vive acá, uno por partido del fixture en vez de una lista aparte) ----
+t('Sin link todavía, coordinación ve "+ agregar link"', (await pg.locator(`[data-cambiarLinkFixture="${fx1.id}"]:has-text("agregar link")`).count())===1);
+t('Sin link, no hay botón "Ver partido" para nadie', (await pg.locator('a:has-text("Ver partido")').count())===0);
+await pg.click(`[data-cambiarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(300);
+await pg.fill(`#fxlink-${fx1.id}`, 'meet.google.com/abc-defg');
+await pg.click(`[data-guardarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(400);
+const fx1ConLink = await pg.evaluate((id)=>db.fixture.find(f=>f.id===id), fx1.id);
+t('Queda guardado con https:// agregado solo', fx1ConLink.link==='https://meet.google.com/abc-defg', JSON.stringify(fx1ConLink));
+t('Queda una marca de tiempo de cuándo se cargó el link (para la alerta en Inicio)', typeof fx1ConLink.linkTs==='number' && fx1ConLink.linkTs>0);
+const hrefVerPartido = await pg.locator('a:has-text("Ver partido")').first().getAttribute('href');
+t('Ahora aparece "Ver partido" apuntando al link real', hrefVerPartido==='https://meet.google.com/abc-defg', String(hrefVerPartido));
+await pg.click(`[data-cambiarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(300);
+await pg.fill(`#fxlink-${fx1.id}`, 'https://zoom.us/j/123456');
+await pg.click(`[data-guardarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(400);
+const fx1LinkCambiado = await pg.evaluate((id)=>db.fixture.find(f=>f.id===id), fx1.id);
+t('"cambiar" permite reemplazar el link (un link que ya tenía https:// queda igual)', fx1LinkCambiado.link==='https://zoom.us/j/123456', fx1LinkCambiado.link);
+
 // ---- vista calendario ----
 await pg.click('[data-fixtureVista="calendario"]'); await pg.waitForTimeout(300);
 t('El toggle cambia a la vista Calendario', (await pg.locator('.cal-grid').count())===1);
 await pg.evaluate(()=>{ view.fixtureMes='2026-12'; render(); }); await pg.waitForTimeout(300);
 t('El mes de diciembre 2026 muestra el partido agendado en su celda', (await pg.locator('.cal-match:has-text("Club Deportivo Rival")').count())===1);
+t('El calendario también muestra un acceso directo al link del partido', (await pg.locator('.cal-match a[href="https://zoom.us/j/123456"]').count())===1);
 t('El título del mes se muestra', (await pg.locator('.block:has-text("DICIEMBRE 2026")').count())===1);
 await pg.click('[data-fixtureMes]:has-text("›")'); await pg.waitForTimeout(300);
 t('La flecha siguiente avanza a enero 2027', (await pg.locator('.block:has-text("ENERO 2027")').count())===1);
@@ -57,13 +76,19 @@ await pg.click('[data-fixtureCat="Juveniles"]'); await pg.waitForTimeout(300);
 
 t('Sin errores de JS hasta acá', errs.length===0, errs.join(' | '));
 
-// ---- DT: también puede cargar (a diferencia de Partidos, que es solo coordinación) ----
+// ---- DT: también puede cargar y manejar el link de su categoría ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
 await entrarComoDT(pg, 'Juveniles');
-await pg.click('.tabs button:has-text("Fixture")'); await pg.waitForTimeout(300);
+await pg.click('.tabs button:has-text("Partidos")'); await pg.waitForTimeout(300);
 t('El DT no ve el selector de categorías (va directo a la suya)', (await pg.locator('[data-fixtureCat]').count())===0);
-t('El DT SÍ tiene el formulario para agendar (a diferencia de Partidos)', (await pg.locator('#agregarFixture').count())===1);
+t('El DT SÍ tiene el formulario para agendar', (await pg.locator('#agregarFixture').count())===1);
 t('El DT ve el partido ya agendado por coordinación', (await pg.locator('table.cmp:has-text("Club Deportivo Rival")').count())===1);
+t('El DT también ve "Ver partido" con el link ya cargado por coordinación', (await pg.locator('a:has-text("Ver partido")').count())===1);
+await pg.click(`[data-cambiarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(300);
+await pg.fill(`#fxlink-${fx1.id}`, 'https://youtube.com/live/xyz');
+await pg.click(`[data-guardarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(400);
+t('El DT puede cambiar el link de un partido de su propia categoría',
+  (await pg.evaluate((id)=>db.fixture.find(f=>f.id===id).link, fx1.id))==='https://youtube.com/live/xyz');
 
 // ---- el DT carga las estadísticas del partido (Cargar > Partido) con goles del rival ----
 await pg.click('[data-tab="cargar"]'); await pg.waitForTimeout(300);
@@ -106,13 +131,24 @@ t('No tocó los datos de partidos ya cargados (goles, minutos de cada jugador)',
 
 t('Sin errores de JS hasta acá', errs.length===0, errs.join(' | '));
 
+// ---- de paso, se agenda OTRO partido con link, para que el jugador tenga algo que ver ----
+await pg.fill('#fx-rival', 'Otro Rival'); await pg.fill('#fx-fecha', '2026-12-20');
+await pg.click('#agregarFixture'); await pg.waitForTimeout(400);
+const fxOtro = await pg.evaluate(()=>db.fixture.find(f=>f.rival==='Otro Rival'));
+await pg.click(`[data-cambiarLinkFixture="${fxOtro.id}"]`); await pg.waitForTimeout(300);
+await pg.fill(`#fxlink-${fxOtro.id}`, 'https://youtube.com/live/otro');
+await pg.click(`[data-guardarLinkFixture="${fxOtro.id}"]`); await pg.waitForTimeout(400);
+
 // ---- jugador identificado: solo mira, acotado a su categoría, sin cargar nada ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
 await entrarComoJugador(pg);
-await pg.click('.tabs button:has-text("Fixture")'); await pg.waitForTimeout(300);
+await pg.click('.tabs button:has-text("Partidos")'); await pg.waitForTimeout(300);
 t('El jugador tampoco ve el selector de categorías', (await pg.locator('[data-fixtureCat]').count())===0);
 t('El jugador NO tiene el formulario para agendar un partido', (await pg.locator('#agregarFixture').count())===0);
 t('El jugador NO tiene botón para eliminar', (await pg.locator('[data-borrarFixture]').count())===0);
+t('El jugador no tiene forma de cargar o cambiar un link', (await pg.locator('[data-cambiarLinkFixture]').count())===0);
+t('El jugador SÍ ve "Ver partido" con el link ya cargado por el DT',
+  (await pg.locator('a:has-text("Ver partido")').getAttribute('href'))==='https://youtube.com/live/otro');
 t('El jugador puede ver la vista calendario igual que los demás', (await pg.locator('[data-fixtureVista="calendario"]').count())===1);
 await pg.click('[data-fixtureVista="calendario"]'); await pg.waitForTimeout(300);
 t('El calendario se ve también para el jugador, sin errores', (await pg.locator('.cal-grid').count())===1);
