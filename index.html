@@ -4937,12 +4937,22 @@ function bloqueHistorialAIF(){
         if (!jugadorSel) return base + enCurso;
         /* si este jugador también tiene cargado Juveniles ese año, se le
            resta: lo de Juveniles ya está aprobado, lo que sobra es lo que
-           de verdad corresponde a esta categoría */
+           de verdad corresponde a esta categoría. El total de la AIF es
+           por persona, no por categoría (también para el año en curso):
+           si el jugador juega OTRA categoría además de esta y de
+           Juveniles (ej. Cadetes y Selección a la vez), también hay que
+           restar lo que ya tiene registrado ahí, para no contar de más */
         const yaJuveniles = datosYaEnJuveniles(jugadorSel, a);
-        const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
-        if (!hayJuveniles) return base + enCurso;
-        const dif = restarJuveniles(datos, yaJuveniles);
-        return `${base} − ya en Juveniles (${yaJuveniles.pj}pj/${yaJuveniles.min}min/${yaJuveniles.goles}g) = ${dif.pj}pj/${dif.min}min/${dif.goles}g para ${cat}${enCurso}`;
+        const otras = a===ANIO_ACTUAL
+          ? (jugadorSel.base||[]).filter(b=>b.categoria!==cat && b.categoria!=='Juveniles')
+              .reduce((acc,b)=>({pj:acc.pj+(b.pj||0), min:acc.min, goles:acc.goles+(b.goles||0), ta:acc.ta+(b.ta||0), tr:acc.tr+(b.tr||0)}), {pj:0,min:0,goles:0,ta:0,tr:0})
+          : (jugadorSel.historial||[]).filter(h=>String(h.anio)===String(a) && h.categoria!==cat && h.categoria!=='Juveniles')
+              .reduce((acc,h)=>({pj:acc.pj+(h.pj||0), min:acc.min+(h.min||0), goles:acc.goles+(h.goles||0), ta:acc.ta+(h.ta||0), tr:acc.tr+(h.tr||0)}), {pj:0,min:0,goles:0,ta:0,tr:0});
+        const yaRegistrado = { pj:yaJuveniles.pj+otras.pj, min:yaJuveniles.min+otras.min, goles:yaJuveniles.goles+otras.goles, ta:yaJuveniles.ta+otras.ta, tr:yaJuveniles.tr+otras.tr };
+        const hayRegistrado = yaRegistrado.pj || yaRegistrado.min || yaRegistrado.goles || yaRegistrado.ta || yaRegistrado.tr;
+        if (!hayRegistrado) return base + enCurso;
+        const dif = restarJuveniles(datos, yaRegistrado);
+        return `${base} − ya registrado (${yaRegistrado.pj}pj/${yaRegistrado.min}min/${yaRegistrado.goles}g) = ${dif.pj}pj/${dif.min}min/${dif.goles}g para ${cat}${enCurso}`;
       }).join(' · ');
       h += `<tr>
         <td>${esc(p.nombreAif)}</td>
@@ -5047,9 +5057,24 @@ async function guardarHistorialAIF(){
          antes de guardar): lo de Juveniles ya está aprobado, así que acá
          solo se guarda lo que sobra, no el total crudo de la AIF */
       const yaJuveniles = datosYaEnJuveniles(j, anio);
-      const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
-      const x = hayJuveniles ? restarJuveniles(p.porAnio[anio], yaJuveniles) : p.porAnio[anio];
       if (String(anio)===ANIO_ACTUAL){
+        /* el total de la AIF para el año en curso TAMBIÉN es por persona,
+           no por categoría (bug real encontrado con Retamar, que juega
+           Cadetes y Selección a la vez: al importar Cadetes todavía no
+           había nada cargado de Juveniles para restar, así que la base de
+           Cadetes quedó con el total de LAS TRES categorías juntas —
+           27pj/20goles, exactamente Cadetes+Selección+Juveniles). Por eso
+           hay que restar, además de Juveniles, cualquier OTRA categoría
+           que ya tenga su propia fila en la base (nunca la de esta misma
+           categoría: a esa se la reemplaza entera, no se le resta su
+           propio valor viejo) */
+        const otrasBase = (j.base||[]).filter(b=>b.categoria!==cat && b.categoria!=='Juveniles')
+          .reduce((a,b)=>({pj:a.pj+(b.pj||0), goles:a.goles+(b.goles||0), ta:a.ta+(b.ta||0), tr:a.tr+(b.tr||0)}),
+            {pj:0,goles:0,ta:0,tr:0});
+        const yaRegistrado = { pj:yaJuveniles.pj+otrasBase.pj, min:yaJuveniles.min, goles:yaJuveniles.goles+otrasBase.goles,
+          ta:yaJuveniles.ta+otrasBase.ta, tr:yaJuveniles.tr+otrasBase.tr };
+        const hayRegistrado = yaRegistrado.pj || yaRegistrado.min || yaRegistrado.goles || yaRegistrado.ta || yaRegistrado.tr;
+        const x = hayRegistrado ? restarJuveniles(p.porAnio[anio], yaRegistrado) : p.porAnio[anio];
         /* la temporada en curso no se guarda en el historial (eso duplicaría
            con totalesTemporada): se ACTUALIZA la base de planilla de esa
            categoría con los números frescos de la AIF, que es la misma
@@ -5064,6 +5089,18 @@ async function guardarHistorialAIF(){
         aniosGuardados++;
         return;
       }
+      /* mismo problema con años pasados, pero contra el historial en vez
+         de la base: si el jugador ya tiene otra fila de ESE año con una
+         categoría distinta de esta y de Juveniles (puntual, "otra", o
+         incluso sin categoría puesta), ya hay algo registrado que explica
+         parte del total de la AIF de ese año */
+      const otrasHist = (j.historial||[]).filter(h=>String(h.anio)===String(anio) && h.categoria!==cat && h.categoria!=='Juveniles')
+        .reduce((a,h)=>({pj:a.pj+(h.pj||0), min:a.min+(h.min||0), goles:a.goles+(h.goles||0), ta:a.ta+(h.ta||0), tr:a.tr+(h.tr||0)}),
+          {pj:0,min:0,goles:0,ta:0,tr:0});
+      const yaRegistrado = { pj:yaJuveniles.pj+otrasHist.pj, min:yaJuveniles.min+otrasHist.min, goles:yaJuveniles.goles+otrasHist.goles,
+        ta:yaJuveniles.ta+otrasHist.ta, tr:yaJuveniles.tr+otrasHist.tr };
+      const hayRegistrado = yaRegistrado.pj || yaRegistrado.min || yaRegistrado.goles || yaRegistrado.ta || yaRegistrado.tr;
+      const x = hayRegistrado ? restarJuveniles(p.porAnio[anio], yaRegistrado) : p.porAnio[anio];
       j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria===cat));
       j.historial.push({ anio:String(anio), categoria:cat, pj:x.pj, goles:x.goles, asis:0, min:x.min, ta:x.ta, tr:x.tr });
       aniosGuardados++;
