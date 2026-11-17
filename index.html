@@ -858,7 +858,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              tomaSel:null, formacion:'4-3-3', alineacion:{}, slotAbierto:null,
              sub:'sesiones', faseFiltro:'Todas', sesionId:null, ejercicioId:null, draft:null,
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtDni:null, fondoHome:null,
-             evolucionOcultas:{}, evolucionActivo:null,
+             evolucionOcultas:{}, evolucionActivo:null, verCrudoId:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false, partidosCategoria:null,
              fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
@@ -2742,6 +2742,8 @@ function fichaJugador(){
     ];
     h += `<div class="perfil-2col">
       <div class="block"><div class="block-title">${icono('trofeo')} Historial de temporadas</div>
+        ${esCoord() ? `<button class="linkish" data-ver-crudo="${j.id}" style="font-size:11px;margin-bottom:6px">${view.verCrudoId===j.id?'Ocultar':'Ver'} datos sin procesar (para soporte)</button>
+        ${view.verCrudoId===j.id ? `<pre style="font-size:10px;white-space:pre-wrap;word-break:break-all;background:var(--wash);padding:8px;border-radius:6px;max-height:300px;overflow:auto">${esc(JSON.stringify(j.historial, null, 2))}</pre>` : ''}` : ''}
         <div class="scroll-x"><table class="cmp"><thead><tr>
           <th>Temp.</th><th>Categoría</th><th>PJ</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarj.</th></tr></thead><tbody>
         ${filasHist.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>
@@ -5416,6 +5418,12 @@ app.addEventListener('click', async e=>{
   if (evPunto){
     const anio = evPunto.dataset.evPunto;
     view.evolucionActivo = view.evolucionActivo===anio ? null : anio;
+    return render();
+  }
+  const verCrudo = t.closest('[data-ver-crudo]');
+  if (verCrudo){
+    const jid = verCrudo.dataset.verCrudo;
+    view.verCrudoId = view.verCrudoId===jid ? null : jid;
     return render();
   }
 

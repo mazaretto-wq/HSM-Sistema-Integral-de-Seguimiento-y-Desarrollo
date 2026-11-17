@@ -189,6 +189,26 @@ t('Las celdas de la fila de totales son: Totales / PJ=18 / Min en blanco / Goles
   totalesDetalle[0]==='Totales' && totalesDetalle[1]==='18' && totalesDetalle[2]==='' && totalesDetalle[3]==='5' && totalesDetalle[4]==='1',
   JSON.stringify(totalesDetalle));
 
+// ---- "Ver datos sin procesar" (para soporte): botón de coordinación para
+//      ver el historial crudo en JSON sin depender de la consola del navegador ----
+t('El botón "Ver datos sin procesar" aparece para coordinación', (await pg.locator('[data-ver-crudo]').count())===1);
+t('Al entrar no se ve el JSON todavía', (await pg.locator('.block:has-text("Historial de temporadas") pre').count())===0);
+await pg.click('[data-ver-crudo]'); await pg.waitForTimeout(200);
+const crudoTexto = await pg.locator('.block:has-text("Historial de temporadas") pre').innerText();
+let crudoJson = null; try { crudoJson = JSON.parse(crudoTexto); } catch(e){}
+t('Al tocarlo se ve el historial del jugador como JSON válido, con sus filas reales',
+  Array.isArray(crudoJson) && crudoJson.length===2 && crudoJson.some(h=>h.anio==='2024' && h.goles===3) && crudoJson.some(h=>h.anio==='2023' && h.goles===2),
+  crudoTexto);
+await pg.click('[data-ver-crudo]'); await pg.waitForTimeout(200);
+t('Tocarlo de nuevo lo vuelve a ocultar', (await pg.locator('.block:has-text("Historial de temporadas") pre').count())===0);
+
+await pg.evaluate(()=>{ view.jugadorId=null; db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT=''; render(); });
+await pg.waitForTimeout(300);
+await pg.click('.tabs button:has-text("Plantel")'); await pg.waitForTimeout(300);
+await pg.click('.roster .row[data-jugador]'); await pg.waitForTimeout(400);
+t('El jugador (no coordinación) no ve el botón de datos sin procesar', (await pg.locator('[data-ver-crudo]').count())===0);
+await pg.evaluate(()=>{ db.config.acceso='coordinacion'; db.config.rol=null; });
+
 await pg.goto(BASE_URL); // limpia los jugadores de prueba antes de cerrar
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
