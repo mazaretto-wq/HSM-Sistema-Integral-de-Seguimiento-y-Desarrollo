@@ -1087,47 +1087,6 @@ function corregirHistorialPereyra(baseDb){
   });
   return cambio;
 }
-/* Caso general del mismo problema que Pereyra: hay filas de historial de
-   antes de que existiera la columna "categoría" (de cuando la app todavía
-   no distinguía entre categorías) que quedaron sin ese dato. La ficha las
-   mostraba con una leyenda de respaldo (todas las categorías actuales del
-   jugador juntas, tipo "Cadetes · Juveniles · Selección"), y como la
-   herramienta de importar historial busca literalmente categoria==='Juveniles'
-   para restar, esas filas sin etiqueta no se reconocían: la fila de la otra
-   categoría quedaba con el total crudo de la AIF, sin restar nada.
-
-   Lo verificado (cargado a mano, antes de que existiera esta distinción) es
-   Juveniles: para cualquier jugador que hoy esté en esa categoría, una fila
-   vieja sin categoría puesta es de Juveniles. Al etiquetarla, de paso se
-   recalculan las demás filas de ESE MISMO año restándoles lo que ahora se
-   sabe que es Juveniles (si antes no se pudo restar, por la razón de arriba,
-   hoy tienen el total crudo guardado). Corre siempre: no vuelve a tocar nada
-   una vez que ya quedó etiquetado (usa eso mismo para no repetir la resta). */
-function migrarHistorialSinCategoriaComoJuveniles(baseDb){
-  let cambio = false;
-  (baseDb.jugadores||[]).forEach(j=>{
-    if (!j.historial || !(j.categorias||[]).includes('Juveniles')) return;
-    const aniosRetageados = new Set();
-    j.historial.forEach(h=>{
-      if (!h.categoria){
-        h.categoria = 'Juveniles';
-        aniosRetageados.add(String(h.anio));
-        cambio = true;
-      }
-    });
-    aniosRetageados.forEach(anio=>{
-      const filaJuv = j.historial.find(h=>String(h.anio)===anio && h.categoria==='Juveniles');
-      if (!filaJuv) return;
-      const yaJuveniles = { pj:filaJuv.pj||0, min:filaJuv.min||0, goles:filaJuv.goles||0, ta:filaJuv.ta||0, tr:filaJuv.tr||0 };
-      j.historial.filter(h=>String(h.anio)===anio && h.categoria!=='Juveniles').forEach(otra=>{
-        const dif = restarJuveniles(otra, yaJuveniles);
-        otra.pj = dif.pj; otra.min = dif.min; otra.goles = dif.goles; otra.ta = dif.ta; otra.tr = dif.tr;
-        cambio = true;
-      });
-    });
-  });
-  return cambio;
-}
 /* Informe de la temporada 2026 de Juveniles que pasó coordinación (afuera
    de la AIF, de su propio seguimiento: trae minutos Y asistencias, que la
    AIF nunca da). Es el total real de la temporada; lo que ya está cargado
@@ -1622,7 +1581,7 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db) | cargarInformeJuvenilesPdf2026(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
       if (corregido) await Store.save(db);
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
@@ -4760,6 +4719,22 @@ function datosYaEnJuveniles(jugador, anio){
   return fila ? { pj:fila.pj||0, min:fila.min||0, goles:fila.goles||0, ta:fila.ta||0, tr:fila.tr||0 }
               : { pj:0, min:0, goles:0, ta:0, tr:0 };
 }
+/* Filas de historial de antes de que existiera la columna "categoría":
+   son de ALGUNA categoría, pero no se sabe de cuál (por eso nunca se les
+   adivina el nombre, ver datosYaEnJuveniles). Para la herramienta de
+   Juveniles, que solo quiere traer lo que todavía no está registrado DE
+   NINGUNA forma, hay que contarlas igual que si fueran Juveniles: si no,
+   se les agrega al lado una fila nueva con el mismo total, duplicando el
+   año (ambas se ven sin categoría en la ficha, pero juntas suman el
+   doble). Para las demás categorías (Cadetes, Promocional, Selección)
+   esto no aplica: ahí si puede haber de verdad más de una categoría
+   coexistiendo el mismo año, y no hay forma automática de saber si una
+   fila ambigua es de esa categoría o de otra. */
+function datosYaRegistradosAmbiguos(jugador, anio){
+  return (jugador.historial||[]).filter(h=>!h.categoria && String(h.anio)===String(anio))
+    .reduce((a,h)=>({pj:a.pj+(h.pj||0), min:a.min+(h.min||0), goles:a.goles+(h.goles||0), ta:a.ta+(h.ta||0), tr:a.tr+(h.tr||0)}),
+      {pj:0,min:0,goles:0,ta:0,tr:0});
+}
 function restarJuveniles(datosAif, yaJuveniles){
   return {
     pj:    Math.max(0, datosAif.pj    - yaJuveniles.pj),
@@ -4775,9 +4750,11 @@ function bloqueHistorialAIF(){
     <p class="screen-note" style="margin-top:0">Trae el plantel ACTUAL de Haras Santa María en la AIF para esta
     categoría y, de cada jugador, su historial temporada a temporada (partidos jugados, minutos, goles, amarillas
     y rojas). <strong>No incluye asistencias</strong>: es lo único que la AIF no registra.
-    ${cat==='Juveniles' ? `Como el historial de Juveniles ya está cargado a mano y aprobado, acá nunca se pisa un
-    año que ya tiene algo cargado: si un año no tiene nada, se agrega tal cual; si ya tiene algo, la diferencia
-    queda sin nombre de categoría. La temporada ${ANIO_ACTUAL} no se toca con esta herramienta (eso se carga aparte).`
+    ${cat==='Juveniles' ? `Como el historial de Juveniles ya está cargado a mano y aprobado, acá <strong>nunca se
+    escribe nada como Juveniles</strong>: a lo que diga la AIF se le resta lo que ya está cargado como Juveniles
+    ese año (puede ser cero, si ese año el jugador todavía no estaba en esta categoría) y la diferencia queda
+    siempre sin nombre de categoría, para revisar a mano. La temporada ${ANIO_ACTUAL} no se toca con esta
+    herramienta (eso se carga aparte).`
     : `La temporada ${ANIO_ACTUAL} no se guarda como historial (eso duplicaría con lo que cargás en Cargar &gt;
     Partido): en vez de eso, actualiza la base de planilla de la categoría con el total fresco de la AIF hasta hoy.`}
     De paso, completa la foto de perfil de los jugadores que todavía no tienen ninguna cargada (nunca pisa una que
@@ -4805,11 +4782,13 @@ function bloqueHistorialAIF(){
         if (cat==='Juveniles'){
           if (a===ANIO_ACTUAL) return base + ' (año en curso: no se toca acá)';
           if (!jugadorSel) return base;
-          const yaJuveniles = datosYaEnJuveniles(jugadorSel, a);
-          const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
-          if (!hayJuveniles) return `${base} (sin nada cargado: se agrega tal cual como Juveniles)`;
-          const dif = restarJuveniles(datos, yaJuveniles);
-          return `${base} − ya en Juveniles (${yaJuveniles.pj}pj/${yaJuveniles.min}min/${yaJuveniles.goles}g) = ${dif.pj}pj/${dif.min}min/${dif.goles}g sin categoría (puede ser de otra que no se importó)`;
+          const ambiguo = datosYaRegistradosAmbiguos(jugadorSel, a);
+          const juv = datosYaEnJuveniles(jugadorSel, a);
+          const yaRegistrado = { pj:juv.pj+ambiguo.pj, min:juv.min+ambiguo.min, goles:juv.goles+ambiguo.goles, ta:juv.ta+ambiguo.ta, tr:juv.tr+ambiguo.tr };
+          const hayRegistrado = yaRegistrado.pj || yaRegistrado.min || yaRegistrado.goles || yaRegistrado.ta || yaRegistrado.tr;
+          const dif = restarJuveniles(datos, yaRegistrado);
+          if (!hayRegistrado) return `${base} sin categoría (nada cargado todavía ese año)`;
+          return `${base} − ya registrado (${yaRegistrado.pj}pj/${yaRegistrado.min}min/${yaRegistrado.goles}g) = ${dif.pj}pj/${dif.min}min/${dif.goles}g sin categoría`;
         }
         const enCurso = a===ANIO_ACTUAL ? ' (actualiza la base de planilla, sin minutos)' : '';
         if (!jugadorSel) return base + enCurso;
@@ -4899,28 +4878,24 @@ async function guardarHistorialAIF(){
     if (!j.historial) j.historial = [];
     Object.keys(p.porAnio).forEach(anio=>{
       if (cat==='Juveniles'){
-        /* Juveniles nunca se pisa: si el año no tiene nada cargado, se
-           agrega tal cual; si ya tiene algo (aunque sea poco), la
-           diferencia frente al total de la AIF queda sin nombre de
-           categoría (puede ser de otra categoría que no se importó
-           todavía) en vez de tocar lo que ya está aprobado. El año en
-           curso nunca se toca acá (se carga aparte, a mano). */
+        /* Juveniles nunca se escribe acá, ni siquiera cuando el año no
+           tiene nada cargado: a lo que dice la AIF se le resta lo que ya
+           está cargado como Juveniles ese año MÁS lo que haya en filas
+           ambiguas sin categoría (datosYaRegistradosAmbiguos: son de
+           ALGUNA categoría, no se sabe cuál, pero ya están contadas en
+           algún lado, así que no hay que agregarles una fila nueva al
+           lado con el mismo total). La diferencia SIEMPRE queda sin
+           nombre de categoría, para que se revise a mano. El año en
+           curso nunca se toca acá. */
         if (String(anio)===ANIO_ACTUAL) return;
-        const yaJuveniles = datosYaEnJuveniles(j, anio);
-        const hayJuveniles = yaJuveniles.pj || yaJuveniles.min || yaJuveniles.goles || yaJuveniles.ta || yaJuveniles.tr;
-        if (!hayJuveniles){
-          j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria==='Juveniles'));
-          j.historial.push({ anio:String(anio), categoria:'Juveniles', pj:p.porAnio[anio].pj, goles:p.porAnio[anio].goles,
-            asis:0, min:p.porAnio[anio].min, ta:p.porAnio[anio].ta, tr:p.porAnio[anio].tr });
+        const ambiguo = datosYaRegistradosAmbiguos(j, anio), juv = datosYaEnJuveniles(j, anio);
+        const yaRegistrado = { pj:juv.pj+ambiguo.pj, min:juv.min+ambiguo.min, goles:juv.goles+ambiguo.goles, ta:juv.ta+ambiguo.ta, tr:juv.tr+ambiguo.tr };
+        const dif = restarJuveniles(p.porAnio[anio], yaRegistrado);
+        if (dif.pj || dif.min || dif.goles || dif.ta || dif.tr){
+          j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria==='otra'));
+          j.historial.push({ anio:String(anio), categoria:'otra', pj:dif.pj, goles:dif.goles,
+            asis:0, min:dif.min, ta:dif.ta, tr:dif.tr });
           aniosGuardados++;
-        } else {
-          const dif = restarJuveniles(p.porAnio[anio], yaJuveniles);
-          if (dif.pj || dif.min || dif.goles || dif.ta || dif.tr){
-            j.historial = j.historial.filter(h=>!(String(h.anio)===String(anio) && h.categoria==='otra'));
-            j.historial.push({ anio:String(anio), categoria:'otra', pj:dif.pj, goles:dif.goles,
-              asis:0, min:dif.min, ta:dif.ta, tr:dif.tr });
-            aniosGuardados++;
-          }
         }
         return;
       }
@@ -6248,7 +6223,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | migrarHistorialSinCategoriaComoJuveniles(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
