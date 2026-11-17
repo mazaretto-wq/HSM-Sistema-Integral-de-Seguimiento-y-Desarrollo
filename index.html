@@ -2673,6 +2673,9 @@ function fichaJugador(){
     /* ---- columna derecha ---- */
     h += `<div>`;
 
+    /* minutos que le toman a este jugador para hacer un gol (o un gol+asistencia):
+       cuanto más bajo, más efectivo. Sin goles/G+A todavía, no hay cuenta que hacer */
+    const minPorCada = cant => cant>0 ? `${Math.round(T.minutos/cant)}'` : '—';
     h += `<div class="block" style="margin-top:0"><div class="block-title">${icono('barras')} Estadísticas generales</div>
       <div class="stat-grid">
         <div class="stat"><div class="stat-label">Partidos</div><div class="stat-value">${T.pj}</div></div>
@@ -2680,6 +2683,9 @@ function fichaJugador(){
         <div class="stat"><div class="stat-label">Goles</div><div class="stat-value" style="color:var(--naranja)">${T.goles}</div></div>
         <div class="stat"><div class="stat-label">Asistencias</div><div class="stat-value">${T.asistencias}</div></div>
         <div class="stat"><div class="stat-label">Tarjetas</div><div class="stat-value"><i class="card-mark card-y"></i>${T.amarillas} <i class="card-mark card-r"></i>${T.rojas}</div></div>
+        <div class="stat"><div class="stat-label">G+A</div><div class="stat-value">${T.goles+T.asistencias}</div></div>
+        <div class="stat"><div class="stat-label">Min. por gol</div><div class="stat-value">${minPorCada(T.goles)}</div></div>
+        <div class="stat"><div class="stat-label">Min. por G+A</div><div class="stat-value">${minPorCada(T.goles+T.asistencias)}</div></div>
       </div></div>`;
 
     /* La temporada en curso suma todas las categorías del jugador juntas

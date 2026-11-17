@@ -18,7 +18,7 @@ await pg.click('[data-entrarCat="Juveniles"]'); await pg.waitForTimeout(300);
 await pg.click('.roster .row[data-jugador]'); await pg.waitForTimeout(400);
 
 t('El tablero de General aparece (grilla perfil + estadísticas)', (await pg.locator('.perfil-grid').count())===1);
-t('Estadísticas generales con 5 tarjetas (partidos/minutos/goles/asistencias/tarjetas)', (await pg.locator('.stat-grid').first().locator('.stat').count())===5);
+t('Estadísticas generales con 8 tarjetas (partidos/minutos/goles/asistencias/tarjetas/G+A/min por gol/min por G+A)', (await pg.locator('.stat-grid').first().locator('.stat').count())===8);
 t('Historial de temporadas lista al menos la temporada actual', (await pg.locator('.cmp tbody tr').first().innerText()).includes(new Date().getFullYear().toString()) || true);
 t('Tests físicos (último registro) muestra 3 tarjetas', (await pg.locator('.fisico-test').count())===3);
 t('Posición en el plantel muestra ranking general y de categoría', (await pg.locator('.block:has-text("Posición en el plantel") .stat').count())===2);
@@ -84,6 +84,43 @@ t('La fila de 2024, aunque está etiquetada "Cadetes", no muestra ese nombre (so
   filasSolo.some(f=>f.includes('2024') && f.includes('20') && !f.includes('Cadetes')), JSON.stringify(filasSolo));
 t('Tampoco la temporada en curso, para un jugador de una sola categoría que no es Juveniles',
   filasSolo.some(f=>f.includes(new Date().getFullYear().toString()) && !f.includes('Cadetes')), JSON.stringify(filasSolo));
+// ---- G+A, minutos por gol y minutos por G+A en Estadísticas generales ----
+const idEficiencia = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({ id, apellido:'ZZZTESTEFICIENCIA', nombre:'Goleador', categorias:['Juveniles'] });
+  for (let i=0;i<10;i++){
+    db.partidos.push({ id:uid(), jugadorId:id, categoria:'Juveniles', fecha:`${ANIO_ACTUAL}-0${1+(i%9)}-01`,
+      jugo:true, goles: i<3?(i===0?5:4):0, asistencias: i<2?4:0, minutos:133, amarillas:0, rojas:0 });
+  }
+  view.jugadorId = id; view.fichaTab = 'general';
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+// total: 1330 minutos, 13 goles (5+4+4), 8 asistencias (4+4)
+const statsEficiencia = await pg.evaluate(()=>{
+  const vals = [...document.querySelectorAll('.stat-grid')[0].querySelectorAll('.stat')].map(s=>s.innerText.replace(/\n/g,' '));
+  return vals;
+});
+t('G+A suma goles y asistencias (13+8=21)', statsEficiencia.some(s=>s.includes('G+A') && s.includes('21')), JSON.stringify(statsEficiencia));
+t('Minutos por gol: 1330÷13 redondeado a 102', statsEficiencia.some(s=>/MIN\. POR GOL/i.test(s) && s.includes("102'")), JSON.stringify(statsEficiencia));
+t('Minutos por G+A: 1330÷21 redondeado a 63', statsEficiencia.some(s=>/MIN\. POR G\+A/i.test(s) && s.includes("63'")), JSON.stringify(statsEficiencia));
+
+// ---- sin goles ni asistencias todavía, no hay cuenta que hacer (evita 0/0=NaN o Infinity) ----
+const idSinGoles = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({ id, apellido:'ZZZTESTSINGOLES', nombre:'Defensor', categorias:['Juveniles'] });
+  db.partidos.push({ id:uid(), jugadorId:id, categoria:'Juveniles', fecha:`${ANIO_ACTUAL}-01-01`, jugo:true, goles:0, asistencias:0, minutos:90, amarillas:0, rojas:0 });
+  view.jugadorId = id; view.fichaTab = 'general';
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+const statsSinGoles = await pg.evaluate(()=>[...document.querySelectorAll('.stat-grid')[0].querySelectorAll('.stat')].map(s=>s.innerText.replace(/\n/g,' ')));
+t('Sin goles ni asistencias, "Min. por gol" y "Min. por G+A" muestran "—" (no NaN ni Infinity)',
+  statsSinGoles.some(s=>/MIN\. POR GOL/i.test(s) && s.includes('—')) && statsSinGoles.some(s=>/MIN\. POR G\+A/i.test(s) && s.includes('—')),
+  JSON.stringify(statsSinGoles));
+
 // ---- gráfico de Evolución de rendimiento: un jugador con dos filas de
 //      historial para el MISMO año (una por categoría) no debe repetir
 //      ese año en el eje X; además, la leyenda se puede tocar para
