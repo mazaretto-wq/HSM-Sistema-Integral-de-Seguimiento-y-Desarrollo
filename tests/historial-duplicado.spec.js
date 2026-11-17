@@ -47,6 +47,27 @@ t('2024 (que nunca estuvo repetida) sigue como estaba, con sus valores intactos'
   JSON.stringify(dup.historial));
 t('En total quedan 3 filas (una por año), no las 6 originales', dup.historial.length===3, JSON.stringify(dup.historial));
 
+// ---- el mismo dato repetido, pero una copia con los números como texto
+//      en vez de número (quedó así de un camino de carga distinto): tiene
+//      que reconocerla igual, no solo cuando son el mismo tipo exacto ----
+const idDupTexto = await pg.evaluate(async ()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTHISTDUPTXT', nombre:'Texto', categorias:['Juveniles'],
+    historial: [
+      { anio:'2025', categoria:'otra', pj:18, min:1500, goles:36, asis:0, ta:3, tr:0 },
+      { anio:'2025', categoria:'otra', pj:'18', min:'1500', goles:'36', asis:'0', ta:'3', tr:'0' }, // mismo dato, como texto
+    ],
+  });
+  await Store.save(db);
+  return id;
+});
+await pg.reload(); await pg.waitForTimeout(2000);
+const dupTexto = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idDupTexto);
+t('La reconoce igual aunque una copia tenga los números como texto: queda una sola fila',
+  dupTexto.historial.length===1 && dupTexto.historial[0].pj==18 && dupTexto.historial[0].min==1500 && dupTexto.historial[0].goles==36,
+  JSON.stringify(dupTexto.historial));
+
 await pg.reload(); await pg.waitForTimeout(2000);
 const dup2 = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idDup);
 t('Correr la limpieza de nuevo no cambia nada más (es segura de repetir)',

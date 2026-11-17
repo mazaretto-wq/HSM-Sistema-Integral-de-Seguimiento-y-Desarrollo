@@ -1063,7 +1063,13 @@ function limpiarHistorialDuplicado(baseDb){
     if (!j.historial || j.historial.length<2) return;
     const vistos = new Set(), limpio = [];
     j.historial.forEach(h=>{
-      const clave = JSON.stringify([h.anio, h.categoria||'', h.pj||0, h.min||0, h.goles||0, h.asis||0, h.ta||0, h.tr||0]);
+      /* todo pasado por String()/Number(): algunas filas vinieron de
+         caminos distintos (import vs carga a mano) y quedaron con el
+         mismo dato pero como texto en vez de número, o con espacios de
+         más en el año, así que comparar los valores tal cual no las
+         reconocía como iguales */
+      const clave = JSON.stringify([String(h.anio||'').trim(), String(h.categoria||'').trim(),
+        Number(h.pj)||0, Number(h.min)||0, Number(h.goles)||0, Number(h.asis)||0, Number(h.ta)||0, Number(h.tr)||0]);
       if (vistos.has(clave)){ cambio = true; return; }
       vistos.add(clave); limpio.push(h);
     });
