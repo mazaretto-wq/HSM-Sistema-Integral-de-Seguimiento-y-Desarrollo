@@ -859,7 +859,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              editJugador:null, partidoCat:null, partidoFecha:null, partidoRival:'', partidoEsquema:null, orden:'apellido', fichaTab:'general', fichaEditando:false, fichaDetalleMetric:'pj', edicionesPendientes:{}, fotoEditor:null, puerta:null, claveMal:false, dniMal:false, dtDni:null, fondoHome:null,
              evolucionOcultas:{}, evolucionActivo:null, verCrudoId:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
-             fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null, fixtureLinkEditando:null,
+             fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null, fixtureLinkEditando:null, fxLocal:null,
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false,
@@ -1809,6 +1809,36 @@ function bloqueAlertas(){
        : `<p class="screen-note" style="margin:0">Sin alertas por el momento.</p>`)
     + `</div>`;
 }
+/* "11:00" → "11hs"; "16:30" → "16:30hs" */
+function formatoHoraCorta(hora){
+  if (!hora) return null;
+  const [h,m] = hora.split(':');
+  return (!m || m==='00') ? `${Number(h)}hs` : `${h}:${m}hs`;
+}
+/* próximos partidos (hoy en adelante) de las categorías que le corresponde
+   ver a este rol: el DT solo la suya, el resto (coordinación y jugador)
+   todas, igual que el resto de Inicio */
+function proximosPartidos(limite=6, catsFijas=null){
+  const cats = catsFijas || (esDT() ? [db.config.categoriaDT] : CATEGORIAS);
+  const hoyStr = hoy();
+  return (db.fixture||[]).filter(f=>cats.includes(f.categoria) && f.fecha && f.fecha>=hoyStr)
+    .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'') || (a.hora||'').localeCompare(b.hora||''))
+    .slice(0, limite);
+}
+function bloqueProximosPartidos(catsFijas=null){
+  const lista = proximosPartidos(6, catsFijas);
+  if (!lista.length) return '';
+  const filasHtml = lista.map(f=>{
+    const horaTxt = formatoHoraCorta(f.hora);
+    const condicion = f.esLocal===true ? 'Local' : f.esLocal===false ? 'Visitante' : null;
+    const partes = [`${f.categoria} vs ${f.rival}`, horaTxt, condicion].filter(Boolean);
+    return `<div class="row"><span class="row-main"><span class="row-name">${esc(partes.join(' - '))}</span>
+      <span class="row-meta"><span>${esc(fechaCorta(f.fecha))}</span></span></span></div>`;
+  }).join('');
+  return `<div class="dash-title">Próximos partidos</div>
+    <div class="block"><div class="block-title">${icono('cancha')} Próximos partidos</div>
+    <div class="roster">${filasHtml}</div></div>`;
+}
 /* categoría del jugador/DT para la alerta de "nuevos partidos cargados";
    coordinación no la ve (es quien carga los links, no hace falta avisarle) */
 function bloqueAvisoFixture(){
@@ -1881,6 +1911,7 @@ function pantallaInicio(){
   h += `</div>`;
 
   h += bloqueAlertas();
+  h += bloqueProximosPartidos();
 
   h += `<div class="dash-title">Rankings detallados</div><div class="dash-rankings">`;
   h += bloqueRankingInicio(`${icono('gol')} Más goles`, top('goles',5).map((x,i)=>filaRankingInicio(x.j,i,miles(x.v),conCategoria)));
@@ -2131,6 +2162,10 @@ function pantallaFixture(){
     h += `<p class="screen-note">Partidos de ${esc(cat)}.</p>`;
   }
   if (cat){ marcarFixtureVisto(cat); }
+  /* pantallazo general de los próximos partidos (de todas las categorías
+     que le toca ver a este rol, no solo la elegida abajo): va siempre,
+     elija o no una categoría todavía */
+  h += bloqueProximosPartidos();
   if (!cat){
     h += `<div class="empty"><p>Elegí una categoría arriba.</p></div>`;
     app.innerHTML = h; return;
@@ -2156,6 +2191,11 @@ function pantallaFixture(){
         <div class="field"><label class="label" for="fx-hora">Hora<em>opcional</em></label>
           <input type="time" id="fx-hora"></div>
       </div>
+      <div class="field"><label class="label">Condición<em>opcional</em></label>
+        <div class="chips">
+          <button class="chip" data-fxLocal="local" aria-pressed="${view.fxLocal==='local'}">Local</button>
+          <button class="chip" data-fxLocal="visitante" aria-pressed="${view.fxLocal==='visitante'}">Visitante</button>
+        </div></div>
       <button class="btn btn-naranja" id="agregarFixture">Agregar al fixture</button>
     </div>`;
   }
@@ -2199,10 +2239,11 @@ function bloqueFixtureTabla(cat){
         <input type="number" inputmode="numeric" min="0" id="gr-${f.id}" placeholder="?" style="width:42px;padding:3px 5px">
         <button class="linkish" data-guardarGolesRival="${f.id}">Guardar</button>`;
     }
+    const condicion = f.esLocal===true ? ' <span class="pill">Local</span>' : f.esLocal===false ? ' <span class="pill">Visitante</span>' : '';
     h += `<tr>
       <td>${fechaCorta(f.fecha)}</td>
       <td>${f.hora?esc(f.hora):'—'}</td>
-      <td>vs ${esc(f.rival)}</td>
+      <td>vs ${esc(f.rival)}${condicion}</td>
       <td class="val">${resultado}</td>
       <td>${bloqueLinkFixture(f)}</td>
       ${puedeEditar()?`<td><button class="linkish" style="color:var(--rojo)" data-borrarFixture="${f.id}">Eliminar</button></td>`:''}
@@ -5717,11 +5758,23 @@ app.addEventListener('click', async e=>{
   }
 
   const chipFixtureCat = t.closest('[data-fixtureCat]');
-  if (chipFixtureCat){ view.fixtureCategoria = chipFixtureCat.dataset.fixturecat; return render(); }
+  if (chipFixtureCat){ view.fixtureCategoria = chipFixtureCat.dataset.fixturecat; view.fxLocal = null; return render(); }
   const chipFixtureVista = t.closest('[data-fixtureVista]');
   if (chipFixtureVista){ view.fixtureVista = chipFixtureVista.dataset.fixturevista; return render(); }
   const chipFixtureMes = t.closest('[data-fixtureMes]');
   if (chipFixtureMes){ view.fixtureMes = chipFixtureMes.dataset.fixturemes; return render(); }
+  const chipFxLocal = t.closest('[data-fxLocal]');
+  if (chipFxLocal){
+    /* a mano en el DOM, no con render(): el resto del formulario (rival,
+       fecha, hora) son inputs sueltos sin valor atado a "view", así que
+       un render() de más los dejaría en blanco si ya se habían completado */
+    const val = chipFxLocal.dataset.fxlocal;
+    const yaActivo = chipFxLocal.getAttribute('aria-pressed')==='true';
+    chipFxLocal.closest('.chips').querySelectorAll('[data-fxLocal]').forEach(b=>b.setAttribute('aria-pressed','false'));
+    if (!yaActivo) chipFxLocal.setAttribute('aria-pressed','true');
+    view.fxLocal = yaActivo ? null : val;
+    return;
+  }
   if (t.id==='agregarFixture'){
     if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
     return guardarFixture();
@@ -5936,7 +5989,9 @@ async function guardarFixture(){
   if (db.fixture.some(f=>f.categoria===categoria && f.rival===rival && f.fecha===fecha)){
     return toast('Ese partido ya está en el fixture');
   }
-  db.fixture.push({ id:uid(), categoria, rival, fecha, hora, golesRival:null });
+  const esLocal = view.fxLocal==='local' ? true : view.fxLocal==='visitante' ? false : null;
+  db.fixture.push({ id:uid(), categoria, rival, fecha, hora, golesRival:null, esLocal });
+  view.fxLocal = null;
   await Store.save(db);
   toast('Agregado al fixture · '+categoria); render();
 }
@@ -5962,12 +6017,13 @@ async function sincronizarFixtureAIF(cat){
     if (!p.fecha || !p.rival) return;
     let fx = db.fixture.find(x=>x.categoria===cat && x.rival===p.rival && x.fecha===p.fecha);
     if (!fx){
-      fx = { id:uid(), categoria:cat, rival:p.rival, fecha:p.fecha, hora:p.hora||null, golesRival:null };
+      fx = { id:uid(), categoria:cat, rival:p.rival, fecha:p.fecha, hora:p.hora||null, golesRival:null, esLocal:null };
       db.fixture.push(fx);
       nuevos++;
     }
     if (p.hora) fx.hora = p.hora;
     if (p.jugado) fx.golesRival = p.golesRival;
+    if (typeof p.esLocal === 'boolean') fx.esLocal = p.esLocal;
   });
   await Store.save(db);
   toast(`Sincronizado con la AIF · ${datos.partidos.length} partido(s), ${nuevos} nuevo(s)`);

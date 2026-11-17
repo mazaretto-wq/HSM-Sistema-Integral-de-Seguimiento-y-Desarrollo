@@ -42,6 +42,9 @@ const mapuche = await pg.evaluate(()=>db.fixture.find(f=>f.rival==='MAPUCHE'));
 t('El partido ya jugado según la AIF queda con el gol del rival cargado solo', mapuche && mapuche.golesRival===4 && mapuche.hora==='14:15', JSON.stringify(mapuche));
 const campoChico = await pg.evaluate(()=>db.fixture.find(f=>f.rival==='CAMPO CHICO VERDE'));
 t('El partido todavía no jugado queda sin resultado (solo agendado)', campoChico && campoChico.golesRival===null, JSON.stringify(campoChico));
+t('La sincronización también trae si el partido es de visitante (MAPUCHE)', mapuche.esLocal===false, JSON.stringify(mapuche));
+t('...o de local (CAMPO CHICO VERDE)', campoChico.esLocal===true, JSON.stringify(campoChico));
+t('Se ve la condición como una etiqueta en la tabla', (await pg.locator('table.cmp .pill:has-text("Visitante")').count())===1 && (await pg.locator('table.cmp .pill:has-text("Local")').count())===1);
 
 t('El ya jugado muestra "? - 4" (se sabe el gol del rival pero falta cargar los datos propios)',
   (await pg.locator('table.cmp').innerText()).includes('? - 4'));
