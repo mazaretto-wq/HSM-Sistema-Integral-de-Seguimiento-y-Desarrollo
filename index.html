@@ -1088,7 +1088,7 @@ function limpiarHistorialDuplicado(baseDb){
    si hay una fila "otra" y otra fila de ese mismo año con una categoría
    puntual (no Juveniles, no "otra") y los mismos números, la "otra" sobra.
    Segura de correr de nuevo: si ya no hay ninguna así, no cambia nada. */
-function limpiarHistorialOtraDuplicaCategoria(baseDb){
+function limpiarHistorialOtraDuplicaCategoria(baseDb, reporte){
   let cambio = false;
   const mismosNumeros = (a,b) => (Number(a.pj)||0)===(Number(b.pj)||0) && (Number(a.min)||0)===(Number(b.min)||0) &&
     (Number(a.goles)||0)===(Number(b.goles)||0) && (Number(a.asis)||0)===(Number(b.asis)||0) &&
@@ -1100,7 +1100,11 @@ function limpiarHistorialOtraDuplicaCategoria(baseDb){
       if (h.categoria!=='otra') return true;
       const duplicaCategoriaPuntual = original.some(o=>o!==h && String(o.anio)===String(h.anio) &&
         o.categoria && o.categoria!=='otra' && o.categoria!=='Juveniles' && mismosNumeros(o,h));
-      if (duplicaCategoriaPuntual){ cambio = true; return false; }
+      if (duplicaCategoriaPuntual){
+        cambio = true;
+        if (reporte) reporte.push(`${j.apellido||''} ${j.nombre||''}`.trim());
+        return false;
+      }
       return true;
     });
     j.historial = limpio;
@@ -1655,8 +1659,14 @@ async function entrar(rol){
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
-      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
+      const reporteDup = [];
+      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db, reporteDup) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
       if (corregido) await Store.save(db);
+      if (reporteDup.length && rol==='coordinacion'){
+        const nombres = [...new Set(reporteDup)];
+        const resto = nombres.length>4 ? ` y ${nombres.length-4} más` : '';
+        setTimeout(()=>toast(`Se corrigió historial duplicado de ${nombres.length} jugador(es): ${nombres.slice(0,4).join(', ')}${resto}`), 1200);
+      }
     }
     else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
   }
@@ -2773,7 +2783,7 @@ function fichaJugador(){
     h += `<div class="perfil-2col">
       <div class="block"><div class="block-title">${icono('trofeo')} Historial de temporadas</div>
         ${esCoord() ? `<button class="linkish" data-ver-crudo="${j.id}" style="font-size:11px;margin-bottom:6px">${view.verCrudoId===j.id?'Ocultar':'Ver'} datos sin procesar (para soporte)</button>
-        ${view.verCrudoId===j.id ? `<pre style="font-size:10px;white-space:pre-wrap;word-break:break-all;background:var(--wash);padding:8px;border-radius:6px;max-height:300px;overflow:auto">${esc(JSON.stringify(j.historial, null, 2))}</pre>` : ''}` : ''}
+        ${view.verCrudoId===j.id ? `<pre style="font-size:10px;white-space:pre-wrap;word-break:break-all;background:var(--wash);padding:8px;border-radius:6px;max-height:300px;overflow:auto">${esc(JSON.stringify({historial:j.historial, base:j.base}, null, 2))}</pre>` : ''}` : ''}
         <div class="scroll-x"><table class="cmp"><thead><tr>
           <th>Temp.</th><th>Categoría</th><th>PJ</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarj.</th></tr></thead><tbody>
         ${filasHist.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>

@@ -197,10 +197,34 @@ await pg.click('[data-ver-crudo]'); await pg.waitForTimeout(200);
 const crudoTexto = await pg.locator('.block:has-text("Historial de temporadas") pre').innerText();
 let crudoJson = null; try { crudoJson = JSON.parse(crudoTexto); } catch(e){}
 t('Al tocarlo se ve el historial del jugador como JSON válido, con sus filas reales',
-  Array.isArray(crudoJson) && crudoJson.length===2 && crudoJson.some(h=>h.anio==='2024' && h.goles===3) && crudoJson.some(h=>h.anio==='2023' && h.goles===2),
+  Array.isArray(crudoJson && crudoJson.historial) && crudoJson.historial.length===2 &&
+  crudoJson.historial.some(h=>h.anio==='2024' && h.goles===3) && crudoJson.historial.some(h=>h.anio==='2023' && h.goles===2),
   crudoTexto);
 await pg.click('[data-ver-crudo]'); await pg.waitForTimeout(200);
 t('Tocarlo de nuevo lo vuelve a ocultar', (await pg.locator('.block:has-text("Historial de temporadas") pre').count())===0);
+
+// ---- también tiene que mostrar la "base" (planilla de la temporada en curso),
+//      no solo el historial: el error de goles/tarjetas duplicados reportado
+//      (caso Retamar) está ahí, no en el historial ----
+const idBaseCruda = await pg.evaluate(()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTBASECRUDA', nombre:'Ver', categorias:['Cadetes','Selección'],
+    base: [{ categoria:'Cadetes', pj:3, goles:8, ta:0, tr:1 }, { categoria:'Selección', pj:9, goles:2, ta:0, tr:0 }],
+  });
+  view.jugadorId = id; view.fichaTab = 'general';
+  render();
+  return id;
+});
+await pg.waitForTimeout(300);
+await pg.click('[data-ver-crudo]'); await pg.waitForTimeout(200);
+const crudoBaseTexto = await pg.locator('.block:has-text("Historial de temporadas") pre').innerText();
+let crudoBaseJson = null; try { crudoBaseJson = JSON.parse(crudoBaseTexto); } catch(e){}
+t('El JSON también incluye la "base" (planilla de la temporada en curso) con sus dos categorías',
+  Array.isArray(crudoBaseJson && crudoBaseJson.base) && crudoBaseJson.base.length===2 &&
+  crudoBaseJson.base.some(b=>b.categoria==='Cadetes' && b.goles===8) && crudoBaseJson.base.some(b=>b.categoria==='Selección' && b.goles===2),
+  crudoBaseTexto);
+await pg.click('[data-ver-crudo]'); await pg.waitForTimeout(200);
 
 await pg.evaluate(()=>{ view.jugadorId=null; db.config.acceso='jugador'; db.config.rol='Coordinador'; db.config.categoriaDT=''; render(); });
 await pg.waitForTimeout(300);

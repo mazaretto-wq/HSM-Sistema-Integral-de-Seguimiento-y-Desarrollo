@@ -117,6 +117,33 @@ const retamar2 = await pg.evaluate((id)=>db.jugadores.find(j=>j.id===id), idReta
 t('Correr de nuevo la limpieza del caso Retamar tampoco cambia nada más (es segura de repetir)',
   JSON.stringify(retamar2.historial)===JSON.stringify(retamar.historial));
 
+// ---- limpiarHistorialOtraDuplicaCategoria puede recibir un array y anotar
+//      ahí a qué jugadores les corrigió algo (lo usa entrar() para avisarle
+//      a coordinación con un toast qué jugadores de la base real se tocaron) ----
+const reporteInforma = await pg.evaluate(async ()=>{
+  const id = uid();
+  db.jugadores.push({
+    id, apellido:'ZZZTESTREPORTE', nombre:'Avisar', categorias:['Cadetes'],
+    historial: [
+      { anio:'2022', categoria:'Cadetes', pj:10, goles:5, asis:0, min:600, ta:0, tr:0 },
+      { anio:'2022', categoria:'otra', pj:10, goles:5, asis:0, min:600, ta:0, tr:0 },
+    ],
+  });
+  const reporte = [];
+  const cambio = limpiarHistorialOtraDuplicaCategoria(db, reporte);
+  return { cambio, reporte };
+});
+t('Avisa (cambio=true) y anota el nombre del jugador corregido en el reporte',
+  reporteInforma.cambio===true && reporteInforma.reporte.includes('ZZZTESTREPORTE Avisar'),
+  JSON.stringify(reporteInforma));
+const reporteNoInforma = await pg.evaluate(()=>{
+  const reporte = [];
+  const cambio = limpiarHistorialOtraDuplicaCategoria(db, reporte);
+  return { cambio, reporte };
+});
+t('Si no hay nada para corregir, no avisa nada (reporte vacío)',
+  reporteNoInforma.cambio===false && reporteNoInforma.reporte.length===0, JSON.stringify(reporteNoInforma));
+
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);
