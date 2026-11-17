@@ -39,7 +39,7 @@ t('Efectivamente rechaza el duplicado', (await pg.evaluate(()=>db.fixture.length
 
 // ---- link para ver ESE partido puntual (ex solapa "Partidos", ahora
 //      vive acá, uno por partido del fixture en vez de una lista aparte) ----
-t('Sin link todavía, coordinación ve "+ agregar link"', (await pg.locator(`[data-cambiarLinkFixture="${fx1.id}"]:has-text("agregar link")`).count())===1);
+t('Sin link todavía, coordinación ve un botón bien visible para cargarlo', (await pg.locator(`[data-cambiarLinkFixture="${fx1.id}"]:has-text("Cargar link")`).count())===1);
 t('Sin link, no hay botón "Ver partido" para nadie', (await pg.locator('a:has-text("Ver partido")').count())===0);
 await pg.click(`[data-cambiarLinkFixture="${fx1.id}"]`); await pg.waitForTimeout(300);
 await pg.fill(`#fxlink-${fx1.id}`, 'meet.google.com/abc-defg');

@@ -2207,19 +2207,19 @@ function bloqueLinkFixture(f){
   const editando = view.fixtureLinkEditando===f.id;
   if (editando){
     return `<input type="text" id="fxlink-${f.id}" value="${esc(f.link||'')}" placeholder="https://..." style="width:140px">
-      <button class="linkish" data-guardarLinkFixture="${f.id}">Guardar</button>`;
+      <button class="btn btn-naranja" style="padding:4px 10px;font-size:12px" data-guardarLinkFixture="${f.id}">Guardar</button>`;
   }
   if (f.link){
     return `<a class="btn btn-naranja" style="padding:4px 10px;font-size:12px" href="${esc(f.link)}" target="_blank" rel="noopener">Ver partido</a>
       ${puedeEditar()?`<button class="linkish" data-cambiarLinkFixture="${f.id}">cambiar</button>`:''}`;
   }
-  return puedeEditar() ? `<button class="linkish" data-cambiarLinkFixture="${f.id}">+ agregar link</button>` : '—';
+  return puedeEditar() ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" data-cambiarLinkFixture="${f.id}">${icono('cancha')} Cargar link</button>` : '—';
 }
 function bloqueFixtureTabla(cat){
   const lista = fixtureDe(cat);
   if (!lista.length) return `<div class="empty"><p>Todavía no hay partidos programados para ${esc(cat)}.</p></div>`;
   let h = `<div class="scroll-x"><table class="cmp"><thead><tr>
-    <th>Fecha</th><th>Hora</th><th>Rival</th><th>Resultado</th><th>Link</th>${puedeEditar()?'<th></th>':''}
+    <th>Fecha</th><th>Hora</th><th>Rival</th><th>Resultado</th>${puedeEditar()?'<th></th>':''}
   </tr></thead><tbody>`;
   lista.forEach(f=>{
     const propios = golesPropiosFixture(f);
@@ -2244,8 +2244,7 @@ function bloqueFixtureTabla(cat){
       <td>${fechaCorta(f.fecha)}</td>
       <td>${f.hora?esc(f.hora):'—'}</td>
       <td>vs ${esc(f.rival)}${condicion}</td>
-      <td class="val">${resultado}</td>
-      <td>${bloqueLinkFixture(f)}</td>
+      <td class="val">${resultado}<div style="margin-top:5px;white-space:nowrap">${bloqueLinkFixture(f)}</div></td>
       ${puedeEditar()?`<td><button class="linkish" style="color:var(--rojo)" data-borrarFixture="${f.id}">Eliminar</button></td>`:''}
     </tr>`;
   });
