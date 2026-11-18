@@ -6488,15 +6488,17 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      probar las dos vistas); jugador de prueba, no uno real del plantel.
      Va DESPUÉS de sembrar el plantel para no pisar el conteo que decide
      si hace falta cargarlo (si no, "db.jugadores.length" ya no daría 0 y
-     el plantel real nunca se cargaría solo) */
-  if (!db.config.jugadorAccesoSeeded){
-    if (!db.jugadores.some(j=>j.dni==='41781139')){
-      /* el apellido empieza con "Zzz" a propósito: así queda al final en
-         los listados A-Z (el orden de siempre) y no se cuela como "el
-         primer jugador de Juveniles" en ningún lado */
-      db.jugadores.push({ id:uid(), apellido:'Zzz (acceso de prueba)', nombre:'Coordinación', categorias:['Juveniles'], dni:'41781139' });
-    }
-    db.config.jugadorAccesoSeeded = true;
+     el plantel real nunca se cargaría solo). Corre siempre (sin bandera
+     de "una sola vez"): pedido puntual de coordinación para asegurarse de
+     que este DNI pueda entrar como jugador, así que si en algún momento
+     este jugador de prueba faltara (se borró sin querer, no llegó a
+     subirse a la nube, etc.) se vuelve a crear solo en vez de quedar
+     perdido para siempre por una bandera vieja */
+  if (!db.jugadores.some(j=>(j.dni||'').trim()==='41781139')){
+    /* el apellido empieza con "Zzz" a propósito: así queda al final en
+       los listados A-Z (el orden de siempre) y no se cuela como "el
+       primer jugador de Juveniles" en ningún lado */
+    db.jugadores.push({ id:uid(), apellido:'Zzz (acceso de prueba)', nombre:'Coordinación', categorias:['Juveniles'], dni:'41781139' });
     await Store.save(db);
   }
   fbEscucharCambios();

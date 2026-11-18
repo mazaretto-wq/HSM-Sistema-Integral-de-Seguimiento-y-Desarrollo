@@ -61,6 +61,32 @@ t('Con el DNI correcto, entra como jugador', (await pg.evaluate(()=>db.config.ac
 t('Queda guardada la categoría de ESE jugador (Juveniles)', (await pg.evaluate(()=>db.config.categoriaJugador))==='Juveniles');
 t('El cartel de arriba muestra la categoría del jugador identificado', (await pg.locator('#rolebox').innerText()).includes('Juveniles'));
 
+// ---- el DNI 41781139 (acceso de prueba de coordinación) tiene que poder
+//      entrar como jugador siempre, incluso si en algún momento se borró
+//      el jugador que lo tenía cargado (se recrea solo al abrir la app,
+//      sin esperar a que se vuelva a sembrar "una sola vez") ----
+await pg.click('#salir'); await pg.waitForTimeout(400);
+const sembrado = await pg.evaluate(()=>db.jugadores.find(j=>j.dni==='41781139'));
+t('Al abrir la app ya está sembrado un jugador de prueba con el DNI 41781139',
+  !!sembrado && sembrado.apellido.includes('Zzz'), JSON.stringify(sembrado));
+await pg.click('#ac-jugador'); await pg.waitForTimeout(300);
+await pg.fill('#ac-dni', '41781139');
+await pg.click('#ac-dni-entrar'); await pg.waitForTimeout(500);
+t('El DNI 41781139 entra como jugador', (await pg.evaluate(()=>db.config.acceso))==='jugador');
+
+// ---- si se borra a propósito (o por error) y se recarga, se recrea solo ----
+await pg.click('#salir'); await pg.waitForTimeout(400);
+await pg.click('#ac-coord'); await pg.waitForTimeout(300);
+await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+await pg.evaluate(async ()=>{
+  db.jugadores = db.jugadores.filter(j=>j.dni!=='41781139');
+  await Store.save(db);
+});
+await pg.reload(); await pg.waitForTimeout(2000);
+const recreado = await pg.evaluate(()=>db.jugadores.find(j=>j.dni==='41781139'));
+t('Si el jugador de prueba se borra, al volver a abrir la app se recrea solo',
+  !!recreado, JSON.stringify(recreado));
+
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
 console.log(`\n== ${ok.length} PASS / ${bad.length} FAIL ==`);
