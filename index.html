@@ -2182,7 +2182,14 @@ function pantallaFixture(){
   }
 
   if (puedeEditar()){
-    h += `<div class="block"><div class="block-title">${icono('cancha')} Cargar partido</div>
+    h += `<button class="btn btn-naranja" id="registrarPartido" data-registrarcat="${esc(cat)}" style="margin-bottom:14px">
+      ${icono('cancha')} Registrar partido</button>`;
+  }
+
+  if (puedeEditar()){
+    h += `<div class="block"><div class="block-title">${icono('cancha')} Agendar partido</div>
+      <p class="screen-note" style="margin-top:0">Para anotar un partido futuro en el calendario (todavía sin jugarse).
+      Para cargar lo que pasó en un partido ya jugado, usá "Registrar partido" arriba.</p>
       <div class="field"><label class="label" for="fx-rival">Rival</label>
         <input type="text" id="fx-rival" placeholder="ej: Club Deportivo Rival"></div>
       <div class="two">
@@ -2240,11 +2247,14 @@ function bloqueFixtureTabla(cat){
         <button class="linkish" data-guardarGolesRival="${f.id}">Guardar</button>`;
     }
     const condicion = f.esLocal===true ? ' <span class="pill">Local</span>' : f.esLocal===false ? ' <span class="pill">Visitante</span>' : '';
+    const registrar = puedeEditar()
+      ? `<div style="margin-top:5px;white-space:nowrap"><button class="linkish" data-registrarFixture="${f.id}">${propios===null?'Registrar partido':'Editar registro'}</button></div>`
+      : '';
     h += `<tr>
       <td>${fechaCorta(f.fecha)}</td>
       <td>${f.hora?esc(f.hora):'—'}</td>
       <td>vs ${esc(f.rival)}${condicion}</td>
-      <td class="val">${resultado}<div style="margin-top:5px;white-space:nowrap">${bloqueLinkFixture(f)}</div></td>
+      <td class="val">${resultado}<div style="margin-top:5px;white-space:nowrap">${bloqueLinkFixture(f)}</div>${registrar}</td>
       ${puedeEditar()?`<td><button class="linkish" style="color:var(--rojo)" data-borrarFixture="${f.id}">Eliminar</button></td>`:''}
     </tr>`;
   });
@@ -5777,6 +5787,23 @@ app.addEventListener('click', async e=>{
   if (t.id==='agregarFixture'){
     if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
     return guardarFixture();
+  }
+  const registrarGeneral = t.closest('#registrarPartido');
+  if (registrarGeneral){
+    if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
+    view.partidoCat = registrarGeneral.dataset.registrarcat;
+    view.partidoFecha = null; view.partidoRival = '';
+    view.tab = 'cargar'; view.form = 'partido';
+    marcarTab('cargar'); window.scrollTo(0,0); return render();
+  }
+  const registrarFila = t.closest('[data-registrarFixture]');
+  if (registrarFila){
+    if (!puedeEditar()) return toast('Esto lo hace coordinación o el DT de esa categoría');
+    const fx = db.fixture.find(f=>f.id===registrarFila.dataset.registrarfixture);
+    if (!fx) return;
+    view.partidoCat = fx.categoria; view.partidoFecha = fx.fecha; view.partidoRival = fx.rival || '';
+    view.tab = 'cargar'; view.form = 'partido';
+    marcarTab('cargar'); window.scrollTo(0,0); return render();
   }
   const sincAIF = t.closest('[data-sinccat]');
   if (sincAIF){
