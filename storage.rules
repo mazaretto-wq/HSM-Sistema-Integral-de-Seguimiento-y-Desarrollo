@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// Reglas de Storage (fotos de jugadores y rutinas). Se pegan en la consola
+// de Firebase: Storage → Reglas → reemplazar todo por este archivo → Publicar.
+// Firebase puede pedir un permiso extra para que Storage consulte
+// Firestore (hace falta para saber quién es DT): aceptarlo.
+//
+// - Subir, cambiar o borrar archivos: solo coordinación y DT habilitados.
+// - Ver: los links que guarda la app ya traen su propio permiso, así que
+//   las fotos y rutinas se siguen viendo en el celular de los jugadores.
+//   Lo que se cierra es poder recorrer o bajar archivos sin ese link.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function esStaff() {
+      return request.auth != null && (
+        request.auth.token.email == 'coordinacion@harassantamaria.com' ||
+        firestore.exists(/databases/(default)/documents/hsm_staff/$(request.auth.uid))
+      );
+    }
+    match /{todo=**} {
+      allow read: if esStaff();
+      allow write: if esStaff()
+        && (request.resource == null || request.resource.size < 15 * 1024 * 1024);
+    }
+  }
+}

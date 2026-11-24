@@ -11,10 +11,13 @@ await pg.goto(BASE_URL);
 await pg.evaluate(()=>{try{localStorage.clear()}catch(e){}});
 await pg.reload(); await pg.waitForTimeout(1500);
 
-// ---- se siembra solo un primer DT (Juveniles) la primera vez ----
+// ---- ya no se siembra solo un DT con un DNI escrito en el archivo
+//      (el archivo es público: ese DNI era una llave para cualquiera) ----
 const sembrado = await pg.evaluate(()=>db.dts);
-t('Arranca con un DT ya cargado para Juveniles (DNI 41781139)',
-  sembrado.length===1 && sembrado[0].dni==='41781139' && sembrado[0].categoria==='Juveniles', JSON.stringify(sembrado));
+t('Ya no arranca con un DT "de prueba" cargado solo', sembrado.length===0, JSON.stringify(sembrado));
+t('La contraseña vieja compartida de los DT ya no está en el archivo',
+  !(await pg.content()).includes('B@sehsm'));
+await pg.evaluate(async ()=>{ db.dts.push({ id:uid(), dni:'41781139', categoria:'Juveniles' }); await Store.save(db); });
 
 // ---- "Soy DT" ahora pide usuario (DNI) + contraseña, no una categoría ----
 await pg.click('#ac-dt'); await pg.waitForTimeout(300);

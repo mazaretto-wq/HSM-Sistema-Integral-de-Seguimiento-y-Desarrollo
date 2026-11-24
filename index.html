@@ -495,17 +495,28 @@ const FB_CONFIG = {
 };
 const FB_COL = 'hsm', FB_DOC = 'base';
 /* Firebase identifica la cuenta por correo, pero no hace falta escribirlo:
-   estas direcciones son internas y van fijas. Lo que se pide es la contraseña,
-   que no está en este archivo: la valida Firebase. */
-const FB_CUENTAS = {
-  coordinacion: 'coordinacion@harassantamaria.com',
-  jugador:      'jugadores@harassantamaria.com',
-  dt:           'dt@harassantamaria.com'
-};
-/* contraseña única para todos los DT (no es alta seguridad, es solo para
-   despistar). Entran con su DNI como usuario; qué categoría les
-   corresponde según ese DNI se arma en pantallaDatos > "DT por categoría" */
-const CLAVE_DT = 'B@sehsm';
+   estas direcciones son internas. Ninguna contraseña está en este archivo:
+   las valida Firebase.
+   - Coordinación: una cuenta fija.
+   - Cada DT: SU PROPIA cuenta, que crea coordinación desde Datos (correo
+     interno armado con el DNI; ver crearAccesoDT). Qué categoría tiene a
+     cargo lo dice Firestore (hsm_staff), no este dispositivo.
+   - Jugadores: sin cuenta. Entran con el DNI, que solo abre SU llave
+     (hsm_acceso/{dni}); con eso leen una copia sin datos sensibles
+     (ver publicarParaJugadores). Nunca bajan la base completa.
+   Las reglas que hacen cumplir todo esto están en firestore.rules. */
+const FB_CUENTAS = { coordinacion: 'coordinacion@harassantamaria.com' };
+const FB_DOMINIO = 'harassantamaria.com';
+const COL_STAFF   = 'hsm_staff';    /* hsm_staff/{uid}: DT habilitado y su categoría (solo coordinación escribe) */
+const COL_DTLOGIN = 'hsm_dtlogin';  /* hsm_dtlogin/{dni}: con qué correo entra ese DT (se abre sabiendo el DNI; no se puede listar) */
+const COL_ACCESO  = 'hsm_acceso';   /* hsm_acceso/{dni}: las llaves de un jugador (mismo criterio) */
+const COL_VISTA   = 'hsm_vista';    /* hsm_vista/{llave}: lo que ve cualquier jugador, sin datos sensibles */
+const COL_FICHA   = 'hsm_ficha';    /* hsm_ficha/{llave}: los datos propios de UN jugador */
+const DOC_PUBLICADO = 'publicado';  /* hsm/publicado: registro de lo publicado (solo staff) */
+const normDni = s => String(s||'').replace(/\D/g,'');
+/* DNI que quedaron escritos en versiones viejas de este archivo (que es
+   público): nunca se publican como llave de jugador */
+const DNIS_EXPUESTOS = new Set(['41781139']);
 
 let fb = null;            /* { db, auth, ref } cuando el SDK está */
 let fbUser = null;        /* usuario logueado, o null */
@@ -576,10 +587,12 @@ async function fbLeer(){
 }
 async function fbEscribir(d){
   if (!fb || !fbUser) return {ok:false};
+  /* la copia recortada que ve un jugador nunca puede pisar la base real */
+  if (d._vista) return {ok:false, motivo:'copia-de-jugador'};
   try{
     /* el rol con el que entraste es de este dispositivo, no del club:
        si viajara, otro equipo bajaría "coordinación" y entraría sin clave */
-    const limpio = {...d, config: {...d.config, acceso:null}};
+    const limpio = {...d, config: {...d.config, acceso:null, jugadorId:null, jugadorDni:null}};
     await cargarPako();
     const comprimido = pako.deflate(JSON.stringify(limpio));
     await fb.ref.set({ gz: firebase.firestore.Blob.fromUint8Array(comprimido),
@@ -600,17 +613,35 @@ let subidaPend = null, subidaUlt = null;
 const LIMITE_DOC_BYTES = 1048576;
 let avisoTamanoDado = false;
 function tamanoBytesDb(d){ return new TextEncoder().encode(JSON.stringify(d)).length; }
+/* al salir: lo que estaba esperando para subirse se sube YA (si no, se
+   perdería al cerrar la sesión, y el próximo que entre bajaría la copia
+   vieja de la nube), y lo mismo con la copia para jugadores */
+async function fbSubirPendiente(){
+  if (subidaPend && fb && fbUser){
+    clearTimeout(subidaPend); subidaPend = null;
+    const r = await fbEscribir(subidaUlt);
+    if (r.ok){ clearTimeout(publicarPend); await publicarParaJugadores(); }
+    else toast('No se pudo guardar en la nube; quedó en este dispositivo');
+  } else if (publicarPend && fb && fbUser){
+    clearTimeout(publicarPend); publicarPend = null;
+    await publicarParaJugadores();
+  }
+  if (publicando) await publicando;
+}
 function programarSubida(d){
   subidaUlt = d;
   clearTimeout(subidaPend);
   subidaPend = setTimeout(async ()=>{
+    subidaPend = null;
     const r = await fbEscribir(subidaUlt);
     if (!r.ok && fbUser){
       const grande = /longer than|exceeds|too large|resource-exhausted|invalid-argument/i.test(String(r.motivo));
       const detalle = grande ? ' (la base de datos quedó muy grande para la nube)'
                      : r.motivo==='permission-denied' ? ' (sin permiso en Firestore)' : '';
       toast('No se pudo guardar en la nube; quedó en este dispositivo'+detalle);
-    } else if (r.ok && !avisoTamanoDado && esCoord()){
+    }
+    if (r.ok) programarPublicacion();     /* lo que ven los jugadores, al día */
+    if (r.ok && !avisoTamanoDado && esCoord()){
       /* bytes reales ya comprimidos, que es lo que de verdad cuenta contra
          el límite de Firestore (si por lo que sea no vinieron, se estima
          sobre el JSON sin comprimir, que pesa bastante más: queda del
@@ -641,10 +672,15 @@ function hayEdicionEnCurso(){
    DT, sesión) de ESTE dispositivo nunca se toca: eso siempre es local. */
 let actualizacionRemotaPendiente = null;
 let avisoRemotoDado = false;
+/* solo se escucha con sesión de coordinación o DT abierta (las reglas no
+   dejan leer la base sin sesión); al salir se corta */
+let fbDejarDeEscuchar = null;
+function fbCortarEscucha(){ if (fbDejarDeEscuchar){ try{ fbDejarDeEscuchar(); }catch(e){} fbDejarDeEscuchar = null; } }
 function fbEscucharCambios(){
   if (!fb) return;
+  fbCortarEscucha();
   let primero = true;
-  fb.ref.onSnapshot(async snap=>{
+  fbDejarDeEscuchar = fb.ref.onSnapshot(async snap=>{
     if (primero){ primero = false; return; }           /* esto ya lo tenemos: es la carga inicial */
     if (snap.metadata.hasPendingWrites || !snap.exists) return;  /* guardado nuestro, todavía sin confirmar */
     const data = snap.data();
@@ -666,6 +702,188 @@ function fbEscucharCambios(){
       render();
     }
   }, err => console.warn('Firestore · escucha en vivo:', (err && err.code) || err));
+}
+
+/* =========================================================
+   1c. ACCESO SEGURO
+   - Los jugadores no leen la base: leen una COPIA RECORTADA (sin DNI,
+     sin fecha de nacimiento, sin carnet, sin test ni lesiones de nadie)
+     más una fichita con SUS propios datos. Las dos están guardadas con
+     un nombre al azar ("llave") que solo se consigue con un DNI cargado.
+   - Esa copia la arma y la sube cualquier persona del staff con sesión
+     abierta, cada vez que guarda algo (publicarParaJugadores).
+   - Si a alguien se le saca el DNI (o se lo borra), se cambia la llave
+     de la copia común: el que la tenía guardada deja de poder abrirla.
+   ========================================================= */
+function fbDoc(col, id){ return fb.db.collection(col).doc(String(id)); }
+async function comprimirObj(obj){
+  await cargarPako();
+  return firebase.firestore.Blob.fromUint8Array(pako.deflate(JSON.stringify(obj)));
+}
+async function descomprimirObj(blob){
+  await cargarPako();
+  return JSON.parse(pako.inflate(blob.toUint8Array(), {to:'string'}));
+}
+function llaveAzar(){
+  const a = new Uint8Array(18); crypto.getRandomValues(a);
+  return Array.from(a, b=>b.toString(16).padStart(2,'0')).join('');
+}
+function hashTexto(s){ let h=5381; for (let i=0;i<s.length;i++) h = ((h*33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36)+'.'+s.length; }
+
+/* lo que de un jugador NO se muestra a los demás */
+const CAMPOS_PRIVADOS_JUGADOR = ['dni','carnet','fechaNac','altura'];
+/* copia común: lo que cualquier jugador puede ver de todo el club */
+function vistaParaJugadores(d){
+  return {
+    jugadores: (d.jugadores||[]).map(j=>{ const c = {...j}; CAMPOS_PRIVADOS_JUGADOR.forEach(k=>delete c[k]); return c; }),
+    partidos: d.partidos||[], fixture: d.fixture||[], rutinas: d.rutinas||{},
+    sesiones: d.sesiones||[], ejercicios: d.ejercicios||[], pizarra: d.pizarra||[]
+  };
+}
+/* fichita propia: lo que solo ve ESE jugador (sus test, sus lesiones) */
+function datosPropiosJugador(d, jugadorId){
+  const j = (d.jugadores||[]).find(x=>x.id===jugadorId);
+  if (!j) return null;
+  const evaluaciones = (d.evaluaciones||[]).filter(e=>e.jugadorId===jugadorId);
+  const tomasUsadas = new Set(evaluaciones.map(e=>e.tomaId));
+  const jugador = {...j}; delete jugador.dni;
+  return { jugador, evaluaciones,
+           tomas: (d.tomas||[]).filter(t=>tomasUsadas.has(t.id)),
+           lesiones: (d.lesiones||[]).filter(l=>l.jugadorId===jugadorId) };
+}
+/* arma la "db" que usa la app en el celular del jugador */
+function dbDesdeVista(vista, propio, jugadorId){
+  const out = Object.assign({ jugadores:[], tomas:[], evaluaciones:[], partidos:[], ejercicios:[], sesiones:[],
+                              pizarra:[], rutinas:{}, lesiones:[], dts:[], fixture:[] }, vista);
+  if (propio){
+    out.jugadores = out.jugadores.map(j=> j.id===jugadorId ? {...j, ...propio.jugador} : j);
+    out.evaluaciones = propio.evaluaciones||[]; out.tomas = propio.tomas||[]; out.lesiones = propio.lesiones||[];
+  }
+  out._vista = true;
+  return out;
+}
+
+/* sube (solo lo que cambió) la copia común, la fichita de cada jugador
+   con DNI y las llaves por DNI. Corre sola después de cada guardado
+   exitoso del staff, y al entrar. */
+let publicando = null, publicarOtraVez = false, publicarPend = null;
+function programarPublicacion(){
+  clearTimeout(publicarPend);
+  publicarPend = setTimeout(()=>{ publicarPend = null; publicarParaJugadores(); }, 2500);
+}
+async function publicarParaJugadores(){
+  if (!fb || !fbUser || db._vista || !(esCoord() || esDT())) return {ok:false, motivo:'sin-sesion-staff'};
+  if (publicando){ publicarOtraVez = true; return publicando; }
+  publicando = (async ()=>{
+    try{
+      const refPub = fbDoc(FB_COL, DOC_PUBLICADO);
+      const snap = await refPub.get();
+      const pub = snap.exists ? snap.data() : {};
+      pub.dnis = pub.dnis || {}; pub.fichas = pub.fichas || {};
+      pub.hashes = pub.hashes || {}; pub.hashes.fichas = pub.hashes.fichas || {};
+
+      const actuales = {};                         /* dni → jugadorId */
+      db.jugadores.forEach(j=>{ const k = normDni(j.dni); if (k && !DNIS_EXPUESTOS.has(k) && !actuales[k]) actuales[k] = j.id; });
+      const sacados = Object.keys(pub.dnis).filter(k=>actuales[k]!==pub.dnis[k]);
+
+      const ops = [];                              /* ['set'|'del', ref, datos] */
+      const vistaVieja = pub.vista || null;
+      if (!pub.vista || sacados.length){ pub.vista = llaveAzar(); pub.hashes.vista = null; }
+      if (vistaVieja && vistaVieja!==pub.vista) ops.push(['del', fbDoc(COL_VISTA, vistaVieja)]);
+      sacados.filter(k=>!actuales[k]).forEach(k=>ops.push(['del', fbDoc(COL_ACCESO, k)]));
+      const conAcceso = new Set(Object.values(actuales));
+      Object.keys(pub.fichas).forEach(jid=>{
+        if (conAcceso.has(jid)) return;
+        ops.push(['del', fbDoc(COL_FICHA, pub.fichas[jid])]);
+        delete pub.fichas[jid]; delete pub.hashes.fichas[jid];
+      });
+
+      const vista = vistaParaJugadores(db);
+      const hv = hashTexto(JSON.stringify(vista));
+      if (hv !== pub.hashes.vista){
+        ops.push(['set', fbDoc(COL_VISTA, pub.vista), { gz: await comprimirObj(vista), actualizado: Date.now() }]);
+        pub.hashes.vista = hv;
+      }
+      for (const [k, jid] of Object.entries(actuales)){
+        let fichaNueva = false;
+        if (!pub.fichas[jid]){ pub.fichas[jid] = llaveAzar(); fichaNueva = true; }
+        const propio = datosPropiosJugador(db, jid);
+        const hf = hashTexto(JSON.stringify(propio));
+        if (hf !== pub.hashes.fichas[jid]){
+          ops.push(['set', fbDoc(COL_FICHA, pub.fichas[jid]), { gz: await comprimirObj(propio) }]);
+          pub.hashes.fichas[jid] = hf;
+        }
+        if (fichaNueva || pub.dnis[k]!==jid || pub.vista!==vistaVieja){
+          ops.push(['set', fbDoc(COL_ACCESO, k), { jugadorId: jid, vista: pub.vista, ficha: pub.fichas[jid] }]);
+        }
+      }
+      pub.dnis = actuales; pub.actualizado = Date.now(); pub.por = fbUser.email || '';
+      ops.push(['set', refPub, pub]);
+      for (let i=0; i<ops.length; i+=400){
+        const lote = fb.db.batch();
+        ops.slice(i, i+400).forEach(([tipo, ref, datos])=> tipo==='del' ? lote.delete(ref) : lote.set(ref, datos));
+        await lote.commit();
+      }
+      return {ok:true, escrituras:ops.length};
+    }catch(e){
+      console.warn('Publicar para jugadores:', (e && e.code) || e);
+      return {ok:false, motivo:(e && e.code) || String((e && e.message) || e)};
+    }finally{
+      const otra = publicarOtraVez; publicando = null; publicarOtraVez = false;
+      if (otra) programarPublicacion();
+    }
+  })();
+  return publicando;
+}
+
+/* jugador: con el DNI abre su llave y baja la copia común + su fichita */
+async function leerAccesoJugador(dni){
+  const acc = await conLimite(fbDoc(COL_ACCESO, dni).get(), 12000);
+  if (!acc.exists) return {error:'noEncontrado'};
+  const a = acc.data();
+  const [sv, sf] = await Promise.all([
+    conLimite(fbDoc(COL_VISTA, a.vista).get(), 12000),
+    a.ficha ? conLimite(fbDoc(COL_FICHA, a.ficha).get(), 12000) : Promise.resolve(null)
+  ]);
+  if (!sv.exists) return {error:'sinVista'};
+  const vista = await descomprimirObj(sv.data().gz);
+  const propio = (sf && sf.exists) ? await descomprimirObj(sf.data().gz) : null;
+  return { db: dbDesdeVista(vista, propio, a.jugadorId), jugadorId: a.jugadorId };
+}
+
+/* coordinación crea la cuenta propia de un DT. Se usa una segunda
+   "instancia" de Firebase para que crear la cuenta no cierre la sesión
+   de coordinación. El correo lleva un sufijo al azar: así "Nueva
+   contraseña" puede crear una cuenta nueva sin chocar con la anterior. */
+async function crearAccesoDT(dni, categoria, clave){
+  const email = `dt${dni}.${llaveAzar().slice(0,6)}@${FB_DOMINIO}`;
+  const app2 = firebase.apps.find(a=>a.name==='altaDT') || firebase.initializeApp(FB_CONFIG, 'altaDT');
+  const auth2 = app2.auth();
+  try{ await auth2.setPersistence(firebase.auth.Auth.Persistence.NONE); }catch(e){}
+  const cred = await auth2.createUserWithEmailAndPassword(email, clave);
+  const uidNuevo = cred.user.uid;
+  try{ await auth2.signOut(); }catch(e){}
+  await fbDoc(COL_STAFF, uidNuevo).set({ dni, categoria, email, creado: Date.now(), por: (fbUser && fbUser.email) || '' });
+  await fbDoc(COL_DTLOGIN, dni).set({ email });
+  return { uid: uidNuevo, email };
+}
+/* le saca el acceso a un DT: sin su registro en hsm_staff, las reglas no
+   lo dejan leer ni escribir nada, aunque la cuenta siga existiendo */
+async function bajaAccesoDT(d){
+  if (d.uid) await fbDoc(COL_STAFF, d.uid).delete();
+  const dni = normDni(d.dni);
+  if (dni){
+    const s = await fbDoc(COL_DTLOGIN, dni).get();
+    if (s.exists && (!d.email || s.data().email===d.email)) await fbDoc(COL_DTLOGIN, dni).delete();
+  }
+}
+function textoErrorAlta(e){
+  const c = e && e.code;
+  return c==='auth/weak-password' ? 'La contraseña tiene que tener al menos 6 caracteres.'
+       : c==='auth/operation-not-allowed' ? 'Falta habilitar "Correo/contraseña" en Firebase (Authentication).'
+       : c==='auth/network-request-failed' ? 'Sin conexión con Firebase.'
+       : c==='permission-denied' ? 'Firebase no dejó guardar el acceso (revisá que las reglas estén publicadas).'
+       : 'No se pudo crear el acceso' + (c ? ` (${c})` : '') + '.';
 }
 
 /* fotos que no se pudieron subir a Storage (sin nube, o reglas sin
@@ -717,9 +935,10 @@ const Store = {
     if (window.storage){ try{ await window.storage.set(KEY, JSON.stringify(d), false); return true; }catch(e){ return false; } }
     try{ localStorage.setItem(KEY, JSON.stringify(d)); return true; }catch(e){ memoria = d; return true; }
   },
+  /* al abrir la app no hay sesión, y sin sesión las reglas no dejan leer
+     la base: se arranca con lo de este dispositivo y la nube se baja al
+     entrar como coordinación o DT (ver entrar) */
   async load(){
-    const nube = await fbLeer();
-    if (nube) return nube;
     return await Store.local();
   },
   async save(d){
@@ -1571,8 +1790,6 @@ const FONDOS_HOME = ['Portada y fondo 1.jpg','Portada y fondo 2.jpg','Portada y 
 
 /* ---------- ACCESO: portada de login (jugador/DT/coordinación) ---------- */
 function pantallaAcceso(){
-  const conNube = !!fb;
-  const pideLoginJugador = conNube && fbEstado === 'sinPermiso';
   const formLogin = (titulo, nota) => `
       <div class="block"><div class="block-title">${titulo}</div>
         ${nota?`<p class="screen-note" style="margin-top:0">${nota}</p>`:''}
@@ -1595,7 +1812,7 @@ function pantallaAcceso(){
       <div class="home-roles">
         <button class="opt" id="ac-jugador">
           <strong>Soy jugador</strong>
-          <span>Ver el plantel, la cancha y los entrenamientos.${pideLoginJugador?' Pide contraseña y después tu DNI.':' Pide tu DNI, sin contraseña.'}</span></button>
+          <span>Ver el plantel, la cancha y los entrenamientos.Pide tu DNI, sin contraseña.</span></button>
         <button class="opt" id="ac-dt">
           <strong>Soy DT</strong>
           <span>Cargar y editar, pero solo la categoría que tenés a cargo. Pide tu usuario (DNI) y contraseña.</span></button>
@@ -1638,44 +1855,67 @@ function pantallaAcceso(){
   if (inp) inp.focus();
 }
 
-/* a qué categoría corresponde ese DNI, según lo cargado en Datos > "DT por categoría" */
+/* sin nube: a qué categoría corresponde ese DNI, según lo cargado en
+   Datos > "DT por categoría" (solo para usar la app en este dispositivo) */
 function categoriaDelDtPorDni(dni){
-  const registro = db.dts.find(d=>(d.dni||'').trim()===dni);
+  const registro = db.dts.find(d=>normDni(d.dni)===normDni(dni));
   return registro ? registro.categoria : null;
+}
+function textoErrorLogin(e){
+  const c = e && e.code;
+  return c==='auth/unauthorized-domain' ? 'Falta autorizar este dominio en Firebase.'
+       : c==='auth/network-request-failed' || c==='unavailable' ? 'Sin conexión con Firebase.'
+       : c==='auth/user-not-found' ? 'Esa cuenta no existe todavía en Firebase.'
+       : c==='auth/too-many-requests' ? 'Demasiados intentos. Esperá unos minutos y probá de nuevo.'
+       : 'Contraseña incorrecta.';
 }
 
 /* entra y, si hay nube, se loguea de verdad */
 async function entrar(rol){
   const clave = (document.getElementById('ac-clave')||{}).value || '';
   let cat = '';
+  let dni = '';
   if (rol==='dt'){
-    const dni = (document.getElementById('ac-dt-dni')||{}).value?.trim() || '';
-    view.dtDni = dni;
-    cat = categoriaDelDtPorDni(dni);
-    if (!cat){ view.claveMal = 'Usuario no encontrado.'; return render(); }
+    view.dtDni = (document.getElementById('ac-dt-dni')||{}).value?.trim() || '';
+    dni = normDni(view.dtDni);
+    if (!dni){ view.claveMal = 'Ingresá tu DNI.'; return render(); }
   }
 
-  if (!fb){                                   /* sin nube: la clave del archivo */
-    if (rol==='dt' && clave !== CLAVE_DT){ view.claveMal = 'Contraseña incorrecta.'; return render(); }
-    if (rol!=='jugador' && rol!=='dt' && clave !== CLAVE_LOCAL){
-      view.claveMal = 'Contraseña incorrecta.'; return render();
+  if (!fb){
+    /* sin nube (el SDK de Firebase no cargó): se trabaja solo contra este
+       dispositivo, con la clave de uso local, y nada se sincroniza */
+    if (rol==='dt'){
+      cat = categoriaDelDtPorDni(dni);
+      if (!cat){ view.claveMal = 'Usuario no encontrado.'; return render(); }
     }
+    if (clave !== CLAVE_LOCAL){ view.claveMal = 'Contraseña incorrecta.'; return render(); }
   } else {
-    const cuenta = FB_CUENTAS[rol];
-    try { await fb.auth.signInWithEmailAndPassword(cuenta, clave); }
-    catch(e){
-      const c = e && e.code;
-      view.claveMal =
-        c==='auth/unauthorized-domain' ? 'Falta autorizar este dominio en Firebase.'
-      : c==='auth/network-request-failed' ? 'Sin conexión con Firebase.'
-      : c==='auth/user-not-found' ? 'Esa cuenta no existe todavía en Firebase.'
-      : 'Contraseña incorrecta.';
-      return render();
+    let cuenta = FB_CUENTAS[rol];
+    if (rol==='dt'){
+      /* cada DT tiene su cuenta: el DNI dice con qué correo entra */
+      try{
+        const s = await conLimite(fbDoc(COL_DTLOGIN, dni).get(), 12000);
+        cuenta = s.exists ? s.data().email : null;
+      }catch(e){ view.claveMal = 'Sin conexión con Firebase.'; return render(); }
+      if (!cuenta){ view.claveMal = 'Usuario no encontrado. Pedile a coordinación que te cree el acceso.'; return render(); }
+    }
+    try { await fb.auth.signInWithEmailAndPassword(cuenta, clave); fbUser = fb.auth.currentUser || fbUser; }
+    catch(e){ view.claveMal = textoErrorLogin(e); return render(); }
+    if (rol==='dt'){
+      /* la categoría la decide Firestore, no este dispositivo */
+      let st = null;
+      try{ st = await fbDoc(COL_STAFF, fb.auth.currentUser.uid).get(); }catch(e){}
+      if (!st || !st.exists){
+        try{ await fb.auth.signOut(); }catch(e){} fbUser = null;
+        view.claveMal = 'Tu usuario no está habilitado. Hablá con coordinación.'; return render();
+      }
+      cat = st.data().categoria || '';
     }
     /* con sesión abierta ya podemos leer; si la nube está vacía, subimos lo de acá */
     const nube = await fbLeer();
     if (nube) {
       db = Object.assign(db, nube, {config: Object.assign(db.config, nube.config||{})});
+      delete db._vista;
       /* esta lectura puede traer una copia de la nube más vieja que la
          limpieza que ya se hizo al abrir la app (si esa limpieza todavía
          no había llegado a subirse porque recién ahora hay sesión): se
@@ -1689,28 +1929,55 @@ async function entrar(rol){
         setTimeout(()=>toast(`Se corrigió historial duplicado de ${nombres.length} jugador(es): ${nombres.slice(0,4).join(', ')}${resto}`), 1200);
       }
     }
-    else if (rol==='coordinacion' && db.jugadores.length) { await fbEscribir(db); }
+    /* solo si la nube respondió que de verdad está vacía (no si falló la
+       lectura), y nunca con la copia recortada de un jugador */
+    else if (rol==='coordinacion' && fbEstado==='listo' && db.jugadores.length && !db._vista) { await fbEscribir(db); }
+    else if (db._vista){
+      setTimeout(()=>toast('No se pudo bajar la base del club. Revisá la conexión y volvé a entrar.'), 600);
+    }
+    if (fbEstado==='listo'){ fbEscucharCambios(); }
   }
-  /* la cuenta compartida de jugadores ya quedó autenticada; falta saber
-     CUÁL jugador es, para mandarlo directo a su categoría en Rutinas */
-  if (rol==='jugador'){ view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render(); }
   db.config.acceso = rol; view.puerta = null; view.claveMal = false; view.dtDni = null;
+  db.config.jugadorId = null; db.config.categoriaJugador = '';
   if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
   else { db.config.rol = 'Coordinador'; db.config.categoriaDT = ''; }
   view.categoria = 'Todas'; view.partidoCat = null;
   view.tab = 'inicio'; marcarTab(view.tab);
   await Store.save(db); render();
+  if (fb && fbUser && !db._vista) programarPublicacion();
 }
 /* identifica al jugador por DNI y lo manda directo a su categoría
    (sobre todo para Rutinas: ver categoriaActivaRutina). No hay
-   contraseña acá: si el DNI no está cargado, no entra. */
+   contraseña: el DNI abre solo SU llave (ver leerAccesoJugador), y lo
+   que se baja es la copia recortada, nunca la base completa. */
 async function entrarConDni(){
-  const dni = (document.getElementById('ac-dni')||{}).value?.trim() || '';
+  const dni = normDni((document.getElementById('ac-dni')||{}).value);
   if (!dni){ view.dniMal = 'Ingresá tu DNI.'; return render(); }
-  const j = db.jugadores.find(x=>(x.dni||'').trim()===dni);
+  let jugadorId = null;
+  if (fb){
+    let r;
+    try{ r = await leerAccesoJugador(dni); }
+    catch(e){ r = { error: (e && e.code==='permission-denied') ? 'permiso' : 'red' }; }
+    if (r.error==='red' && db._vista && db.config.jugadorDni===dni){
+      jugadorId = db.config.jugadorId;           /* sin señal: lo último que bajó este mismo jugador */
+    } else if (r.error){
+      view.dniMal = r.error==='noEncontrado' ? 'No encontramos ese DNI. Pedile a coordinación que te lo cargue en tu ficha.'
+                  : r.error==='red' ? 'No hay conexión. Probá de nuevo en un rato.'
+                  : 'No se pudo abrir tu acceso. Avisale a coordinación.';
+      return render();
+    } else {
+      const config = db.config;
+      db = r.db; db.config = config; jugadorId = r.jugadorId; fbEstado = 'listo';
+    }
+  } else {
+    const j = db.jugadores.find(x=>normDni(x.dni)===dni);
+    jugadorId = j ? j.id : null;
+  }
+  const j = db.jugadores.find(x=>x.id===jugadorId);
   if (!j){ view.dniMal = 'No encontramos ese DNI. Pedile a coordinación que te lo cargue en tu ficha.'; return render(); }
-  db.config.acceso = 'jugador'; db.config.rol = 'Coordinador'; db.config.categoriaDT = '';
+  db.config.acceso = 'jugador'; db.config.rol = 'Jugador'; db.config.categoriaDT = '';
   db.config.categoriaJugador = (j.categorias||[])[0] || '';
+  db.config.jugadorId = j.id; db.config.jugadorDni = dni;
   view.puerta = null; view.claveMal = false; view.dniMal = false;
   view.categoria = 'Todas'; view.rutinaCategoria = null;
   view.tab = 'inicio'; marcarTab(view.tab);
@@ -5331,10 +5598,13 @@ function pantallaDatos(){
       <p class="screen-note">Por ahora esto filtra la vista. Cuando conectemos Firebase, cada DT entra con su usuario y solo ve su categoría de verdad.</p>
     </div>
     <div class="block"><div class="block-title">DT por categoría</div>
-      <p class="screen-note" style="margin-top:0">Cada DT entra con su DNI como usuario y la contraseña <strong>${esc(CLAVE_DT)}</strong> (es la misma para todos; el DNI solo sirve para que la app sepa a qué categoría mandarlo).</p>
+      ${conNubeStaff()
+        ? `<p class="screen-note" style="margin-top:0">Cada DT entra con su DNI y <strong>su propia contraseña</strong>, que elegís acá (mínimo 6 caracteres). Pasásela en persona, no por un grupo. Si la olvida, tocá "Nueva contraseña". "Eliminar" le corta el acceso al instante.</p>`
+        : `<p class="screen-note" style="margin-top:0">Sin conexión con la nube: lo que cargues acá queda solo en este dispositivo. Para crear el acceso real de un DT, entrá con conexión.</p>`}
       ${db.dts.length ? `<div class="roster">${db.dts.map(d=>`<div class="row">
         <span class="row-main"><span class="row-name">DNI ${esc(d.dni)}</span>
-        <span class="row-meta"><span>${esc(d.categoria)}</span></span></span>
+        <span class="row-meta"><span>${esc(d.categoria)}</span><span>${d.uid?'con usuario propio':'<span style="color:var(--rojo)">sin acceso todavía</span>'}</span></span></span>
+        ${conNubeStaff()?`<button class="linkish" data-claveDT="${d.id}">${d.uid?'Nueva contraseña':'Crear acceso'}</button>`:''}
         <button class="linkish" style="color:var(--rojo)" data-borrarDT="${d.id}">Eliminar</button>
       </div>`).join('')}</div>` : `<p class="screen-note" style="margin:0">Sin DT cargados todavía.</p>`}
       <div class="gap"></div>
@@ -5344,6 +5614,8 @@ function pantallaDatos(){
         <div class="field"><label class="label" for="dt-cat">Categoría a cargo</label>
           <select id="dt-cat">${CATEGORIAS.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
       </div>
+      ${conNubeStaff()?`<div class="field"><label class="label" for="dt-clave">Contraseña para este DT</label>
+        <input type="text" id="dt-clave" autocomplete="new-password" placeholder="mínimo 6 caracteres"></div>`:''}
       <button class="btn btn-naranja" id="agregarDT">Agregar DT</button>
     </div>
     <div class="block"><div class="block-title">Tomas</div>
@@ -5415,8 +5687,10 @@ function guardarBorrador(){
 
 document.getElementById('rolebox').addEventListener('click', async e=>{
   if (!e.target.closest('#salir')) return;
+  try{ await fbSubirPendiente(); }catch(e){}
   db.config.acceso=null; view.puerta=null; view.jugadorId=null; view.form=null;
   view.tab='plantel'; marcarTab('plantel');
+  fbCortarEscucha();
   if (fb){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
   await Store.save(db); render();
 });
@@ -5552,7 +5826,6 @@ app.addEventListener('click', async e=>{
   /* puerta de entrada; los botones tienen texto adentro, así que subimos al botón */
   const puerta = t.closest('#ac-jugador,#ac-coord,#ac-dt');
   if (puerta && puerta.id==='ac-jugador'){
-    if (fb && fbEstado==='sinPermiso'){ view.puerta='jugador'; view.claveMal=false; return render(); }
     if (fb && fbUser){ try{ await fb.auth.signOut(); }catch(e){} fbUser=null; }
     view.puerta='jugadorDni'; view.claveMal=false; view.dniMal=false; return render();
   }
@@ -5898,10 +6171,17 @@ app.addEventListener('click', async e=>{
   if (t.id==='guardarToma'){ return guardarToma(); }
   if (t.id==='guardarPartidoPlantel'){ return guardarPartidoPlantel(); }
   if (t.id==='agregarDT'){ return guardarDT(); }
+  const claveDT = t.closest('[data-claveDT]');
+  if (claveDT){ return nuevaClaveDT(claveDT.dataset.clavedt); }
   const delDT = t.closest('[data-borrarDT]');
   if (delDT){
-    if (!confirm('¿Eliminar este DT?')) return;
-    db.dts = db.dts.filter(d=>d.id!==delDT.dataset.borrardt);
+    if (!confirm('¿Eliminar este DT? Deja de poder entrar.')) return;
+    const d = db.dts.find(x=>x.id===delDT.dataset.borrardt);
+    if (d && d.uid && conNubeStaff()){
+      try{ await bajaAccesoDT(d); }
+      catch(e){ console.warn('Baja DT:', e); return toast('No se pudo dar de baja en la nube. Probá de nuevo con conexión.'); }
+    }
+    db.dts = db.dts.filter(x=>x.id!==delDT.dataset.borrardt);
     await Store.save(db); toast('DT eliminado'); return render();
   }
 
@@ -6187,14 +6467,46 @@ async function guardarJugador(){
   view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
 }
 
+/* con sesión real de coordinación en la nube se crean cuentas de verdad;
+   sin nube, la lista queda solo en este dispositivo */
+const conNubeStaff = () => !!(fb && fbUser && esCoord() && !db._vista);
 async function guardarDT(){
-  const dni = document.getElementById('dt-dni').value.trim();
+  const dni = normDni(document.getElementById('dt-dni').value);
   const categoria = document.getElementById('dt-cat').value;
   if (!dni) return toast('Ingresá el DNI del DT');
-  if (db.dts.some(d=>(d.dni||'').trim()===dni)) return toast('Ese DNI ya está cargado');
-  db.dts.push({ id:uid(), dni, categoria });
-  await Store.save(db);
-  toast('DT agregado · '+categoria); render();
+  const existente = db.dts.find(d=>normDni(d.dni)===dni);
+  if (!conNubeStaff()){
+    if (existente) return toast('Ese DNI ya está cargado');
+    db.dts.push({ id:uid(), dni, categoria });
+    await Store.save(db);
+    toast('DT agregado · '+categoria); return render();
+  }
+  if (existente && existente.uid) return toast('Ese DNI ya tiene acceso. Usá "Nueva contraseña" si la olvidó.');
+  const clave = (document.getElementById('dt-clave')||{}).value || '';
+  if (clave.length < 6) return toast('La contraseña tiene que tener al menos 6 caracteres');
+  try{
+    const r = await crearAccesoDT(dni, categoria, clave);
+    if (existente) Object.assign(existente, { categoria, uid:r.uid, email:r.email });
+    else db.dts.push({ id:uid(), dni, categoria, uid:r.uid, email:r.email });
+    await Store.save(db);
+    toast('Acceso creado · DNI '+dni+' · '+categoria); render();
+  }catch(e){ console.warn('Alta DT:', e); toast(textoErrorAlta(e)); }
+}
+/* "Nueva contraseña" / "Crear acceso": se da de baja la cuenta anterior
+   (si había) y se crea otra con la contraseña nueva */
+async function nuevaClaveDT(id){
+  const d = db.dts.find(x=>x.id===id);
+  if (!d || !conNubeStaff()) return;
+  const clave = prompt(`Nueva contraseña para el DT de ${d.categoria} (DNI ${d.dni}). Mínimo 6 caracteres:`);
+  if (clave===null) return;
+  if (clave.length < 6) return toast('La contraseña tiene que tener al menos 6 caracteres');
+  try{
+    if (d.uid) await bajaAccesoDT(d);
+    const r = await crearAccesoDT(normDni(d.dni), d.categoria, clave);
+    d.uid = r.uid; d.email = r.email;
+    await Store.save(db);
+    toast('Listo: la contraseña nueva ya funciona'); render();
+  }catch(e){ console.warn('Nueva contraseña DT:', e); toast(textoErrorAlta(e)); }
 }
 
 async function guardarFixture(){
@@ -6675,12 +6987,6 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
   if (db.config.categoriaDT && UNIR_CATEGORIA[db.config.categoriaDT]){
     db.config.categoriaDT = normCat(db.config.categoriaDT); migrado = true;
   }
-  /* primer DT cargado con el nuevo acceso por DNI: una sola vez, para que
-     no reaparezca si después se lo borra a propósito desde Datos */
-  if (!db.config.dtsSeeded){
-    if (!db.dts.some(d=>d.dni==='41781139')) db.dts.push({ id:uid(), dni:'41781139', categoria:'Juveniles' });
-    db.config.dtsSeeded = true; migrado = true;
-  }
   /* "Importar historial AIF" guardaba por error también la temporada en
      curso en el historial, duplicándola con lo que ya suma totalesTemporada
      (ver limpiarHistorialAnioEnCurso). Corre siempre (no solo "una vez"):
@@ -6703,24 +7009,12 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
       await cargarPlanteles(true);
     } catch(e){ console.warn('No se pudo cargar la base inicial:', e); }
   }
-  /* mismo DNI del DT de arriba, también como acceso de jugador (para poder
-     probar las dos vistas); jugador de prueba, no uno real del plantel.
-     Va DESPUÉS de sembrar el plantel para no pisar el conteo que decide
-     si hace falta cargarlo (si no, "db.jugadores.length" ya no daría 0 y
-     el plantel real nunca se cargaría solo). Corre siempre (sin bandera
-     de "una sola vez"): pedido puntual de coordinación para asegurarse de
-     que este DNI pueda entrar como jugador, así que si en algún momento
-     este jugador de prueba faltara (se borró sin querer, no llegó a
-     subirse a la nube, etc.) se vuelve a crear solo en vez de quedar
-     perdido para siempre por una bandera vieja */
-  if (!db.jugadores.some(j=>(j.dni||'').trim()==='41781139')){
-    /* el apellido empieza con "Zzz" a propósito: así queda al final en
-       los listados A-Z (el orden de siempre) y no se cuela como "el
-       primer jugador de Juveniles" en ningún lado */
-    db.jugadores.push({ id:uid(), apellido:'Zzz (acceso de prueba)', nombre:'Coordinación', categorias:['Juveniles'], dni:'41781139' });
-    await Store.save(db);
-  }
-  fbEscucharCambios();
+  /* (antes acá se creaba solo un DT y un jugador "de prueba" con un DNI
+     fijo escrito en este archivo. Como el archivo es público, ese DNI
+     servía de llave para cualquiera: ya no se crean, y ese DNI nunca se
+     publica como acceso; ver DNIS_EXPUESTOS) */
+  /* la escucha en vivo arranca recién al entrar como coordinación o DT */
+  fbEstado = fb ? 'listo' : 'off';
   render();
 })();
 </script>

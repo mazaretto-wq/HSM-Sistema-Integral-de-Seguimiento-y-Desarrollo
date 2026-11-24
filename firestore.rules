@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// Reglas de Firestore de HSM. Se pegan en la consola de Firebase:
+// Firestore Database → Reglas → reemplazar todo por este archivo → Publicar.
+//
+// Qué hacen, en simple:
+// - La base completa del club (hsm/base) solo la leen y escriben
+//   coordinación y los DT que coordinación habilitó. Sin sesión, nada.
+// - Cada DT habilitado tiene un registro en hsm_staff/{su uid}. Ese
+//   registro lo crea y lo borra SOLO coordinación. Sin registro, no entra.
+// - Los jugadores no tienen cuenta: con su DNI pueden ABRIR su llave
+//   (hsm_acceso/{dni}), pero nadie puede pedir la LISTA de llaves.
+//   Con esa llave abren la copia recortada (hsm_vista) y su fichita
+//   (hsm_ficha), que tienen nombres al azar.
+// - Todo lo demás está cerrado.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function conSesion() {
+      return request.auth != null;
+    }
+    function esCoord() {
+      return conSesion() && request.auth.token.email == 'coordinacion@harassantamaria.com';
+    }
+    function esDT() {
+      return conSesion() && exists(/databases/$(database)/documents/hsm_staff/$(request.auth.uid));
+    }
+    function esStaff() {
+      return esCoord() || esDT();
+    }
+
+    // base completa del club + registro de lo publicado para jugadores
+    match /hsm/{doc} {
+      allow read, write: if esStaff();
+    }
+
+    // DT habilitados: los crea y borra coordinación; cada DT lee el suyo
+    match /hsm_staff/{uid} {
+      allow read: if esCoord() || (conSesion() && request.auth.uid == uid);
+      allow write: if esCoord();
+    }
+
+    // con qué correo entra cada DT (se abre sabiendo el DNI, no se lista)
+    match /hsm_dtlogin/{dni} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if esCoord();
+    }
+
+    // llaves de jugadores, copia recortada y fichitas: se abren sabiendo
+    // el nombre exacto, no se pueden listar, y solo el staff las escribe
+    match /hsm_acceso/{dni} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if esStaff();
+    }
+    match /hsm_vista/{llave} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if esStaff();
+    }
+    match /hsm_ficha/{llave} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if esStaff();
+    }
+
+    // cualquier otra cosa: cerrada
+    match /{todo=**} {
+      allow read, write: if false;
+    }
+  }
+}

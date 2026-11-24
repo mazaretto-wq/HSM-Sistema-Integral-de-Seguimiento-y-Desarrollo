@@ -35,13 +35,15 @@ async function entrarComoJugador(pg, jugadorId){
   return datos;
 }
 
-/* "Soy DT" ahora pide usuario (DNI) + contraseña, y la categoría la decide
-   el DNI (ver entrar() en index.html: categoriaDelDtPorDni, db.dts), ya no
-   un desplegable. La contraseña es única para todos los DT. Si esa
+/* "Soy DT" pide usuario (DNI) + contraseña. Con la nube, cada DT tiene su
+   propia cuenta (ver acceso-nube.spec.js); estas pruebas corren SIN nube,
+   donde la categoría sale de db.dts y la contraseña es la de uso local
+   (la misma que coordinación sin conexión). Si esa
    categoría todavía no tiene un DT cargado en db.dts, este helper le crea
    uno de prueba; si ya tiene (por ejemplo el que se siembra solo la
    primera vez, en Juveniles), reusa ese mismo DNI. Devuelve el DNI usado. */
-const CLAVE_DT = 'B@sehsm';
+/* sin nube, el DT usa la misma clave de uso local que coordinación */
+const CLAVE_DT = CLAVE;
 async function entrarComoDT(pg, categoria){
   const dni = await pg.evaluate((categoria)=>{
     let d = db.dts.find(x=>x.categoria===categoria);
