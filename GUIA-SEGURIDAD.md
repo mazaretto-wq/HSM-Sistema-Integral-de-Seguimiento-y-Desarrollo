@@ -15,12 +15,24 @@ Esta guía acompaña el cambio de seguridad de la app. Hay que hacerla **una sol
 
 Se aprueba el cambio en GitHub y Vercel lo publica solo.
 
-## Paso 2 · Entrar una vez como coordinación
+## Paso 2 · Pegar las reglas de seguridad en Firebase (antes que nada)
 
-1. Abrí la app y entrá como **Coordinación**.
+Este paso cierra la puerta, y además **tiene que ir antes** que los siguientes: con las reglas viejas, Firebase no deja guardar los accesos de DT ni las llaves de los jugadores (aparece "Firebase no dejó guardar el acceso").
+
+1. Entrá a <https://console.firebase.google.com> y abrí el proyecto **hsm-base-de-datos**.
+2. Menú de la izquierda: **Firestore Database → pestaña Reglas**.
+3. Borrá todo lo que hay y pegá el contenido del archivo `firestore.rules` de este repositorio.
+4. Tocá **Publicar**.
+5. Menú de la izquierda: **Storage → pestaña Reglas**.
+6. Borrá todo y pegá el contenido de `storage.rules`. Tocá **Publicar**.
+7. Si Firebase pregunta si Storage puede consultar Firestore, aceptá.
+
+## Paso 3 · Entrar una vez como coordinación
+
+1. Abrí la app y entrá como **Coordinación** (si ya estabas adentro, tocá "salir" y volvé a entrar).
 2. Esperá unos 10 segundos. La app arma sola las llaves de acceso de cada jugador que tenga DNI cargado.
 
-## Paso 3 · Crear la contraseña de cada DT
+## Paso 4 · Crear la contraseña de cada DT
 
 1. En la app, andá a **Datos → DT por categoría**.
 2. Para cada DT: escribí su DNI, elegí su categoría y una contraseña (mínimo 6 caracteres) y tocá **Agregar DT**.
@@ -30,18 +42,6 @@ Se aprueba el cambio en GitHub y Vercel lo publica solo.
 Si un DT se olvida la contraseña, tocá **Nueva contraseña**. **Eliminar** le corta el acceso al instante.
 
 > Si aparece "Falta habilitar Correo/contraseña", en Firebase andá a **Authentication → Sign-in method** y activá **Correo electrónico/contraseña**.
-
-## Paso 4 · Pegar las reglas de seguridad en Firebase
-
-Este es el paso que cierra la puerta.
-
-1. Entrá a <https://console.firebase.google.com> y abrí el proyecto **hsm-base-de-datos**.
-2. Menú de la izquierda: **Firestore Database → pestaña Reglas**.
-3. Borrá todo lo que hay y pegá el contenido del archivo `firestore.rules` de este repositorio.
-4. Tocá **Publicar**.
-5. Menú de la izquierda: **Storage → pestaña Reglas**.
-6. Borrá todo y pegá el contenido de `storage.rules`. Tocá **Publicar**.
-7. Si Firebase pregunta si Storage puede consultar Firestore, aceptá.
 
 ## Paso 5 · Comprobar que funciona
 
