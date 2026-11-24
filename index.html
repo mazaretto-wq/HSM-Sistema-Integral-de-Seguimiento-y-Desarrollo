@@ -4078,7 +4078,8 @@ const pizSubNombre = (catId, subId) => {
 
 function pizNuevo(categoria, subcategoria){
   return { id:uid(), categoria:categoria||'', subcategoria:subcategoria||'',
-           nombre:'', duracion:'', explicacion:'', creado:new Date().toISOString(), modificado:null,
+           nombre:'', duracion:'', explicacion:'', jugadoresMin:null, jugadoresMax:null, paridad:'',
+           creado:new Date().toISOString(), modificado:null,
            elementos:[], trazos:[] };
 }
 const pizClonarDraft = ej => JSON.parse(JSON.stringify(ej));
@@ -4243,7 +4244,7 @@ function pizarraLista(){
       <div class="piz-card-info">
         <div class="row-name">${esc(ej.nombre||'Sin nombre')}</div>
         ${cat?`<div class="piz-card-cat">${esc(cat.nombre)}${sub?' · '+esc(sub):''}</div>`:''}
-        <div class="row-meta"><span>${esc(ej.duracion||'—')}</span><span>${pizFecha(ej.creado)}</span></div>
+        <div class="row-meta"><span>${esc(ej.duracion||'—')}</span>${textoJugadoresEjercicio(ej)?`<span>${esc(textoJugadoresEjercicio(ej))} jug.</span>`:''}<span>${pizFecha(ej.creado)}</span></div>
       </div>
       <div class="piz-card-acciones">
         <button class="linkish" data-piz="abrir" data-id="${ej.id}">Abrir</button>
@@ -4287,7 +4288,7 @@ function pizarraVer(){
   const cat = pizCat(ej.categoria), sub = pizSubNombre(ej.categoria, ej.subcategoria);
   app.innerHTML = `<button class="back" data-piz="volver">← Entrenos</button>
     <h2 class="screen-title">${esc(ej.nombre||'Sin nombre')}</h2>
-    <p class="screen-note">${cat?esc(cat.nombre)+(sub?' · '+esc(sub):'')+' · ':''}${ej.duracion?esc(ej.duracion)+' · ':''}Creado el ${pizFecha(ej.creado)}</p>
+    <p class="screen-note">${cat?esc(cat.nombre)+(sub?' · '+esc(sub):'')+' · ':''}${ej.duracion?esc(ej.duracion)+' · ':''}${textoJugadoresEjercicio(ej)?esc(textoJugadoresEjercicio(ej))+' jugadores · ':''}Creado el ${pizFecha(ej.creado)}</p>
     <div class="piz-pitch">${pizSvgCompleto(ej,{id:'piz-ver-svg'})}</div>
     ${ej.explicacion?`<div class="block"><div class="block-title">Explicación</div><p style="white-space:pre-wrap">${esc(ej.explicacion)}</p></div>`:''}
     ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-piz="editar" data-id="${ej.id}">Editar</button>`:''}
@@ -4331,6 +4332,18 @@ function pizarraEditor(){
       <textarea id="piz-explicacion" placeholder="Describí cómo se desarrolla el ejercicio, las consignas, objetivos, cantidad de jugadores, espacio de juego, progresiones, etc.">${esc(d.explicacion)}</textarea></div>
     <div class="field"><label class="label" for="piz-duracion">Duración ideal / aproximada</label>
       <input type="text" id="piz-duracion" placeholder="Ej. 4 series de 4 minutos" value="${esc(d.duracion)}"></div>
+    <div class="two">
+      <div class="field"><label class="label" for="piz-jug-min">Mínimo de jugadores<em>opcional</em></label>
+        <input type="number" inputmode="numeric" min="1" id="piz-jug-min" value="${d.jugadoresMin??''}" placeholder="Ej: 9"></div>
+      <div class="field"><label class="label" for="piz-jug-max">Máximo ideal<em>opcional</em></label>
+        <input type="number" inputmode="numeric" min="1" id="piz-jug-max" value="${d.jugadoresMax??''}" placeholder="Ej: 15"></div>
+    </div>
+    <div class="field"><span class="label">Cantidad de jugadores<em>para que armar la sesión lo sugiera solo</em></span>
+      <div class="chips">
+        <button type="button" class="chip" data-ejParidad="" aria-pressed="${(d.paridad||'')===''}">Cualquiera</button>
+        <button type="button" class="chip" data-ejParidad="par" aria-pressed="${d.paridad==='par'}">Par</button>
+        <button type="button" class="chip" data-ejParidad="impar" aria-pressed="${d.paridad==='impar'}">Impar</button>
+      </div></div>
     <div style="height:26px"></div>`;
   pizWire();
 }
@@ -4831,7 +4844,8 @@ function formSesion(){
         resumen: p.explicacion?esc(p.explicacion):esc(cat?cat.nombre:'Ejercicio de pizarra')+(p.duracion?` · ${esc(p.duracion)}`:''),
         color: p.categoria==='fisico'?fase('fisico').color:fase('tecnica').color,
         letra:(cat?cat.nombre:'Ejercicio').slice(0,3).toUpperCase(), verHref:`data-piz="abrir" data-id="${p.id}"`, origen:'pizarra',
-        grupo: p.categoria==='fisico'?'fisico':'pelota' };
+        grupo: p.categoria==='fisico'?'fisico':'pelota',
+        jugadoresMin:p.jugadoresMin, jugadoresMax:p.jugadoresMax, paridad:p.paridad, textoJugadores:textoJugadoresEjercicio(p) };
     });
   const disponibles = [...disponiblesTexto, ...disponiblesPizarra];
   const filaEj = e => {
@@ -5512,6 +5526,8 @@ app.addEventListener('input', e=>{
     if (e.target.id==='piz-nombre')       view.pizDraft.nombre = e.target.value;
     else if (e.target.id==='piz-duracion')    view.pizDraft.duracion = e.target.value;
     else if (e.target.id==='piz-explicacion') view.pizDraft.explicacion = e.target.value;
+    else if (e.target.id==='piz-jug-min') view.pizDraft.jugadoresMin = e.target.value===''?null:Number(e.target.value);
+    else if (e.target.id==='piz-jug-max') view.pizDraft.jugadoresMax = e.target.value===''?null:Number(e.target.value);
   }
   if (e.target.hasAttribute('data-editval')){
     /* guarda lo tecleado aparte para no perderlo si cambia de solapa
@@ -5639,6 +5655,9 @@ app.addEventListener('click', async e=>{
     d.nombre = nombre.trim();
     d.explicacion = (document.getElementById('piz-explicacion')||{}).value||'';
     d.duracion = (document.getElementById('piz-duracion')||{}).value||'';
+    d.jugadoresMin = leerNum('piz-jug-min');
+    d.jugadoresMax = leerNum('piz-jug-max');
+    d.paridad = (document.querySelector('[data-ejParidad][aria-pressed="true"]')||{}).dataset?.ejparidad || '';
     d.modificado = new Date().toISOString();
     const existente = db.pizarra.find(x=>x.id===d.id);
     if (existente) Object.assign(existente, d);
@@ -5950,6 +5969,10 @@ app.addEventListener('click', async e=>{
        atado a "view", así que un render() de más los dejaría en blanco */
     chipEjParidad.closest('.chips').querySelectorAll('[data-ejParidad]').forEach(b=>b.setAttribute('aria-pressed','false'));
     chipEjParidad.setAttribute('aria-pressed','true');
+    /* en la pizarra sí hace falta guardarlo en el draft: ahí otras
+       acciones (elegir herramienta, color, deshacer) sí vuelven a pintar
+       todo, y si no quedó en el draft se perdería al tocar cualquiera */
+    if (view.pizDraft) view.pizDraft.paridad = chipEjParidad.dataset.ejparidad;
     return;
   }
   if (t.id==='agregarFixture'){
