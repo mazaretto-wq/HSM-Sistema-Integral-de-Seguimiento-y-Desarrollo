@@ -860,6 +860,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              evolucionOcultas:{}, evolucionActivo:null, verCrudoId:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null, fixtureLinkEditando:null, fxLocal:null,
+             nuevoJugadorPaso:null, nuevoJugadorCat:null, nuevoJugadorBuscar:'',
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false,
@@ -1120,6 +1121,27 @@ function limpiarHistorialOtraDuplicaCategoria(baseDb, reporte){
    herramienta general de "Importar historial AIF" (que nunca toca Juveniles):
    es una corrección manual de una sola vez, para este jugador puntual. Segura
    de correr de nuevo: si ya quedó igual, no cambia nada. */
+/* pedido puntual de coordinación: Mateo Gallagher y Lucas Mirave ya
+   estaban en Cadetes y ahora TAMBIÉN juegan Juveniles (se agrega, no se
+   reemplaza la categoría vieja). Segura de correr de nuevo: si ya la
+   tienen, no hace nada. */
+function agregarJuvenilesAGallagherYMirave(baseDb){
+  const buscados = [
+    { apellido:'GALLAGHER', nombre:'MATEO' },
+    { apellido:'MIRAVE', nombre:'LUCAS' },
+  ];
+  let cambio = false;
+  buscados.forEach(({apellido,nombre})=>{
+    const j = (baseDb.jugadores||[]).find(x=>
+      normNombreAif(x.apellido)===apellido && normNombreAif(x.nombre)===nombre);
+    if (!j) return;
+    if (!(j.categorias||[]).includes('Juveniles')){
+      j.categorias = [...(j.categorias||[]), 'Juveniles'];
+      cambio = true;
+    }
+  });
+  return cambio;
+}
 function corregirHistorialPereyra(baseDb){
   const j = (baseDb.jugadores||[]).find(x=>
     (x.apellido||'').trim().toUpperCase()==='PEREYRA' &&
@@ -1659,7 +1681,7 @@ async function entrar(rol){
          no había llegado a subirse porque recién ahora hay sesión): se
          vuelve a aplicar acá para no pisarla con el dato corrupto */
       const reporteDup = [];
-      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db, reporteDup) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db);
+      const corregido = limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db, reporteDup) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db) | agregarJuvenilesAGallagherYMirave(db);
       if (corregido) await Store.save(db);
       if (reporteDup.length && rol==='coordinacion'){
         const nombres = [...new Set(reporteDup)];
@@ -3622,7 +3644,11 @@ function pantallaCargar(){
         <span style="color:var(--ink-2)">›</span></button>`).join('')}</div>`;
     return;
   }
-  if (view.form==='nuevoJugador') return formJugador();
+  if (view.form==='nuevoJugador'){
+    if (view.nuevoJugadorPaso==='preguntar') return pantallaPreguntaJugadorExistente();
+    if (view.nuevoJugadorPaso==='buscar') return pantallaBuscarJugadorExistente();
+    return formJugador();
+  }
   if (view.form==='nuevaToma')    return formToma();
   if (view.form==='evaluacion')   return formEvaluacion();
   if (view.form==='partido')      return formPartido();
@@ -3848,11 +3874,56 @@ async function guardarPartidoPlantel(){
   window.scrollTo(0,0); render();
 }
 
+/* antes de cargar un jugador nuevo desde una categoría puntual, pregunta
+   si ya juega en otra: evita duplicarlo con una ficha nueva cuando en
+   realidad solo hace falta agregarle esta categoría a la que ya tiene */
+function pantallaPreguntaJugadorExistente(){
+  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
+    <h2 class="screen-title">Agregar jugador</h2>
+    <p class="screen-note">¿Este jugador ya está registrado en otra categoría de ${esc(view.nuevoJugadorCat)}?</p>
+    <button class="btn btn-ghost" data-nuevoJugadorExistente="si">Sí, ya está en otra categoría</button>
+    <div class="gap"></div>
+    <button class="btn btn-naranja" data-nuevoJugadorExistente="no">No, es un jugador nuevo</button>`;
+}
+function resultadosBusquedaJugadorExistente(){
+  const q = (view.nuevoJugadorBuscar||'').trim().toLowerCase();
+  if (q.length<2) return `<p class="screen-note">Escribí al menos 2 letras.</p>`;
+  const resultados = db.jugadores
+    .filter(j=>!(j.categorias||[]).includes(view.nuevoJugadorCat))
+    .filter(j=>nomb(j).toLowerCase().includes(q))
+    .slice(0,8);
+  if (!resultados.length) return `<div class="empty"><p>No encontramos a nadie con ese nombre (o ya está en ${esc(view.nuevoJugadorCat)}).</p></div>`;
+  return `<div class="roster">${resultados.map(j=>`<button class="row" data-agregarCategoriaA="${j.id}">
+    ${avatarJugador(j)}
+    <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
+    <span class="row-meta"><span>${esc((j.categorias||[]).join(' · ')||'sin categoría')}</span></span></span>
+  </button>`).join('')}</div>`;
+}
+/* búsqueda con texto predictivo: re-pinta solo los resultados (no toda la
+   pantalla) para no perder el foco ni el cursor del input en cada letra */
+function actualizarBusquedaJugadorExistente(){
+  const el = document.getElementById('resultados-busqueda-jugador');
+  if (el) el.innerHTML = resultadosBusquedaJugadorExistente();
+}
+function pantallaBuscarJugadorExistente(){
+  app.innerHTML = `<button class="back" data-back="1">← Cargar</button>
+    <h2 class="screen-title">Buscar jugador</h2>
+    <p class="screen-note">Buscá por nombre o apellido para agregarlo a ${esc(view.nuevoJugadorCat)} sin duplicarlo.</p>
+    <div class="field"><input type="text" id="buscar-jugador-existente" placeholder="Nombre o apellido..."
+      value="${esc(view.nuevoJugadorBuscar||'')}" autocomplete="off"></div>
+    <div id="resultados-busqueda-jugador">${resultadosBusquedaJugadorExistente()}</div>
+    <div class="gap"></div>
+    <button class="btn btn-ghost" data-volverPreguntaJugador="1">← No es ninguno de estos / Volver</button>`;
+  const inp = document.getElementById('buscar-jugador-existente');
+  if (inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
 function formJugador(){
   const j = db.jugadores.find(x=>x.id===view.editJugador) || {};
   const edit = !!j.id;
   const pos = j.posiciones || [], principal = pos[0] || '', otras = pos.slice(1);
-  const cats = j.categorias || [];
+  /* si viene de "Agregar jugador" dentro de una categoría puntual (y ya
+     contestó que es nuevo), se la precarga para no tener que elegirla de nuevo */
+  const cats = edit ? (j.categorias || []) : (view.nuevoJugadorCat ? [view.nuevoJugadorCat] : []);
   app.innerHTML = `<button class="back" data-back="1">← ${edit?'Ficha':'Cargar'}</button>
     <h2 class="screen-title">${edit?'Editar jugador':'Nuevo jugador'}</h2>
     <p class="screen-note">${edit
@@ -5397,6 +5468,10 @@ app.addEventListener('input', e=>{
   if (e.target.closest('.pl-tabla') && ['goles','asistencias','amarillas','rojas','minutos'].includes(e.target.dataset.campo)){
     actualizarTotalesPartido();
   }
+  if (e.target.id==='buscar-jugador-existente'){
+    view.nuevoJugadorBuscar = e.target.value;
+    actualizarBusquedaJugadorExistente();
+  }
 });
 
 app.addEventListener('click', async e=>{
@@ -5693,8 +5768,36 @@ app.addEventListener('click', async e=>{
     }
     if (d==='cargarPara'){ view.jugadorSel=view.jugadorId; view.jugadorId=null; view.tab='cargar'; view.form='evaluacion'; view.evalTipo=null; view.evalFecha=null; view.evalFisico=null; }
     else { view.tab='cargar'; view.form=d; view.jugadorId=null; view.editJugador=null;
-      if (d==='evaluacion'){ view.evalTipo=null; view.evalFecha=null; view.evalFisico=null; } }
+      if (d==='evaluacion'){ view.evalTipo=null; view.evalFecha=null; view.evalFisico=null; }
+      if (d==='nuevoJugador'){
+        /* si se vino de una categoría puntual (no "Todas"), primero
+           pregunta si ya juega en otro lado, para no duplicarlo: se
+           puede buscar y enlazarlo en vez de cargarlo de cero */
+        view.nuevoJugadorCat = (view.categoria && view.categoria!=='Todas') ? view.categoria : null;
+        view.nuevoJugadorPaso = view.nuevoJugadorCat ? 'preguntar' : 'form';
+        view.nuevoJugadorBuscar = '';
+      } }
     marcarTab('cargar'); window.scrollTo(0,0); return render();
+  }
+
+  const respJugExistente = t.closest('[data-nuevoJugadorExistente]');
+  if (respJugExistente){
+    view.nuevoJugadorPaso = respJugExistente.dataset.nuevojugadorexistente==='si' ? 'buscar' : 'form';
+    if (view.nuevoJugadorPaso==='buscar') view.nuevoJugadorBuscar = '';
+    window.scrollTo(0,0); return render();
+  }
+  const volverPreguntaJug = t.closest('[data-volverPreguntaJugador]');
+  if (volverPreguntaJug){ view.nuevoJugadorPaso='preguntar'; view.nuevoJugadorBuscar=''; window.scrollTo(0,0); return render(); }
+  const agregarCatA = t.closest('[data-agregarCategoriaA]');
+  if (agregarCatA){
+    const j = db.jugadores.find(x=>x.id===agregarCatA.dataset.agregarcategoriaa);
+    if (j && view.nuevoJugadorCat && !(j.categorias||[]).includes(view.nuevoJugadorCat)){
+      j.categorias = [...(j.categorias||[]), view.nuevoJugadorCat];
+      await Store.save(db);
+      toast(`${nomb(j)} se agregó a ${view.nuevoJugadorCat}`);
+    }
+    view.form=null; view.nuevoJugadorPaso=null; view.nuevoJugadorCat=null; view.nuevoJugadorBuscar='';
+    view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); return render();
   }
 
   const sc = t.closest('.scale button');
@@ -5992,7 +6095,8 @@ async function guardarJugador(){
     db.jugadores.push({ id:uid(), ...datos });
     await Store.save(db); toast('Jugador guardado');
   }
-  view.form=null; view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
+  view.form=null; view.nuevoJugadorPaso=null; view.nuevoJugadorCat=null; view.nuevoJugadorBuscar='';
+  view.tab='plantel'; marcarTab('plantel'); window.scrollTo(0,0); render();
 }
 
 async function guardarDT(){
@@ -6496,7 +6600,7 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
      momento no había sesión iniciada, un login posterior volvería a bajar
      la copia vieja y pisaría la corrección (ver el mismo llamado en
      entrar()) */
-  if (limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db)) migrado = true;
+  if (limpiarHistorialAnioEnCurso(db) | limpiarHistorialDuplicado(db) | limpiarHistorialOtraDuplicaCategoria(db) | corregirHistorialPereyra(db) | cargarInformeJuvenilesPdf2026(db) | agregarJuvenilesAGallagherYMirave(db)) migrado = true;
   if (migrado) await Store.save(db);
 
   /* Primera visita en este dispositivo: los datos ya vienen dentro del archivo,
