@@ -51,7 +51,7 @@ Si un DT se olvida la contraseña, tocá **Nueva contraseña**. **Eliminar** le 
 ## Paso 6 · Limpieza recomendada
 
 - En Firebase, **Authentication → Users**: borrá las cuentas viejas compartidas `dt@harassantamaria.com` y `jugadores@harassantamaria.com`. Ya no tienen acceso a nada, pero conviene que no existan.
-- El DNI 41781139 estaba escrito en el código, que es público, así que **ya no sirve como llave de jugador**. Si lo usabas para probar, cargale otro DNI al jugador "Zzz (acceso de prueba)" o borralo.
+- El DNI 41781139 es el **jugador de prueba de coordinación** (Juveniles), para ver la app como jugador. Se recrea solo al entrar como coordinación. Ese DNI está escrito en el código, así que cualquiera que lo lea puede usarlo: solo abre la copia sin datos sensibles.
 - Pasá el repositorio de GitHub a **privado**: Settings → Danger zone → Change visibility. La app sigue funcionando igual.
 
 ## Lo que todavía queda pendiente

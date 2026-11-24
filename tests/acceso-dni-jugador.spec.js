@@ -65,12 +65,19 @@ t('El cartel de arriba muestra la categoría del jugador identificado', (await p
 t('El jugador queda con rol "Jugador" (no "Coordinador")', (await pg.evaluate(()=>db.config.rol))==='Jugador');
 t('Queda anotado CUÁL jugador es', (await pg.evaluate(()=>db.config.jugadorId))===jid);
 
-// ---- ya no se crea solo un jugador "de prueba" con un DNI escrito en el
-//      archivo (el archivo es público: ese DNI era una llave para cualquiera) ----
+// ---- el jugador de prueba de coordinación (DNI 41781139): se asegura al
+//      entrar como coordinación, y entra como jugador de Juveniles ----
 await pg.click('#salir'); await pg.waitForTimeout(400);
-await pg.reload(); await pg.waitForTimeout(2000);
-t('No aparece ningún jugador de prueba con el DNI 41781139',
-  !(await pg.evaluate(()=>db.jugadores.some(j=>j.dni==='41781139'))));
+await pg.evaluate(async ()=>{ db.jugadores = db.jugadores.filter(j=>j.dni!=='41781139'); await Store.save(db); });
+await pg.click('#ac-coord'); await pg.waitForTimeout(300);
+await pg.fill('#ac-clave','hsm-sin-conexion'); await pg.click('#ac-entrar'); await pg.waitForTimeout(900);
+t('Al entrar coordinación se (re)crea el jugador de prueba 41781139',
+  await pg.evaluate(()=>db.jugadores.some(j=>j.dni==='41781139' && j.apellido.includes('Zzz'))));
+await pg.click('#salir'); await pg.waitForTimeout(400);
+await pg.click('#ac-jugador'); await pg.waitForTimeout(300);
+await pg.fill('#ac-dni', '41781139'); await pg.click('#ac-dni-entrar'); await pg.waitForTimeout(500);
+t('El DNI 41781139 entra como jugador de Juveniles',
+  (await pg.evaluate(()=>db.config.acceso))==='jugador' && (await pg.evaluate(()=>db.config.categoriaJugador))==='Juveniles');
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 

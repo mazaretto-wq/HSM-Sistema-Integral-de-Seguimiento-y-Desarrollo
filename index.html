@@ -514,9 +514,17 @@ const COL_VISTA   = 'hsm_vista';    /* hsm_vista/{llave}: lo que ve cualquier ju
 const COL_FICHA   = 'hsm_ficha';    /* hsm_ficha/{llave}: los datos propios de UN jugador */
 const DOC_PUBLICADO = 'publicado';  /* hsm/publicado: registro de lo publicado (solo staff) */
 const normDni = s => String(s||'').replace(/\D/g,'');
-/* DNI que quedaron escritos en versiones viejas de este archivo (que es
-   público): nunca se publican como llave de jugador */
-const DNIS_EXPUESTOS = new Set(['41781139']);
+/* jugador de prueba de coordinación, para ver la app "con ojos de
+   jugador" de Juveniles (pedido de coordinación). Ojo: este DNI está
+   escrito en este archivo, así que es una llave conocida; solo abre la
+   copia recortada que ve cualquier jugador. Ver asegurarJugadorPrueba */
+const DNI_JUGADOR_PRUEBA = '41781139';
+function asegurarJugadorPrueba(){
+  if (db._vista || db.jugadores.some(j=>normDni(j.dni)===DNI_JUGADOR_PRUEBA)) return false;
+  /* "Zzz" para que quede al final en los listados A-Z */
+  db.jugadores.push({ id:uid(), apellido:'Zzz (acceso de prueba)', nombre:'Coordinación', categorias:['Juveniles'], dni:DNI_JUGADOR_PRUEBA });
+  return true;
+}
 
 let fb = null;            /* { db, auth, ref } cuando el SDK está */
 let fbUser = null;        /* usuario logueado, o null */
@@ -783,7 +791,7 @@ async function publicarParaJugadores(){
       pub.hashes = pub.hashes || {}; pub.hashes.fichas = pub.hashes.fichas || {};
 
       const actuales = {};                         /* dni → jugadorId */
-      db.jugadores.forEach(j=>{ const k = normDni(j.dni); if (k && !DNIS_EXPUESTOS.has(k) && !actuales[k]) actuales[k] = j.id; });
+      db.jugadores.forEach(j=>{ const k = normDni(j.dni); if (k && !actuales[k]) actuales[k] = j.id; });
       const sacados = Object.keys(pub.dnis).filter(k=>actuales[k]!==pub.dnis[k]);
 
       const ops = [];                              /* ['set'|'del', ref, datos] */
@@ -1937,6 +1945,7 @@ async function entrar(rol){
     }
     if (fbEstado==='listo'){ fbEscucharCambios(); }
   }
+  if (rol==='coordinacion') asegurarJugadorPrueba();
   db.config.acceso = rol; view.puerta = null; view.claveMal = false; view.dtDni = null;
   db.config.jugadorId = null; db.config.categoriaJugador = '';
   if (rol==='dt'){ db.config.rol = 'DT'; db.config.categoriaDT = cat; }
@@ -7009,10 +7018,8 @@ function toast(m){ const el=document.getElementById('toast'); el.textContent=m; 
       await cargarPlanteles(true);
     } catch(e){ console.warn('No se pudo cargar la base inicial:', e); }
   }
-  /* (antes acá se creaba solo un DT y un jugador "de prueba" con un DNI
-     fijo escrito en este archivo. Como el archivo es público, ese DNI
-     servía de llave para cualquiera: ya no se crean, y ese DNI nunca se
-     publica como acceso; ver DNIS_EXPUESTOS) */
+  /* el jugador de prueba de coordinación se asegura al entrar como
+     coordinación (ver entrar), no acá: así llega a la nube */
   /* la escucha en vivo arranca recién al entrar como coordinación o DT */
   fbEstado = fb ? 'listo' : 'off';
   render();

@@ -145,8 +145,8 @@ const nube = await pg.evaluate(()=>({
   vistas: Object.keys(__fs).filter(k=>k.startsWith('hsm_vista/')).length,
   fichas: Object.keys(__fs).filter(k=>k.startsWith('hsm_ficha/')).length
 }));
-t('Hay una llave por cada DNI cargado', JSON.stringify(nube.acceso)===JSON.stringify(['hsm_acceso/30111222','hsm_acceso/30333444']), JSON.stringify(nube.acceso));
-t('Hay una sola copia común y una fichita por jugador con DNI', nube.vistas===1 && nube.fichas===2, JSON.stringify(nube));
+t('Hay una llave por cada DNI cargado (incluido el jugador de prueba)', JSON.stringify(nube.acceso)===JSON.stringify(['hsm_acceso/30111222','hsm_acceso/30333444','hsm_acceso/41781139']), JSON.stringify(nube.acceso));
+t('Hay una sola copia común y una fichita por jugador con DNI', nube.vistas===1 && nube.fichas===3, JSON.stringify(nube));
 const otraVez = await pg.evaluate(()=>publicarParaJugadores());
 t('Publicar de nuevo sin cambios casi no escribe nada (solo el registro)', otraVez.ok && otraVez.escrituras===1, JSON.stringify(otraVez));
 
@@ -273,13 +273,19 @@ const despues = await pg.evaluate((llaveAntes)=>({
 }), llaveAntes);
 t('El jugador sin DNI pierde su llave', despues.sinLlave);
 t('La copia común cambia de llave y la vieja se borra', despues.nueva!==llaveAntes && despues.viejaBorrada, JSON.stringify(despues));
-t('Su fichita también se borra', despues.fichas===1, String(despues.fichas));
+t('Su fichita también se borra', despues.fichas===2, String(despues.fichas));
 
-// ---- el DNI que estaba escrito en el archivo nunca se publica ----
-await pg.evaluate(async (id)=>{ db.jugadores.find(j=>j.id===id).dni='41781139'; await Store.save(db); }, ids.c);
-await pg.waitForTimeout(1600);
+// ---- el jugador de prueba de coordinación (DNI 41781139) entra como Juveniles ----
+t('Al entrar coordinación, existe el jugador de prueba con el DNI 41781139 en Juveniles',
+  await pg.evaluate(()=>db.jugadores.some(j=>j.dni==='41781139' && (j.categorias||[]).includes('Juveniles'))));
 await pg.evaluate(()=>publicarParaJugadores());
-t('El DNI 41781139 (público en versiones viejas) no se publica como llave', await pg.evaluate(()=>!__fs['hsm_acceso/41781139']));
+t('Su llave se publica', await pg.evaluate(()=>!!__fs['hsm_acceso/41781139']));
+await pg.click('#salir'); await pg.waitForTimeout(400);
+await pg.click('#ac-jugador'); await pg.waitForTimeout(300);
+await pg.fill('#ac-dni', '41781139'); await pg.click('#ac-dni-entrar'); await pg.waitForTimeout(800);
+t('El DNI 41781139 entra como jugador de Juveniles',
+  (await pg.evaluate(()=>db.config.acceso))==='jugador' && (await pg.evaluate(()=>db.config.categoriaJugador))==='Juveniles');
+t('Y ve la copia recortada, no la base', await pg.evaluate(()=>!!db._vista && !db.jugadores.some(j=>j.dni)));
 
 t('Sin errores de JS en toda la corrida', errs.length===0, errs.join(' | '));
 
