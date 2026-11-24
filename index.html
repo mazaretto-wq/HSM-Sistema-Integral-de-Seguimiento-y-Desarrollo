@@ -4664,7 +4664,7 @@ function pantallaBiblioteca(){
       <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
       <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
       <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>
-      ${e.duracion?`<span>${e.duracion}'</span>`:''}${e.jugadores?`<span>${esc(e.jugadores)} jug.</span>`:''}
+      ${e.duracion?`<span>${e.duracion}'</span>`:''}${textoJugadoresEjercicio(e)?`<span>${esc(textoJugadoresEjercicio(e))} jug.</span>`:''}
       ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
       <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
       ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
@@ -4731,7 +4731,7 @@ function detalleEjercicio(){
     <div class="ficha-carnet" style="color:${fase(e.fase).color}">${esc(fase(e.fase).nombre.toUpperCase())}</div>
     <div class="ficha-tags">
       ${e.duracion?`<span class="tag">${e.duracion} min</span>`:''}
-      ${e.jugadores?`<span class="tag">${esc(e.jugadores)} jugadores</span>`:''}
+      ${textoJugadoresEjercicio(e)?`<span class="tag">${esc(textoJugadoresEjercicio(e))} jugadores</span>`:''}
       ${e.espacio?`<span class="tag">${esc(e.espacio)}</span>`:''}
       ${(e.categorias||[]).map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
     </div></div>
@@ -4781,6 +4781,7 @@ function bloqueAsistencia(d){
 function formSesion(){
   const d = view.draft, cats = catsPermitidas();
   const total = d.items.reduce((a,i)=>a+i.minutos,0);
+  const cantidadHoy = cantidadJugadoresSesion(d);
   let h = `<button class="back" data-back="1">← Entrenos</button>
     <h2 class="screen-title">Armar sesión</h2>
     <div class="two">
@@ -4821,7 +4822,8 @@ function formSesion(){
     .filter(e=>!(e.categorias||[]).length || (e.categorias||[]).includes(d.categoria))
     .sort((a,b)=>FASES.findIndex(f=>f.id===a.fase)-FASES.findIndex(f=>f.id===b.fase))
     .map(e=>({ id:e.id, nombre:e.nombre, resumen:e.objetivo?esc(e.objetivo):esc(fase(e.fase).nombre)+(e.duracion?` · ${e.duracion}'`:''),
-      color:fase(e.fase).color, letra:fase(e.fase).nombre.slice(0,3).toUpperCase(), verHref:`data-ejercicio="${e.id}"`, grupo:grupoDeFase(e.fase) }));
+      color:fase(e.fase).color, letra:fase(e.fase).nombre.slice(0,3).toUpperCase(), verHref:`data-ejercicio="${e.id}"`, grupo:grupoDeFase(e.fase),
+      jugadoresMin:e.jugadoresMin, jugadoresMax:e.jugadoresMax, paridad:e.paridad, textoJugadores:textoJugadoresEjercicio(e) }));
   const disponiblesPizarra = [...db.pizarra]
     .sort((a,b)=>(b.creado||'').localeCompare(a.creado||''))
     .map(p=>{ const cat = pizCat(p.categoria);
@@ -4832,19 +4834,35 @@ function formSesion(){
         grupo: p.categoria==='fisico'?'fisico':'pelota' };
     });
   const disponibles = [...disponiblesTexto, ...disponiblesPizarra];
-  const filaEj = e => `<div class="row">
+  const filaEj = e => {
+    const coincide = ejercicioCoincideConCantidad(e, cantidadHoy);
+    const avisoMatch = coincide===true
+      ? `<span style="color:var(--verde);font-weight:600">✓ Encaja con tus ${cantidadHoy}</span>`
+      : coincide===false
+        ? `<span style="color:var(--ink-2)">⚠ Pide ${esc(e.textoJugadores||'otra cantidad')}, vos tenés ${cantidadHoy}</span>`
+        : '';
+    return `<div class="row">
       <span class="dorsal" style="background:${e.color};color:#fff;font-size:10px">${esc(e.letra)}</span>
       <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
-      <span class="row-meta">${e.resumen}</span></span>
+      <span class="row-meta">${e.resumen}${avisoMatch?` · ${avisoMatch}`:''}</span></span>
       <button class="linkish" ${e.verHref} style="font-size:12px;white-space:nowrap">Saber más</button>
       <button data-addEj="${e.id}" style="background:none;border:0;color:var(--naranja);font-size:22px;cursor:pointer;padding:0 2px;line-height:1">+</button>
     </div>`;
+  };
   if (!disponibles.length){
     h += `<div class="block"><div class="block-title">Agregar de la biblioteca</div>
       <div class="empty"><p>Todavía no hay ejercicios creados. Andá a la base de ejercicios o a Ejercicios para cargar el primero.</p></div></div>`;
   } else {
+    if (cantidadHoy!=null){
+      h += `<p class="screen-note">Hoy tenés <strong>${cantidadHoy}</strong> jugador${cantidadHoy===1?'':'es'}
+        (${cantidadHoy%2===0?'par':'impar'}). Los ejercicios que encajan con esa cantidad aparecen primero y marcados con ✓.</p>`;
+    }
     [['pelota','Ejercicios con pelota'], ['fisico','Ejercicios físicos']].forEach(([g,titulo])=>{
-      const grupo = disponibles.filter(e=>e.grupo===g);
+      const grupo = disponibles.filter(e=>e.grupo===g)
+        .sort((a,b)=>{
+          const rango = e => { const c = ejercicioCoincideConCantidad(e, cantidadHoy); return c===true?0:c===null?1:2; };
+          return rango(a)-rango(b);
+        });
       if (!grupo.length) return;
       h += `<div class="block"><div class="block-title">${titulo}</div>
         <div class="roster">${grupo.map(filaEj).join('')}</div></div>`;
@@ -4866,6 +4884,34 @@ function formSesion(){
   app.innerHTML = h;
 }
 
+/* texto a mostrar para la cantidad de jugadores de un ejercicio: con los
+   campos nuevos (mínimo/máximo/paridad) arma algo tipo "8 a 12 (par)"; si
+   el ejercicio es viejo y solo tiene el texto libre de antes, muestra ese */
+function textoJugadoresEjercicio(e){
+  let txt = '';
+  if (e.jugadoresMin || e.jugadoresMax){
+    txt = e.jugadoresMin && e.jugadoresMax
+      ? (e.jugadoresMin===e.jugadoresMax ? `${e.jugadoresMin}` : `${e.jugadoresMin} a ${e.jugadoresMax}`)
+      : e.jugadoresMin ? `desde ${e.jugadoresMin}` : `hasta ${e.jugadoresMax}`;
+  }
+  if (e.paridad) txt += txt ? ` (${e.paridad})` : e.paridad;
+  return txt || e.jugadores || '';
+}
+/* true/false si la cantidad de jugadores de hoy encaja con el rango y la
+   paridad que pide el ejercicio; null si el ejercicio no tiene ese dato
+   cargado (no se puede decir ni que sí ni que no) */
+function ejercicioCoincideConCantidad(e, cantidad){
+  if (cantidad==null || (!e.jugadoresMin && !e.jugadoresMax && !e.paridad)) return null;
+  const enRango = (e.jugadoresMin==null || cantidad>=e.jugadoresMin) && (e.jugadoresMax==null || cantidad<=e.jugadoresMax);
+  const paridadOk = !e.paridad || (e.paridad==='par' ? cantidad%2===0 : cantidad%2!==0);
+  return enRango && paridadOk;
+}
+/* cuántos jugadores tiene hoy la sesión que se está armando: los marcados
+   como presentes si se usó "Quiénes vinieron", si no el número a mano */
+function cantidadJugadoresSesion(d){
+  if ((d.asistentes||[]).length) return d.asistentes.length;
+  return d.jugadores ?? null;
+}
 function formEjercicio(){
   app.innerHTML = `<button class="back" data-back="1">← Entrenos</button>
     <h2 class="screen-title">Nuevo ejercicio</h2>
@@ -4876,12 +4922,20 @@ function formEjercicio(){
       <select id="e-fase">${FASES.map(f=>`<option value="${f.id}">${esc(f.nombre)}</option>`).join('')}</select></div>
     <div class="field"><label class="label" for="e-objetivo">Objetivo</label>
       <input type="text" id="e-objetivo" placeholder="Qué se busca mejorar"></div>
+    <div class="field"><label class="label" for="e-duracion">Duración<em>min</em></label>
+      <input type="number" inputmode="numeric" id="e-duracion" value="15"></div>
     <div class="two">
-      <div class="field"><label class="label" for="e-duracion">Duración<em>min</em></label>
-        <input type="number" inputmode="numeric" id="e-duracion" value="15"></div>
-      <div class="field"><label class="label" for="e-jugadores">Jugadores</label>
-        <input type="text" id="e-jugadores" placeholder="Ej: 8 a 12"></div>
+      <div class="field"><label class="label" for="e-jug-min">Mínimo de jugadores<em>opcional</em></label>
+        <input type="number" inputmode="numeric" min="1" id="e-jug-min" placeholder="Ej: 8"></div>
+      <div class="field"><label class="label" for="e-jug-max">Máximo ideal<em>opcional</em></label>
+        <input type="number" inputmode="numeric" min="1" id="e-jug-max" placeholder="Ej: 12"></div>
     </div>
+    <div class="field"><span class="label">Cantidad de jugadores<em>para que armar la sesión lo sugiera solo</em></span>
+      <div class="chips">
+        <button type="button" class="chip" data-ejParidad="" aria-pressed="true">Cualquiera</button>
+        <button type="button" class="chip" data-ejParidad="par" aria-pressed="false">Par</button>
+        <button type="button" class="chip" data-ejParidad="impar" aria-pressed="false">Impar</button>
+      </div></div>
     <div class="two">
       <div class="field"><label class="label" for="e-espacio">Espacio</label>
         <input type="text" id="e-espacio" placeholder="Ej: 30x25 m"></div>
@@ -4919,7 +4973,9 @@ async function guardarEjercicio(){
     fase: document.getElementById('e-fase').value,
     objetivo: document.getElementById('e-objetivo').value.trim(),
     duracion: Number(document.getElementById('e-duracion').value)||15,
-    jugadores: document.getElementById('e-jugadores').value.trim(),
+    jugadoresMin: leerNum('e-jug-min'),
+    jugadoresMax: leerNum('e-jug-max'),
+    paridad: (document.querySelector('[data-ejParidad][aria-pressed="true"]')||{}).dataset?.ejparidad || '',
     espacio: document.getElementById('e-espacio').value.trim(),
     material: document.getElementById('e-material').value.trim(),
     descripcion: document.getElementById('e-desc').value.trim(),
@@ -5885,6 +5941,15 @@ app.addEventListener('click', async e=>{
     chipFxLocal.closest('.chips').querySelectorAll('[data-fxLocal]').forEach(b=>b.setAttribute('aria-pressed','false'));
     if (!yaActivo) chipFxLocal.setAttribute('aria-pressed','true');
     view.fxLocal = yaActivo ? null : val;
+    return;
+  }
+  const chipEjParidad = t.closest('[data-ejParidad]');
+  if (chipEjParidad){
+    /* a mano en el DOM, no con render(): el resto del formulario (nombre,
+       duración, mínimo/máximo de jugadores) son inputs sueltos sin valor
+       atado a "view", así que un render() de más los dejaría en blanco */
+    chipEjParidad.closest('.chips').querySelectorAll('[data-ejParidad]').forEach(b=>b.setAttribute('aria-pressed','false'));
+    chipEjParidad.setAttribute('aria-pressed','true');
     return;
   }
   if (t.id==='agregarFixture'){
