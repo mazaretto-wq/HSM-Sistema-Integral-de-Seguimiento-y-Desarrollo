@@ -1091,7 +1091,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              evolucionOcultas:{}, evolucionActivo:null, verCrudoId:null,
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null, fixtureLinkEditando:null, fxLocal:null,
-             nuevoJugadorPaso:null, nuevoJugadorCat:null, nuevoJugadorBuscar:'',
+             nuevoJugadorPaso:null, nuevoJugadorCat:null, nuevoJugadorBuscar:'', catBuscar:'',
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false,
@@ -2314,10 +2314,33 @@ function pantallaPlantel(){
 }
 
 /* ---------- CATEGORÍAS: puerta de entrada a una categoría ---------- */
+/* buscar jugador por nombre, desde Categorías, antes de elegir una
+   categoría puntual: re-pinta solo los resultados (no toda la pantalla)
+   para no perder el foco ni el cursor del input en cada letra */
+function resultadosBusquedaCategorias(){
+  const q = (view.catBuscar||'').trim().toLowerCase();
+  if (q.length<2) return '';
+  const resultados = db.jugadores
+    .filter(j=>nomb(j).toLowerCase().includes(q))
+    .slice(0,8);
+  if (!resultados.length) return `<div class="empty"><p>No encontramos a nadie con ese nombre.</p></div>`;
+  return `<div class="roster">${resultados.map(j=>`<button class="row" data-jugador="${j.id}">
+    ${avatarJugador(j)}
+    <span class="row-main"><span class="row-name">${esc(nomb(j))}</span>
+    <span class="row-meta"><span>${esc((j.categorias||[]).join(' · ')||'sin categoría')}</span></span></span>
+    <span style="color:var(--ink-2)">›</span></button>`).join('')}</div>`;
+}
+function actualizarBusquedaCategorias(){
+  const el = document.getElementById('resultados-busqueda-cat');
+  if (el) el.innerHTML = resultadosBusquedaCategorias();
+}
 function pantallaCategorias(){
   const propia = esDT() ? db.config.categoriaDT : null;
   let h = `<h2 class="screen-title">Categorías</h2>
     <p class="screen-note">${esDT()?'Elegí una categoría para entrar. Las que no son la tuya se ven solo para mirar.':'Elegí en cuál entrar.'}</p>
+    <div class="field"><input type="text" id="buscar-jugador-cat" placeholder="Buscar jugador por nombre..."
+      value="${esc(view.catBuscar||'')}" autocomplete="off"></div>
+    <div id="resultados-busqueda-cat">${resultadosBusquedaCategorias()}</div>
     <div class="roster">`;
   CATEGORIAS.forEach(c=>{
     const n = db.jugadores.filter(j=>(j.categorias||[]).includes(c)).length;
@@ -5865,6 +5888,10 @@ app.addEventListener('input', e=>{
   if (e.target.id==='buscar-jugador-existente'){
     view.nuevoJugadorBuscar = e.target.value;
     actualizarBusquedaJugadorExistente();
+  }
+  if (e.target.id==='buscar-jugador-cat'){
+    view.catBuscar = e.target.value;
+    actualizarBusquedaCategorias();
   }
 });
 
