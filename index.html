@@ -1092,6 +1092,7 @@ let view = { tab:'plantel', categoria:'Todas', jugadorId:null, form:null, jugado
              categoriaAjena:null, testFisico:null, testFecha:null, testFisicoCategoria:null, testRegistrando:false, testValores:{}, testToma:null, rutinaCategoria:null, rutinaSubiendo:false,
              fixtureCategoria:null, fixtureVista:'tabla', fixtureMes:null, fixtureLinkEditando:null, fxLocal:null,
              nuevoJugadorPaso:null, nuevoJugadorCat:null, nuevoJugadorBuscar:'', catBuscar:'',
+             histAnioFiltro:'Todas', histOrdenCol:null, histOrdenDir:'desc',
              pizSub:'lista', pizId:null, pizDraft:null, pizHerr:'seleccion', pizColor:'naranja', pizSelId:null, pizUndo:[], pizRedo:[],
              pizTipoTmp:null, pizFiltroTipo:'todos', pizFiltroSub:'todas', pizClipboard:null,
              lesionForm:false,
@@ -3149,19 +3150,48 @@ function fichaJugador(){
       ...hist.slice().reverse().map(x=>({ anio:x.anio, categoria: x.categoria==='Juveniles' ? 'Juveniles' : '—',
         pj:x.pj||0, goles:x.goles||0, asistencias:x.asis||0, minutos:x.min||0, amarillas:x.ta||0, rojas:x.tr||0 }))
     ];
+    /* filtro por temporada y orden por columna (de a una, clickeable en el
+       encabezado): se aplican solo a cómo se VE esta tabla, nunca a los
+       datos ni al resto de la ficha (evolución de rendimiento sigue
+       usando "hist" completo, sin filtrar) */
+    const HIST_COLS = [
+      {key:'anio', label:'Temp.', tipo:'texto'}, {key:'categoria', label:'Categoría', tipo:'texto'},
+      {key:'pj', label:'PJ', tipo:'num'}, {key:'minutos', label:'Min', tipo:'num'},
+      {key:'goles', label:'Goles', tipo:'num'}, {key:'asistencias', label:'Asist.', tipo:'num'},
+      {key:'tarjetas', label:'Tarj.', tipo:'num'}
+    ];
+    const valorColHist = (f,key) => key==='tarjetas' ? (f.amarillas||0)+(f.rojas||0) : f[key];
+    const aniosHist = [...new Set(filasHist.map(f=>String(f.anio)))];
+    let filasHistVista = view.histAnioFiltro==='Todas' ? filasHist : filasHist.filter(f=>String(f.anio)===view.histAnioFiltro);
+    if (view.histOrdenCol){
+      const col = HIST_COLS.find(c=>c.key===view.histOrdenCol);
+      const dir = view.histOrdenDir==='asc' ? 1 : -1;
+      filasHistVista = [...filasHistVista].sort((a,b)=>{
+        const va = valorColHist(a,col.key), vb = valorColHist(b,col.key);
+        return col.tipo==='num' ? (va-vb)*dir : String(va).localeCompare(String(vb))*dir;
+      });
+    }
+    const thHist = col => {
+      const activo = view.histOrdenCol===col.key;
+      return `<th data-histOrden="${col.key}" style="cursor:pointer;user-select:none">${esc(col.label)}${activo?(view.histOrdenDir==='asc'?' ▲':' ▼'):''}</th>`;
+    };
     h += `<div class="perfil-2col">
       <div class="block"><div class="block-title">${icono('trofeo')} Historial de temporadas</div>
         ${esCoord() ? `<button class="linkish" data-ver-crudo="${j.id}" style="font-size:11px;margin-bottom:6px">${view.verCrudoId===j.id?'Ocultar':'Ver'} datos sin procesar (para soporte)</button>
         ${view.verCrudoId===j.id ? `<pre style="font-size:10px;white-space:pre-wrap;word-break:break-all;background:var(--wash);padding:8px;border-radius:6px;max-height:300px;overflow:auto">${esc(JSON.stringify({historial:j.historial, base:j.base}, null, 2))}</pre>` : ''}` : ''}
-        <div class="scroll-x"><table class="cmp"><thead><tr>
-          <th>Temp.</th><th>Categoría</th><th>PJ</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarj.</th></tr></thead><tbody>
-        ${filasHist.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>
+        ${aniosHist.length>1 ? `<div class="field" style="margin-bottom:8px"><label class="label" for="hist-anio-filtro">Temporada<em>opcional</em></label>
+          <select id="hist-anio-filtro">
+            <option value="Todas" ${view.histAnioFiltro==='Todas'?'selected':''}>Todas</option>
+            ${aniosHist.map(a=>`<option value="${esc(a)}" ${view.histAnioFiltro===a?'selected':''}>${esc(a)}</option>`).join('')}
+          </select></div>` : ''}
+        <div class="scroll-x"><table class="cmp"><thead><tr>${HIST_COLS.map(thHist).join('')}</tr></thead><tbody>
+        ${filasHistVista.map(f=>`<tr><td><strong>${esc(f.anio)}</strong></td><td>${esc(f.categoria)}</td>
           <td class="val">${f.pj}</td><td class="val">${miles(f.minutos)}</td>
           <td class="val" style="color:var(--naranja)">${f.goles}</td><td class="val">${f.asistencias}</td>
           <td class="val"><i class="card-mark card-y"></i>${f.amarillas} <i class="card-mark card-r"></i>${f.rojas}</td></tr>`).join('')}
         </tbody>
-        ${filasHist.length>1 ? (()=>{
-          const tot = filasHist.reduce((a,f)=>({pj:a.pj+f.pj, goles:a.goles+f.goles, asistencias:a.asistencias+f.asistencias,
+        ${filasHistVista.length>1 ? (()=>{
+          const tot = filasHistVista.reduce((a,f)=>({pj:a.pj+f.pj, goles:a.goles+f.goles, asistencias:a.asistencias+f.asistencias,
             amarillas:a.amarillas+f.amarillas, rojas:a.rojas+f.rojas}), {pj:0,goles:0,asistencias:0,amarillas:0,rojas:0});
           return `<tfoot><tr style="font-weight:600"><td colspan="2">Totales</td>
             <td class="val">${tot.pj}</td><td class="val"></td>
@@ -3169,6 +3199,7 @@ function fichaJugador(){
             <td class="val"><i class="card-mark card-y"></i>${tot.amarillas} <i class="card-mark card-r"></i>${tot.rojas}</td></tr></tfoot>`;
         })() : ''}
         </table></div>
+        ${filasHistVista.length ? '' : `<div class="empty"><p>Sin datos para esa temporada.</p></div>`}
         ${historialAnio(j, ANIO_ACTUAL).pj ? `<p class="screen-note" style="margin-top:8px">La temporada ${ANIO_ACTUAL} incluye partidos cargados como total del torneo, sin detalle partido a partido.</p>` : ''}
       </div>
       <div class="block"><div class="block-title">${icono('subiendo')} Evolución de rendimiento</div>
@@ -5802,6 +5833,7 @@ app.addEventListener('change', async e=>{
     if (box) box.innerHTML = perfilJugador(db.jugadores.find(j=>j.id===e.target.value));
   }
   if (e.target.id==='cfg-cat'){ db.config.categoriaDT = e.target.value; await Store.save(db); render(); }
+  if (e.target.id==='hist-anio-filtro'){ view.histAnioFiltro = e.target.value; return render(); }
   if (e.target.id==='fotoInput'){
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -6106,6 +6138,14 @@ app.addEventListener('click', async e=>{
   const bibPosBtn = t.closest('.chip[data-bibPos]');
   if (bibPosBtn){ view.bibPosicionFiltro=bibPosBtn.dataset.bibpos; return render(); }
 
+  const thHistBtn = t.closest('[data-histOrden]');
+  if (thHistBtn){
+    const col = thHistBtn.dataset.historden;
+    if (view.histOrdenCol===col) view.histOrdenDir = view.histOrdenDir==='asc' ? 'desc' : 'asc';
+    else { view.histOrdenCol = col; view.histOrdenDir = 'desc'; }
+    return render();
+  }
+
   const ses = t.closest('[data-sesion]');
   if (ses){ view.sesionId=ses.dataset.sesion; window.scrollTo(0,0); return render(); }
 
@@ -6158,7 +6198,8 @@ app.addEventListener('click', async e=>{
   }
 
   const row = t.closest('[data-jugador]');
-  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; view.fichaDetalleMetric='pj'; view.lesionForm=false; window.scrollTo(0,0); return render(); }
+  if (row){ view.jugadorId=row.dataset.jugador; view.fichaTab='general'; view.fichaEditando=false; view.fichaDetalleMetric='pj'; view.lesionForm=false;
+    view.histAnioFiltro='Todas'; view.histOrdenCol=null; view.histOrdenDir='desc'; window.scrollTo(0,0); return render(); }
 
   if (t.closest('[data-back]')){
     if (view.jugadorId){ view.jugadorId=null; view.fichaEditando=false; view.lesionForm=false; }

@@ -83,6 +83,8 @@ node roles-y-permisos.spec.js
 
 | `categorias-buscar-jugador.spec.js` | En la solapa Categorías, antes de elegir una categoría puntual, un buscador por nombre con texto predictivo (misma lógica de re-pintar solo los resultados, sin perder el foco del input, que "agregar jugador existente") para ir directo a la ficha de un jugador sin tener que entrar primero a su categoría; el listado de categorías sigue visible debajo mientras se busca; sin resultados, avisa que no encontró a nadie |
 
+| `ficha-historial-filtro-orden.spec.js` | En la ficha de cada jugador, la tabla "Historial de temporadas" (General) ahora tiene un selector de temporada (solo aparece si hay más de una cargada) para ver un solo año, y cada encabezado de columna (Temp./Categoría/PJ/Min/Goles/Asist./Tarj.) ordena esa tabla al tocarlo: el primer click ordena de mayor a menor (▼), un segundo click sobre la misma columna lo invierte a menor a mayor (▲), y tocar otra columna arranca de nuevo en descendente. El filtro y el orden son solo de esta tabla (no tocan el resto de la ficha, como la "Evolución de rendimiento", que sigue usando todo el historial); al abrir la ficha de otro jugador, ambos se resetean |
+
 ## Si agregás una función nueva a la app
 
 Sumá un archivo `*.spec.js` nuevo (copiá la estructura de cualquiera de los
