@@ -963,6 +963,10 @@ const CATEGORIAS = ['Promocional','Cadetes','Juveniles','Juveniles B','Selecció
 const POSICIONES = ['Arquero','Lateral Derecho','Central Derecho','Central Izquierdo','Lateral Izquierdo',
   'Mediocampista Defensivo','Mediocampista Interior','Volante Derecho','Volante Izquierdo','Enganche',
   'Extremo Derecho','Extremo Izquierdo','Delantero Centro'];
+/* segmentación amplia de ejercicios (biblioteca y pizarra) para que el DT
+   pueda filtrar "ejercicios para defensores", sin relacionarlo con las
+   posiciones puntuales de cada jugador (POSICIONES) ni con asignar gente */
+const POS_SEGMENTOS = ['Defensores','Mediocampistas','Delanteros'];
 
 const FISICO = [
   {id:'cooper', nombre:'Cooper 6 min',   unidad:'m', mejor:'alto'},
@@ -4355,7 +4359,7 @@ const pizSubNombre = (catId, subId) => {
 
 function pizNuevo(categoria, subcategoria){
   return { id:uid(), categoria:categoria||'', subcategoria:subcategoria||'',
-           nombre:'', duracion:'', explicacion:'', jugadoresMin:null, jugadoresMax:null, paridad:'',
+           nombre:'', duracion:'', explicacion:'', jugadoresMin:null, jugadoresMax:null, paridad:'', posicion:'',
            creado:new Date().toISOString(), modificado:null,
            elementos:[], trazos:[] };
 }
@@ -4493,9 +4497,11 @@ function pizarraLista(){
   }
   const filtroTipo = view.pizFiltroTipo || 'todos';
   const filtroSub  = view.pizFiltroSub  || 'todas';
+  const filtroPos  = view.pizFiltroPosicion || 'todas';
   let lista = [...db.pizarra];
   if (filtroTipo!=='todos') lista = lista.filter(e=>e.categoria===filtroTipo);
   if (filtroTipo!=='todos' && filtroSub!=='todas') lista = lista.filter(e=>e.subcategoria===filtroSub);
+  if (filtroPos!=='todas') lista = lista.filter(e=>e.posicion===filtroPos);
   lista.sort((a,b)=>(b.creado||'').localeCompare(a.creado||''));
 
   let h = `<div class="chips">
@@ -4509,6 +4515,10 @@ function pizarraLista(){
       ${catFiltro.subs.map(s=>`<button class="chip" data-piz="filtroSub" data-v="${s.id}" aria-pressed="${filtroSub===s.id}">${esc(s.nombre)}</button>`).join('')}
     </div>`;
   }
+  h += `<div class="chips">
+    <button class="chip" data-piz="filtroPos" data-v="todas" aria-pressed="${filtroPos==='todas'}">Todas las posiciones</button>
+    ${POS_SEGMENTOS.map(p=>`<button class="chip" data-piz="filtroPos" data-v="${esc(p)}" aria-pressed="${filtroPos===p}">${esc(p)}</button>`).join('')}
+  </div>`;
 
   if (!lista.length){
     return h + `<div class="empty"><p>No hay ejercicios con este filtro.</p></div>
@@ -4521,7 +4531,7 @@ function pizarraLista(){
       <div class="piz-card-info">
         <div class="row-name">${esc(ej.nombre||'Sin nombre')}</div>
         ${cat?`<div class="piz-card-cat">${esc(cat.nombre)}${sub?' · '+esc(sub):''}</div>`:''}
-        <div class="row-meta"><span>${esc(ej.duracion||'—')}</span>${textoJugadoresEjercicio(ej)?`<span>${esc(textoJugadoresEjercicio(ej))} jug.</span>`:''}<span>${pizFecha(ej.creado)}</span></div>
+        <div class="row-meta"><span>${esc(ej.duracion||'—')}</span>${textoJugadoresEjercicio(ej)?`<span>${esc(textoJugadoresEjercicio(ej))} jug.</span>`:''}${ej.posicion?`<span class="pill">${esc(ej.posicion)}</span>`:''}<span>${pizFecha(ej.creado)}</span></div>
       </div>
       <div class="piz-card-acciones">
         <button class="linkish" data-piz="abrir" data-id="${ej.id}">Abrir</button>
@@ -4565,7 +4575,7 @@ function pizarraVer(){
   const cat = pizCat(ej.categoria), sub = pizSubNombre(ej.categoria, ej.subcategoria);
   app.innerHTML = `<button class="back" data-piz="volver">← Entrenos</button>
     <h2 class="screen-title">${esc(ej.nombre||'Sin nombre')}</h2>
-    <p class="screen-note">${cat?esc(cat.nombre)+(sub?' · '+esc(sub):'')+' · ':''}${ej.duracion?esc(ej.duracion)+' · ':''}${textoJugadoresEjercicio(ej)?esc(textoJugadoresEjercicio(ej))+' jugadores · ':''}Creado el ${pizFecha(ej.creado)}</p>
+    <p class="screen-note">${cat?esc(cat.nombre)+(sub?' · '+esc(sub):'')+' · ':''}${ej.duracion?esc(ej.duracion)+' · ':''}${textoJugadoresEjercicio(ej)?esc(textoJugadoresEjercicio(ej))+' jugadores · ':''}${ej.posicion?esc(ej.posicion)+' · ':''}Creado el ${pizFecha(ej.creado)}</p>
     <div class="piz-pitch">${pizSvgCompleto(ej,{id:'piz-ver-svg'})}</div>
     ${ej.explicacion?`<div class="block"><div class="block-title">Explicación</div><p style="white-space:pre-wrap">${esc(ej.explicacion)}</p></div>`:''}
     ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-piz="editar" data-id="${ej.id}">Editar</button>`:''}
@@ -4620,6 +4630,11 @@ function pizarraEditor(){
         <button type="button" class="chip" data-ejParidad="" aria-pressed="${(d.paridad||'')===''}">Cualquiera</button>
         <button type="button" class="chip" data-ejParidad="par" aria-pressed="${d.paridad==='par'}">Par</button>
         <button type="button" class="chip" data-ejParidad="impar" aria-pressed="${d.paridad==='impar'}">Impar</button>
+      </div></div>
+    <div class="field"><span class="label">Para qué posición<em>opcional, para poder encontrarlo filtrando</em></span>
+      <div class="chips">
+        <button type="button" class="chip" data-ejPosicion="" aria-pressed="${(d.posicion||'')===''}">Todas</button>
+        ${POS_SEGMENTOS.map(p=>`<button type="button" class="chip" data-ejPosicion="${esc(p)}" aria-pressed="${d.posicion===p}">${esc(p)}</button>`).join('')}
       </div></div>
     <div style="height:26px"></div>`;
   pizWire();
@@ -4932,9 +4947,11 @@ function pantallaEntrenos(){
    no como pestaña, desde el enlace en Día a día */
 function pantallaBiblioteca(){
   const fs = ['Todas',...FASES.map(f=>f.id)];
+  const posFiltro = view.bibPosicionFiltro || 'Todas';
   const creados = db.ejercicios.filter(e=>e.autor!=='Base del club');
   const lista = creados
     .filter(e=>view.faseFiltro==='Todas'||e.fase===view.faseFiltro)
+    .filter(e=>posFiltro==='Todas'||e.posicion===posFiltro)
     .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
   let h = `<button class="back" data-volverDia="1">← Día a día</button>
     <h2 class="screen-title">Base de ejercicios</h2>
@@ -4942,19 +4959,22 @@ function pantallaBiblioteca(){
     <div class="chips">${fs.map(f=>{
       const n = f==='Todas'?'Todas':fase(f).nombre;
       return `<button class="chip" data-fase="${esc(f)}" aria-pressed="${view.faseFiltro===f}">${esc(n)}</button>`;
-    }).join('')}</div>`;
+    }).join('')}</div>
+    <div class="chips">${['Todas',...POS_SEGMENTOS].map(p=>
+      `<button class="chip" data-bibPos="${esc(p)}" aria-pressed="${posFiltro===p}">${esc(p)}</button>`).join('')}</div>`;
 
   if (!creados.length){
     h += `<div class="empty"><p>Todavía no hay ejercicios cargados por ningún técnico.</p>
       ${puedeEditar()?`<button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}</div>`;
   } else if (!lista.length){
-    h += `<div class="empty"><p>No hay ejercicios en esa fase.</p></div>`;
+    h += `<div class="empty"><p>No hay ejercicios con ese filtro.</p></div>`;
   } else {
     h += `<div class="roster">`+lista.map(e=>`<button class="row" data-ejercicio="${e.id}">
       <span class="dorsal" style="background:${fase(e.fase).color};color:#fff;font-size:10px">${esc(fase(e.fase).nombre.slice(0,3).toUpperCase())}</span>
       <span class="row-main"><span class="row-name">${esc(e.nombre)}</span>
       <span class="row-meta"><span>${esc(fase(e.fase).nombre)}</span>
       ${e.duracion?`<span>${e.duracion}'</span>`:''}${textoJugadoresEjercicio(e)?`<span>${esc(textoJugadoresEjercicio(e))} jug.</span>`:''}
+      ${e.posicion?`<span class="pill">${esc(e.posicion)}</span>`:''}
       ${(e.categorias||[]).length?`<span class="pill">${esc((e.categorias||[]).join(' · '))}</span>`:''}</span></span>
       <span style="color:var(--ink-2)">›</span></button>`).join('')+`</div>
       ${puedeEditar()?`<div class="gap"></div><button class="btn btn-naranja" data-go="nuevoEjercicio">Crear ejercicio</button>`:''}`;
@@ -5023,6 +5043,7 @@ function detalleEjercicio(){
       ${e.duracion?`<span class="tag">${e.duracion} min</span>`:''}
       ${textoJugadoresEjercicio(e)?`<span class="tag">${esc(textoJugadoresEjercicio(e))} jugadores</span>`:''}
       ${e.espacio?`<span class="tag">${esc(e.espacio)}</span>`:''}
+      ${e.posicion?`<span class="tag">${esc(e.posicion)}</span>`:''}
       ${(e.categorias||[]).map(c=>`<span class="tag cat">${esc(c)}</span>`).join('')}
     </div></div>
     ${e.objetivo?`<div class="block"><div class="block-title">Objetivo</div><p>${esc(e.objetivo)}</p></div>`:''}
@@ -5227,6 +5248,11 @@ function formEjercicio(){
         <button type="button" class="chip" data-ejParidad="par" aria-pressed="false">Par</button>
         <button type="button" class="chip" data-ejParidad="impar" aria-pressed="false">Impar</button>
       </div></div>
+    <div class="field"><span class="label">Para qué posición<em>opcional, para poder encontrarlo filtrando</em></span>
+      <div class="chips">
+        <button type="button" class="chip" data-ejPosicion="" aria-pressed="true">Todas</button>
+        ${POS_SEGMENTOS.map(p=>`<button type="button" class="chip" data-ejPosicion="${esc(p)}" aria-pressed="false">${esc(p)}</button>`).join('')}
+      </div></div>
     <div class="two">
       <div class="field"><label class="label" for="e-espacio">Espacio</label>
         <input type="text" id="e-espacio" placeholder="Ej: 30x25 m"></div>
@@ -5267,6 +5293,7 @@ async function guardarEjercicio(){
     jugadoresMin: leerNum('e-jug-min'),
     jugadoresMax: leerNum('e-jug-max'),
     paridad: (document.querySelector('[data-ejParidad][aria-pressed="true"]')||{}).dataset?.ejparidad || '',
+    posicion: (document.querySelector('[data-ejPosicion][aria-pressed="true"]')||{}).dataset?.ejposicion || '',
     espacio: document.getElementById('e-espacio').value.trim(),
     material: document.getElementById('e-material').value.trim(),
     descripcion: document.getElementById('e-desc').value.trim(),
@@ -5878,6 +5905,7 @@ app.addEventListener('click', async e=>{
     }
     if (accion==='filtroTipo'){ view.pizFiltroTipo=piz.dataset.v; view.pizFiltroSub='todas'; return render(); }
     if (accion==='filtroSub'){ view.pizFiltroSub=piz.dataset.v; return render(); }
+    if (accion==='filtroPos'){ view.pizFiltroPosicion=piz.dataset.v; return render(); }
     if (accion==='abrir'){ view.pizId=id; view.pizSub='ver'; window.scrollTo(0,0); return render(); }
     if (accion==='editar'){
       const ej = db.pizarra.find(x=>x.id===id); if (!ej) return;
@@ -5941,6 +5969,7 @@ app.addEventListener('click', async e=>{
     d.jugadoresMin = leerNum('piz-jug-min');
     d.jugadoresMax = leerNum('piz-jug-max');
     d.paridad = (document.querySelector('[data-ejParidad][aria-pressed="true"]')||{}).dataset?.ejparidad || '';
+    d.posicion = (document.querySelector('[data-ejPosicion][aria-pressed="true"]')||{}).dataset?.ejposicion || '';
     d.modificado = new Date().toISOString();
     const existente = db.pizarra.find(x=>x.id===d.id);
     if (existente) Object.assign(existente, d);
@@ -6035,6 +6064,9 @@ app.addEventListener('click', async e=>{
 
   const faseBtn = t.closest('.chip[data-fase]');
   if (faseBtn){ view.faseFiltro=faseBtn.dataset.fase; return render(); }
+
+  const bibPosBtn = t.closest('.chip[data-bibPos]');
+  if (bibPosBtn){ view.bibPosicionFiltro=bibPosBtn.dataset.bibpos; return render(); }
 
   const ses = t.closest('[data-sesion]');
   if (ses){ view.sesionId=ses.dataset.sesion; window.scrollTo(0,0); return render(); }
@@ -6263,6 +6295,14 @@ app.addEventListener('click', async e=>{
        acciones (elegir herramienta, color, deshacer) sí vuelven a pintar
        todo, y si no quedó en el draft se perdería al tocar cualquiera */
     if (view.pizDraft) view.pizDraft.paridad = chipEjParidad.dataset.ejparidad;
+    return;
+  }
+  const chipEjPosicion = t.closest('[data-ejPosicion]');
+  if (chipEjPosicion){
+    /* mismo patrón DOM-directo que data-ejParidad, por la misma razón */
+    chipEjPosicion.closest('.chips').querySelectorAll('[data-ejPosicion]').forEach(b=>b.setAttribute('aria-pressed','false'));
+    chipEjPosicion.setAttribute('aria-pressed','true');
+    if (view.pizDraft) view.pizDraft.posicion = chipEjPosicion.dataset.ejposicion;
     return;
   }
   if (t.id==='agregarFixture'){
