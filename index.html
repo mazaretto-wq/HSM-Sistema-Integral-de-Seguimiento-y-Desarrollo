@@ -3544,6 +3544,7 @@ async function subirFotoJugador(j, blob){
     url = await conLimite(ref.getDownloadURL(), 15000);
     subioANube = true;
   }catch(err){
+    console.warn('No se pudo subir la foto a Storage, queda solo en este dispositivo:', err && err.message || err);
     url = await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob); });
   }
   if (subioANube){
