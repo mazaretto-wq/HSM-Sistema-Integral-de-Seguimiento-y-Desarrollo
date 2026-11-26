@@ -4499,14 +4499,23 @@ function pizarraLista(){
   const filtroSub  = view.pizFiltroSub  || 'todas';
   const filtroPos  = view.pizFiltroPosicion || 'todas';
   let lista = [...db.pizarra];
-  if (filtroTipo!=='todos') lista = lista.filter(e=>e.categoria===filtroTipo);
-  if (filtroTipo!=='todos' && filtroSub!=='todas') lista = lista.filter(e=>e.subcategoria===filtroSub);
-  if (filtroPos!=='todas') lista = lista.filter(e=>e.posicion===filtroPos);
+  if (filtroTipo==='pelota' || filtroTipo==='fisico'){
+    lista = lista.filter(e=>e.categoria===filtroTipo);
+    if (filtroSub!=='todas') lista = lista.filter(e=>e.subcategoria===filtroSub);
+  } else if (filtroTipo==='posicion'){
+    /* "Ejercicios por posición" es un 4° filtro general, excluyente con
+       "con pelota"/"físicos" (no una categoría más del ejercicio): agrupa
+       cualquier ejercicio que tenga alguna macroposición marcada, sin
+       importar si es con pelota o físico */
+    lista = lista.filter(e=>e.posicion);
+    if (filtroPos!=='todas') lista = lista.filter(e=>e.posicion===filtroPos);
+  }
   lista.sort((a,b)=>(b.creado||'').localeCompare(a.creado||''));
 
   let h = `<div class="chips">
     <button class="chip" data-piz="filtroTipo" data-v="todos" aria-pressed="${filtroTipo==='todos'}">Todos</button>
     ${PIZ_CATEGORIAS.map(c=>`<button class="chip" data-piz="filtroTipo" data-v="${c.id}" aria-pressed="${filtroTipo===c.id}">${esc(c.nombre)}</button>`).join('')}
+    <button class="chip" data-piz="filtroTipo" data-v="posicion" aria-pressed="${filtroTipo==='posicion'}">Ejercicios por posición</button>
   </div>`;
   const catFiltro = pizCat(filtroTipo);
   if (catFiltro){
@@ -4515,10 +4524,12 @@ function pizarraLista(){
       ${catFiltro.subs.map(s=>`<button class="chip" data-piz="filtroSub" data-v="${s.id}" aria-pressed="${filtroSub===s.id}">${esc(s.nombre)}</button>`).join('')}
     </div>`;
   }
-  h += `<div class="chips">
-    <button class="chip" data-piz="filtroPos" data-v="todas" aria-pressed="${filtroPos==='todas'}">Todas las posiciones</button>
-    ${POS_SEGMENTOS.map(p=>`<button class="chip" data-piz="filtroPos" data-v="${esc(p)}" aria-pressed="${filtroPos===p}">${esc(p)}</button>`).join('')}
-  </div>`;
+  if (filtroTipo==='posicion'){
+    h += `<div class="chips">
+      <button class="chip" data-piz="filtroPos" data-v="todas" aria-pressed="${filtroPos==='todas'}">Todas</button>
+      ${POS_SEGMENTOS.map(p=>`<button class="chip" data-piz="filtroPos" data-v="${esc(p)}" aria-pressed="${filtroPos===p}">${esc(p)}</button>`).join('')}
+    </div>`;
+  }
 
   if (!lista.length){
     return h + `<div class="empty"><p>No hay ejercicios con este filtro.</p></div>
@@ -5903,7 +5914,7 @@ app.addEventListener('click', async e=>{
       view.pizHerr='seleccion'; view.pizUndo=[]; view.pizRedo=[];
       view.pizSub='editor'; window.scrollTo(0,0); return render();
     }
-    if (accion==='filtroTipo'){ view.pizFiltroTipo=piz.dataset.v; view.pizFiltroSub='todas'; return render(); }
+    if (accion==='filtroTipo'){ view.pizFiltroTipo=piz.dataset.v; view.pizFiltroSub='todas'; view.pizFiltroPosicion='todas'; return render(); }
     if (accion==='filtroSub'){ view.pizFiltroSub=piz.dataset.v; return render(); }
     if (accion==='filtroPos'){ view.pizFiltroPosicion=piz.dataset.v; return render(); }
     if (accion==='abrir'){ view.pizId=id; view.pizSub='ver'; window.scrollTo(0,0); return render(); }

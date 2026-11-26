@@ -94,14 +94,32 @@ await pg.click('[data-piz="abrir"][data-id="'+pizDel.id+'"]'); await pg.waitForT
 t('Se ve la etiqueta en el detalle del ejercicio de pizarra', (await pg.locator('.screen-note').first().innerText()).includes('Delanteros'));
 await pg.click('[data-piz="volver"]'); await pg.waitForTimeout(300);
 
-// ---- filtro por posición en la lista de pizarra ----
+// ---- "Ejercicios por posición" es un 4° filtro general (con Todos / con
+//      pelota / físicos), excluyente con esos otros: solo al elegirlo
+//      aparecen las 3 macroposiciones como sub-filtro ----
+t('Con "Todos" elegido, por defecto no se ven los sub-filtros de posición',
+  (await pg.locator('.chip:has-text("Defensores")').count())===0);
+await pg.click('.chip:has-text("Ejercicios con pelota")'); await pg.waitForTimeout(300);
+t('Con "Ejercicios con pelota" elegido, se ven las subcategorías de siempre, no las posiciones',
+  (await pg.locator('.chip:has-text("Ejercicios de definición")').count())===1 &&
+  (await pg.locator('.chip:has-text("Defensores")').count())===0);
+
+await pg.click('.chip:has-text("Ejercicios por posición")'); await pg.waitForTimeout(300);
+t('Al elegir "Ejercicios por posición" aparecen las 3 macroposiciones (y no las subcategorías de con pelota/físicos)',
+  (await pg.locator('.chip:has-text("Defensores")').count())===1 &&
+  (await pg.locator('.chip:has-text("Mediocampistas")').count())===1 &&
+  (await pg.locator('.chip:has-text("Delanteros")').count())===1 &&
+  (await pg.locator('.chip:has-text("Ejercicios de definición")').count())===0);
+t('En "Ejercicios por posición" con "Todas" (default), se ven los que tienen alguna posición marcada, pero no el que no tiene ninguna',
+  (await pg.locator('.piz-card:has-text("Finalización 1v1 vs arquero")').count())===1 &&
+  (await pg.locator('.piz-card:has-text("Ejercicio pizarra sin posicion")').count())===0);
+
 await pg.click('.chip:has-text("Delanteros")'); await pg.waitForTimeout(300);
 t('Filtrando por "Delanteros" aparece el ejercicio recién creado',
   await pg.locator('.piz-card:has-text("Finalización 1v1 vs arquero")').isVisible());
-t('...y el viejo sin posición queda afuera del filtro',
-  (await pg.locator('.piz-card:has-text("Ejercicio pizarra sin posicion")').count())===0);
-await pg.click('.chip:has-text("Todas las posiciones")'); await pg.waitForTimeout(300);
-t('Volviendo a "Todas las posiciones" se vuelven a ver los dos',
+
+await pg.click('.chip:has-text("Todos")'); await pg.waitForTimeout(300);
+t('Volviendo a "Todos" se vuelven a ver los dos (con o sin posición marcada)',
   (await pg.locator('.piz-card:has-text("Finalización 1v1 vs arquero")').count())===1 &&
   (await pg.locator('.piz-card:has-text("Ejercicio pizarra sin posicion")').count())===1);
 
